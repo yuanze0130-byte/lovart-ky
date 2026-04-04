@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
 
         const apiKey = process.env.GEMINI_API_KEY;
         const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
-        const model = process.env.IMAGE_MODEL || 'gemini-3.1-flash-image-preview';
 
         if (!apiKey) {
             return NextResponse.json(
@@ -31,7 +30,7 @@ export async function POST(request: NextRequest) {
 
         if (hasChinese) {
             const translateRes = await client.chat.completions.create({
-                model: process.env.CHAT_MODEL || 'gpt-4o',
+                model: 'gpt-4o',
                 messages: [{
                     role: 'user',
                     content: `Translate the following image generation prompt to English. Only return the translated prompt, nothing else:\n${prompt}`
@@ -53,7 +52,7 @@ export async function POST(request: NextRequest) {
         content.push({ type: 'text', text: finalPrompt });
 
         const response = await client.chat.completions.create({
-            model,
+            model: 'gemini-3.1-flash-image-preview',
             messages: [{ role: 'user', content }],
         }) as any;
 
