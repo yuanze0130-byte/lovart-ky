@@ -1,9 +1,9 @@
-import { GoogleGenAI } from '@google/genai';
+import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
     try {
-        const { prompt, resolution, aspectRatio, referenceImage, mimeType } = await request.json();
+        const { prompt, referenceImage, mimeType } = await request.json();
 
         if (!prompt || typeof prompt !== 'string') {
             return NextResponse.json(
@@ -12,9 +12,10 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log('Starting image generation with Gemini:', prompt);
+        console.log('Starting image generation:', prompt);
 
         const apiKey = process.env.GEMINI_API_KEY;
+        const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
 
         if (!apiKey) {
             return NextResponse.json(
@@ -23,113 +24,54 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const ai = new GoogleGenAI({
+        const client = new OpenAI({
             apiKey: apiKey,
+            baseURL: baseURL,
         });
 
-        const tools = [
-            {
-                googleSearch: {}
-            },
+        // 构建消息内容
+        const messageContent: any[] = [
+            { type: 'text', text: prompt }
         ];
 
-        const config = {
-            responseModalities: ['IMAGE', 'TEXT'],
-            imageConfig: {
-                imageSize: resolution || '1K',
-            },
-            tools,
-        } as any;
-
-        const model = 'gemini-3-pro-image-preview';
-
-        const contents = [
-            {
-                role: 'user',
-                parts: [
-                    {
-                        text: prompt,
-                    },
-                ],
-            },
-        ];
-
-        // Add reference image if present
+        // 如果有参考图片，加入消息
         if (referenceImage) {
-            let cleanData = referenceImage;
-            let finalMimeType = mimeType || 'image/jpeg';
-
-            // Check if it has a data URI prefix
-            if (referenceImage.includes('base64,')) {
-                const matches = referenceImage.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
-                if (matches) {
-                    finalMimeType = matches[1];
-                    cleanData = matches[2];
-                } else {
-                    // Fallback split if regex fails but base64 marker exists
-                    const parts = referenceImage.split('base64,');
-                    if (parts.length > 1) {
-                        cleanData = parts[1];
-                    }
-                }
+            let imageUrl = referenceImage;
+            if (!referenceImage.startsWith('data:')) {
+                imageUrl = `data:${mimeType || 'image/jpeg'};base64,${referenceImage}`;
             }
-
-            contents[0].parts.push({
-                // @ts-ignore
-                inlineData: {
-                    mimeType: finalMimeType,
-                    data: cleanData
-                }
+            messageContent.push({
+                type: 'image_url',
+                image_url: { url: imageUrl }
             });
         }
 
-        console.log('Calling Gemini API with model:', model);
-
-        const response = await ai.models.generateContentStream({
-            model,
-            config,
-            contents,
+        const response = await client.chat.completions.create({
+            model: process.env.GEMINI_MODEL || 'gpt-4o',
+            messages: [
+                {
+                    role: 'user',
+                    content: messageContent,
+                }
+            ],
         });
 
-        let imageData: string | null = null;
-        let textResponse = '';
+        const textResponse = response.choices[0]?.message?.content || '';
 
-        for await (const chunk of response) {
-            if (!chunk.candidates || !chunk.candidates[0]?.content || !chunk.candidates[0]?.content?.parts) {
-                continue;
-            }
-
-            const parts = chunk.candidates[0].content.parts;
-            for (const part of parts) {
-                if (part.inlineData) {
-                    console.log('Found inline data with mimeType:', part.inlineData.mimeType);
-                    imageData = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-                } else if (part.text) {
-                    textResponse += part.text;
-                }
-            }
+        // 检查返回内容里是否有 base64 图片
+        const base64Match = textResponse.match(/data:image\/[^;]+;base64,[^\s"]+/);
+        if (base64Match) {
+            return NextResponse.json({
+                imageData: base64Match[0],
+                textResponse,
+            });
         }
 
-        if (!imageData) {
-            if (textResponse) {
-                return NextResponse.json({
-                    error: 'Model returned text instead of image',
-                    details: textResponse
-                }, { status: 500 });
-            }
-
-            return NextResponse.json(
-                {
-                    error: 'No image was generated',
-                    details: 'No image data found in response.'
-                },
-                { status: 500 }
-            );
-        }
-
+        // 如果没有图片数据，返回文字内容（调试用）
         return NextResponse.json({
-            imageData,
+            imageData: null,
             textResponse,
+            error: 'No image data returned, check model support'
         });
 
     } catch (error: any) {
