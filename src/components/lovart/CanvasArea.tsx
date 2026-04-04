@@ -18,12 +18,12 @@ export interface CanvasElement {
     fontFamily?: string;
     points?: { x: number; y: number }[];
     strokeWidth?: number;
-    referenceImageId?: string; // ID of the source image for image-generator elements
-    groupId?: string; // Group ID for linked elements in flowchart
-    linkedElements?: string[]; // IDs of linked elements (for flowchart)
-    connectorFrom?: string; // Source element ID for connector
-    connectorTo?: string; // Target element ID for connector
-    connectorStyle?: 'solid' | 'dashed'; // Connector line style
+    referenceImageId?: string;
+    groupId?: string;
+    linkedElements?: string[];
+    connectorFrom?: string;
+    connectorTo?: string;
+    connectorStyle?: 'solid' | 'dashed';
 }
 
 interface CanvasAreaProps {
@@ -43,17 +43,48 @@ interface CanvasAreaProps {
     onConnectFlow?: (element: CanvasElement) => void;
 }
 
-export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onSelect, onElementChange, onDelete, onAddElement, activeTool, onDragStart, onDragEnd, onGenerateFromImage, onConnectFlow }: CanvasAreaProps) {
+export function CanvasArea({
+    scale,
+    pan,
+    onPanChange,
+    elements,
+    selectedIds,
+    onSelect,
+    onElementChange,
+    onDelete,
+    onAddElement,
+    activeTool,
+    onDragStart,
+    onDragEnd,
+    onGenerateFromImage,
+    onConnectFlow,
+}: CanvasAreaProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
     const [isPanning, setIsPanning] = useState(false);
     const [isDrawing, setIsDrawing] = useState(false);
     const [isSelecting, setIsSelecting] = useState(false);
-    const [selectionBox, setSelectionBox] = useState<{ startX: number, startY: number, currentX: number, currentY: number } | null>(null);
+    const [selectionBox, setSelectionBox] = useState<{
+        startX: number;
+        startY: number;
+        currentX: number;
+        currentY: number;
+    } | null>(null);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [currentPath, setCurrentPath] = useState<{ points: { x: number; y: number }[] } | null>(null);
 
-    const dragStartRef = useRef<{ x: number; y: number; elementX: number; elementY: number; width: number; height: number; panX: number; panY: number; aspectRatio?: number; initialPositions?: { id: string, x: number, y: number }[] } | null>(null);
+    const dragStartRef = useRef<{
+        x: number;
+        y: number;
+        elementX: number;
+        elementY: number;
+        width: number;
+        height: number;
+        panX: number;
+        panY: number;
+        aspectRatio?: number;
+        initialPositions?: { id: string; x: number; y: number }[];
+    } | null>(null);
     const draggedElementIdRef = useRef<string | null>(null);
     const resizeHandleRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -63,11 +94,18 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
         const rect = containerRef.current.getBoundingClientRect();
         return {
             x: (e.clientX - rect.left) / scale - pan.x / scale,
-            y: (e.clientY - rect.top) / scale - pan.y / scale
+            y: (e.clientY - rect.top) / scale - pan.y / scale,
         };
     };
 
-    const handleMouseDown = (e: React.MouseEvent, elementId: string | null, elementX: number = 0, elementY: number = 0, width: number = 0, height: number = 0) => {
+    const handleMouseDown = (
+        e: React.MouseEvent,
+        elementId: string | null,
+        elementX: number = 0,
+        elementY: number = 0,
+        width: number = 0,
+        height: number = 0
+    ) => {
         if (activeTool === 'hand') {
             setIsPanning(true);
             dragStartRef.current = {
@@ -78,7 +116,7 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
                 width: 0,
                 height: 0,
                 panX: pan.x,
-                panY: pan.y
+                panY: pan.y,
             };
             return;
         }
@@ -92,17 +130,15 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
         }
 
         if (!elementId) {
-            // Clicked on empty space
             if (!e.shiftKey) {
                 onSelect([]);
             }
-            // Start selection box
             setIsSelecting(true);
             setSelectionBox({
                 startX: (e.clientX - pan.x) / scale,
                 startY: (e.clientY - 56 - pan.y) / scale,
                 currentX: (e.clientX - pan.x) / scale,
-                currentY: (e.clientY - 56 - pan.y) / scale
+                currentY: (e.clientY - 56 - pan.y) / scale,
             });
             setEditingTextId(null);
             return;
@@ -112,10 +148,9 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
 
         let dragSelectedIds = selectedIds;
 
-        // Handle Selection Logic
         if (e.shiftKey) {
             if (selectedIds.includes(elementId)) {
-                dragSelectedIds = selectedIds.filter(id => id !== elementId);
+                dragSelectedIds = selectedIds.filter((id) => id !== elementId);
                 onSelect(dragSelectedIds);
             } else {
                 dragSelectedIds = [...selectedIds, elementId];
@@ -128,19 +163,15 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
             }
         }
 
-        // If clicking a handle, don't start drag (handled by handleResizeStart)
         if ((e.target as HTMLElement).dataset.handle) return;
 
         setIsDragging(true);
         onDragStart?.();
         draggedElementIdRef.current = elementId;
 
-        // Store initial positions of ALL selected elements for group dragging
-        const initialPositions = elements.filter(el => dragSelectedIds.includes(el.id)).map(el => ({
-            id: el.id,
-            x: el.x,
-            y: el.y
-        }));
+        const initialPositions = elements
+            .filter((el) => dragSelectedIds.includes(el.id))
+            .map((el) => ({ id: el.id, x: el.x, y: el.y }));
 
         dragStartRef.current = {
             x: e.clientX,
@@ -151,12 +182,17 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
             height: height || 0,
             panX: 0,
             panY: 0,
-            aspectRatio: (width && height) ? width / height : undefined,
-            initialPositions
+            aspectRatio: width && height ? width / height : undefined,
+            initialPositions,
         };
     };
 
-    const handleResizeStart = (e: React.MouseEvent, elementId: string, handle: string, element: CanvasElement) => {
+    const handleResizeStart = (
+        e: React.MouseEvent,
+        elementId: string,
+        handle: string,
+        element: CanvasElement
+    ) => {
         e.stopPropagation();
         setIsResizing(true);
         draggedElementIdRef.current = elementId;
@@ -170,7 +206,7 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
             height: element.height || 0,
             panX: 0,
             panY: 0,
-            aspectRatio: (element.width || 1) / (element.height || 1)
+            aspectRatio: (element.width || 1) / (element.height || 1),
         };
     };
 
@@ -179,14 +215,16 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
         const canvasY = (e.clientY - 56 - pan.y) / scale;
 
         if (isDrawing && currentPath) {
-            setCurrentPath(prev => prev ? {
-                points: [...prev.points, { x: canvasX, y: canvasY }]
-            } : null);
+            setCurrentPath((prev) =>
+                prev ? { points: [...prev.points, { x: canvasX, y: canvasY }] } : null
+            );
             return;
         }
 
         if (isSelecting && selectionBox) {
-            setSelectionBox(prev => prev ? { ...prev, currentX: canvasX, currentY: canvasY } : null);
+            setSelectionBox((prev) =>
+                prev ? { ...prev, currentX: canvasX, currentY: canvasY } : null
+            );
             return;
         }
 
@@ -197,7 +235,7 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
             const dy = e.clientY - dragStartRef.current.y;
             onPanChange({
                 x: dragStartRef.current.panX + dx,
-                y: dragStartRef.current.panY + dy
+                y: dragStartRef.current.panY + dy,
             });
             return;
         }
@@ -208,17 +246,12 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
         const dy = (e.clientY - dragStartRef.current.y) / scale;
 
         if (isDragging && dragStartRef.current.initialPositions) {
-            // Move only the selected elements (not linked elements)
-            dragStartRef.current.initialPositions.forEach(pos => {
-                onElementChange(pos.id, {
-                    x: pos.x + dx,
-                    y: pos.y + dy,
-                });
+            dragStartRef.current.initialPositions.forEach((pos) => {
+                onElementChange(pos.id, { x: pos.x + dx, y: pos.y + dy });
             });
         } else if (isResizing && resizeHandleRef.current) {
-            // ... (Resize logic remains mostly same, maybe only resize primary selected element for now)
             const { elementX, elementY, width, height, aspectRatio } = dragStartRef.current;
-            const element = elements.find(el => el.id === draggedElementIdRef.current);
+            const element = elements.find((el) => el.id === draggedElementIdRef.current);
             const isImage = element?.type === 'image';
 
             let newX = elementX;
@@ -237,14 +270,19 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
                 newY = elementY + dy;
             }
 
-            // Enforce aspect ratio for images
             if (isImage && aspectRatio) {
-                if (resizeHandleRef.current.includes('e') || resizeHandleRef.current.includes('w')) {
+                if (
+                    resizeHandleRef.current.includes('e') ||
+                    resizeHandleRef.current.includes('w')
+                ) {
                     newHeight = newWidth / aspectRatio;
                     if (resizeHandleRef.current.includes('n')) {
                         newY = elementY + (height - newHeight);
                     }
-                } else if (resizeHandleRef.current.includes('n') || resizeHandleRef.current.includes('s')) {
+                } else if (
+                    resizeHandleRef.current.includes('n') ||
+                    resizeHandleRef.current.includes('s')
+                ) {
                     newWidth = newHeight * aspectRatio;
                     if (resizeHandleRef.current.includes('w')) {
                         newX = elementX + (width - newWidth);
@@ -266,23 +304,18 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
 
     const handleMouseUp = () => {
         if (isSelecting && selectionBox) {
-            // Calculate selection intersection
             const x1 = Math.min(selectionBox.startX, selectionBox.currentX);
             const y1 = Math.min(selectionBox.startY, selectionBox.currentY);
             const x2 = Math.max(selectionBox.startX, selectionBox.currentX);
             const y2 = Math.max(selectionBox.startY, selectionBox.currentY);
 
-            const newSelectedIds = elements.filter(el => {
-                const elRight = el.x + (el.width || 0);
-                const elBottom = el.y + (el.height || 0);
-                // Simple box intersection
-                return (
-                    el.x < x2 &&
-                    elRight > x1 &&
-                    el.y < y2 &&
-                    elBottom > y1
-                );
-            }).map(el => el.id);
+            const newSelectedIds = elements
+                .filter((el) => {
+                    const elRight = el.x + (el.width || 0);
+                    const elBottom = el.y + (el.height || 0);
+                    return el.x < x2 && elRight > x1 && el.y < y2 && elBottom > y1;
+                })
+                .map((el) => el.id);
 
             onSelect(newSelectedIds);
         }
@@ -290,8 +323,8 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
         if (isDrawing && currentPath) {
             const points = currentPath.points;
             if (points.length > 1) {
-                const xs = points.map(p => p.x);
-                const ys = points.map(p => p.y);
+                const xs = points.map((p) => p.x);
+                const ys = points.map((p) => p.y);
                 const minX = Math.min(...xs);
                 const minY = Math.min(...ys);
                 const maxX = Math.max(...xs);
@@ -300,10 +333,7 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
                 const width = maxX - minX;
                 const height = maxY - minY;
 
-                const newPoints = points.map(p => ({
-                    x: p.x - minX,
-                    y: p.y - minY
-                }));
+                const newPoints = points.map((p) => ({ x: p.x - minX, y: p.y - minY }));
 
                 const newElement: CanvasElement = {
                     id: uuidv4(),
@@ -314,7 +344,7 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
                     height: Math.max(height, 1),
                     points: newPoints,
                     color: '#000000',
-                    strokeWidth: 3
+                    strokeWidth: 3,
                 };
                 onAddElement(newElement);
                 onSelect([newElement.id]);
@@ -344,105 +374,136 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
     }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath]);
 
-    const selectedElement = elements.find(el => selectedIds.includes(el.id)); // For context toolbar (just show first for now)
+    const selectedElement = elements.find((el) => selectedIds.includes(el.id));
 
     const renderPath = (points: { x: number; y: number }[]) => {
         if (!points || points.length === 0) return '';
         return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
     };
 
+    // ✅ 复制元素 handler（传给 ContextToolbar）
+    const handleDuplicate = (el: CanvasElement) => {
+        onAddElement({
+            ...el,
+            id: uuidv4(),
+            x: el.x + 20,
+            y: el.y + 20,
+        });
+    };
+
     return (
         <div
-            className={`w-full h-full bg-[#F9FAFB] relative overflow-hidden ${activeTool === 'hand' ? 'cursor-grab active:cursor-grabbing' : activeTool === 'draw' ? 'cursor-crosshair' : ''}`}
+            className={`w-full h-full bg-[#F9FAFB] relative overflow-hidden ${
+                activeTool === 'hand'
+                    ? 'cursor-grab active:cursor-grabbing'
+                    : activeTool === 'draw'
+                    ? 'cursor-crosshair'
+                    : ''
+            }`}
             onMouseMove={handleMouseMove}
             onMouseDown={(e) => handleMouseDown(e, null)}
         >
-            {/* Context Toolbar - Show if exactly one element selected */}
-            {selectedIds.length === 1 && selectedElement && !isDragging && !isResizing && !isPanning && !isDrawing && selectedElement.type !== 'connector' && (
-                <div
-                    style={{
-                        position: 'absolute',
-                        left: (selectedElement.x + (selectedElement.width || 0) / 2) * scale + pan.x,
-                        top: (selectedElement.y - 60) * scale + pan.y,
-                        transform: 'translateX(-50%)',
-                        zIndex: 100,
-                    }}
-                >
-                    <ContextToolbar
-                        element={selectedElement}
-                        onUpdate={onElementChange}
-                        onDelete={onDelete}
-                        onGenerateFromImage={onGenerateFromImage}
-                        onConnectFlow={onConnectFlow}
-                    />
-                </div>
-            )}
+            {/* ✅ Context Toolbar — 传入 onDuplicate */}
+            {selectedIds.length === 1 &&
+                selectedElement &&
+                !isDragging &&
+                !isResizing &&
+                !isPanning &&
+                !isDrawing &&
+                selectedElement.type !== 'connector' && (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            left:
+                                (selectedElement.x + (selectedElement.width || 0) / 2) * scale +
+                                pan.x,
+                            top: (selectedElement.y - 60) * scale + pan.y,
+                            transform: 'translateX(-50%)',
+                            zIndex: 100,
+                        }}
+                    >
+                        <ContextToolbar
+                            element={selectedElement}
+                            onUpdate={onElementChange}
+                            onDelete={onDelete}
+                            onGenerateFromImage={onGenerateFromImage}
+                            onConnectFlow={onConnectFlow}
+                            onDuplicate={handleDuplicate}
+                        />
+                    </div>
+                )}
 
-            {/* Multi-selection Toolbar Placeholder */}
+            {/* Multi-selection Toolbar */}
             {selectedIds.length > 1 && !isDragging && (
                 <div
                     className="absolute z-50 bg-white rounded-xl shadow-lg border border-gray-200 p-2 flex items-center gap-3"
-                    style={{
-                        left: '50%',
-                        top: 20,
-                        transform: 'translateX(-50%)',
-                    }}
+                    style={{ left: '50%', top: 20, transform: 'translateX(-50%)' }}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
-                    <span className="text-sm font-medium text-gray-600 px-2">{selectedIds.length} items selected</span>
+                    <span className="text-sm font-medium text-gray-600 px-2">
+                        {selectedIds.length} items selected
+                    </span>
                     <div className="w-px h-6 bg-gray-200" />
-                    <button onClick={() => selectedIds.forEach(id => onDelete(id))} className="p-1.5 hover:bg-red-50 text-red-500 rounded-md">
+                    <button
+                        onClick={() => selectedIds.forEach((id) => onDelete(id))}
+                        className="p-1.5 hover:bg-red-50 text-red-500 rounded-md"
+                    >
                         Delete All
                     </button>
                 </div>
             )}
 
-            {/* Content Container with Scale and Pan */}
+            {/* Content Container */}
             <div
                 ref={containerRef}
-                className="w-full h-full origin-top-left transition-transform duration-200 ease-out" // Changed origin to top-left for easier math
+                className="w-full h-full origin-top-left transition-transform duration-200 ease-out"
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
             >
-                {/* Grid Pattern Background */}
+                {/* Grid Background */}
                 <div
                     className="absolute inset-0 opacity-[0.03]"
                     style={{
                         backgroundImage: 'radial-gradient(#000 1px, transparent 1px)',
                         backgroundSize: '20px 20px',
-                        width: '10000px', // Make it huge
-                        height: '10000px'
+                        width: '10000px',
+                        height: '10000px',
                     }}
                 />
 
-                {/* Connectors Layer - Render first so they appear behind elements */}
-                <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
-                    {elements.filter(el => el.type === 'connector').map((connector) => {
-                        const fromEl = elements.find(e => e.id === connector.connectorFrom);
-                        const toEl = elements.find(e => e.id === connector.connectorTo);
-                        
-                        if (!fromEl || !toEl) return null;
+                {/* Connectors Layer */}
+                <svg
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    style={{ overflow: 'visible' }}
+                >
+                    {elements
+                        .filter((el) => el.type === 'connector')
+                        .map((connector) => {
+                            const fromEl = elements.find((e) => e.id === connector.connectorFrom);
+                            const toEl = elements.find((e) => e.id === connector.connectorTo);
+                            if (!fromEl || !toEl) return null;
 
-                        const fromX = fromEl.x + (fromEl.width || 0) / 2;
-                        const fromY = fromEl.y + (fromEl.height || 0) / 2;
-                        const toX = toEl.x + (toEl.width || 0) / 2;
-                        const toY = toEl.y + (toEl.height || 0) / 2;
+                            const fromX = fromEl.x + (fromEl.width || 0) / 2;
+                            const fromY = fromEl.y + (fromEl.height || 0) / 2;
+                            const toX = toEl.x + (toEl.width || 0) / 2;
+                            const toY = toEl.y + (toEl.height || 0) / 2;
 
-                        return (
-                            <g key={connector.id}>
-                                <line
-                                    x1={fromX}
-                                    y1={fromY}
-                                    x2={toX}
-                                    y2={toY}
-                                    stroke={connector.color || '#6B7280'}
-                                    strokeWidth={connector.strokeWidth || 2}
-                                    strokeDasharray={connector.connectorStyle === 'dashed' ? '8 4' : '0'}
-                                    markerEnd="url(#arrowhead)"
-                                />
-                            </g>
-                        );
-                    })}
-                    {/* Arrow marker definition */}
+                            return (
+                                <g key={connector.id}>
+                                    <line
+                                        x1={fromX}
+                                        y1={fromY}
+                                        x2={toX}
+                                        y2={toY}
+                                        stroke={connector.color || '#6B7280'}
+                                        strokeWidth={connector.strokeWidth || 2}
+                                        strokeDasharray={
+                                            connector.connectorStyle === 'dashed' ? '8 4' : '0'
+                                        }
+                                        markerEnd="url(#arrowhead)"
+                                    />
+                                </g>
+                            );
+                        })}
                     <defs>
                         <marker
                             id="arrowhead"
@@ -459,215 +520,271 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
 
                 {/* Elements Layer */}
                 <div className="absolute inset-0">
-                    {elements.filter(el => el.type !== 'connector').map((el) => (
-                        <div
-                            key={el.id}
-                            className={`absolute group ${selectedIds.includes(el.id) ? 'z-10' : ''}`}
-                            style={{
-                                left: el.x,
-                                top: el.y,
-                                width: el.width,
-                                height: el.height,
-                                pointerEvents: activeTool === 'draw' ? 'none' : 'auto'
-                            }}
-                            onMouseDown={(e) => handleMouseDown(e, el.id, el.x, el.y, el.width, el.height)}
-                            onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
-                        >
-                            {/* Image Generator Placeholder */}
-                            {el.type === 'image-generator' && (
-                                <div className="w-full h-full bg-blue-50 border-2 border-blue-400 rounded-xl flex flex-col items-center justify-center text-blue-500">
-                                    <div className="w-20 h-20 mb-4 opacity-50">
-                                        <svg viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-                                        </svg>
+                    {elements
+                        .filter((el) => el.type !== 'connector')
+                        .map((el) => (
+                            <div
+                                key={el.id}
+                                className={`absolute group ${selectedIds.includes(el.id) ? 'z-10' : ''}`}
+                                style={{
+                                    left: el.x,
+                                    top: el.y,
+                                    width: el.width,
+                                    height: el.height,
+                                    pointerEvents: activeTool === 'draw' ? 'none' : 'auto',
+                                }}
+                                onMouseDown={(e) =>
+                                    handleMouseDown(e, el.id, el.x, el.y, el.width, el.height)
+                                }
+                                onDoubleClick={() =>
+                                    el.type === 'text' && setEditingTextId(el.id)
+                                }
+                            >
+                                {/* Image Generator Placeholder */}
+                                {el.type === 'image-generator' && (
+                                    <div className="w-full h-full bg-blue-50 border-2 border-blue-400 rounded-xl flex flex-col items-center justify-center text-blue-500">
+                                        <div className="w-20 h-20 mb-4 opacity-50">
+                                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+                                            </svg>
+                                        </div>
+                                        <div className="text-sm font-medium">Image Generator</div>
+                                        <div className="text-xs opacity-70">
+                                            {Math.round(el.width || 0)} x {Math.round(el.height || 0)}
+                                        </div>
                                     </div>
-                                    <div className="text-sm font-medium">Image Generator</div>
-                                    <div className="text-xs opacity-70">{Math.round(el.width || 0)} x {Math.round(el.height || 0)}</div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* Video Generator Placeholder */}
-                            {el.type === 'video-generator' && (
-                                <div className="w-full h-full bg-blue-50 border-2 border-blue-400 rounded-xl flex flex-col items-center justify-center text-blue-500">
-                                    <div className="w-20 h-20 mb-4 opacity-50">
-                                        <svg viewBox="0 0 24 24" fill="currentColor">
-                                            <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
-                                        </svg>
+                                {/* Video Generator Placeholder */}
+                                {el.type === 'video-generator' && (
+                                    <div className="w-full h-full bg-blue-50 border-2 border-blue-400 rounded-xl flex flex-col items-center justify-center text-blue-500">
+                                        <div className="w-20 h-20 mb-4 opacity-50">
+                                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+                                            </svg>
+                                        </div>
+                                        <div className="text-sm font-medium">Video Generator</div>
+                                        <div className="text-xs opacity-70">
+                                            {Math.round(el.width || 0)} x {Math.round(el.height || 0)}
+                                        </div>
                                     </div>
-                                    <div className="text-sm font-medium">Video Generator</div>
-                                    <div className="text-xs opacity-70">{Math.round(el.width || 0)} x {Math.round(el.height || 0)}</div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* Linked Element Highlight (for flowchart groups) */}
-                            {!selectedIds.includes(el.id) && !isDrawing && (() => {
-                                // Check if this element is linked to any selected element
-                                const isLinked = selectedIds.some(selectedId => {
-                                    const selectedEl = elements.find(e => e.id === selectedId);
-                                    return selectedEl?.linkedElements?.includes(el.id) || el.linkedElements?.includes(selectedId);
-                                });
-                                return isLinked ? (
-                                    <div className="absolute inset-0 border-2 border-dashed border-purple-400 pointer-events-none opacity-60" />
-                                ) : null;
-                            })()}
+                                {/* Linked Element Highlight */}
+                                {!selectedIds.includes(el.id) &&
+                                    !isDrawing &&
+                                    (() => {
+                                        const isLinked = selectedIds.some((selectedId) => {
+                                            const selectedEl = elements.find(
+                                                (e) => e.id === selectedId
+                                            );
+                                            return (
+                                                selectedEl?.linkedElements?.includes(el.id) ||
+                                                el.linkedElements?.includes(selectedId)
+                                            );
+                                        });
+                                        return isLinked ? (
+                                            <div className="absolute inset-0 border-2 border-dashed border-purple-400 pointer-events-none opacity-60" />
+                                        ) : null;
+                                    })()}
 
-                            {/* Selection Border & Handles */}
-                            {selectedIds.includes(el.id) && !isDrawing && (
-                                <>
-                                    <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
-                                    {/* Only show resize handles if single selection for now */}
-                                    {selectedIds.length === 1 && (
-                                        <>
-                                            {/* Corners */}
-                                            <div
-                                                className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nw-resize"
-                                                data-handle="nw"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 'nw', el)}
-                                            />
-                                            <div
-                                                className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ne-resize"
-                                                data-handle="ne"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 'ne', el)}
-                                            />
-                                            <div
-                                                className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-sw-resize"
-                                                data-handle="sw"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 'sw', el)}
-                                            />
-                                            <div
-                                                className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-se-resize"
-                                                data-handle="se"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 'se', el)}
-                                            />
-                                            {/* Sides */}
-                                            <div
-                                                className="absolute top-1/2 -left-1.5 w-3 h-3 -mt-1.5 bg-white border border-blue-500 rounded-full cursor-w-resize"
-                                                data-handle="w"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 'w', el)}
-                                            />
-                                            <div
-                                                className="absolute top-1/2 -right-1.5 w-3 h-3 -mt-1.5 bg-white border border-blue-500 rounded-full cursor-e-resize"
-                                                data-handle="e"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 'e', el)}
-                                            />
-                                            <div
-                                                className="absolute -top-1.5 left-1/2 w-3 h-3 -ml-1.5 bg-white border border-blue-500 rounded-full cursor-n-resize"
-                                                data-handle="n"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 'n', el)}
-                                            />
-                                            <div
-                                                className="absolute -bottom-1.5 left-1/2 w-3 h-3 -ml-1.5 bg-white border border-blue-500 rounded-full cursor-s-resize"
-                                                data-handle="s"
-                                                onMouseDown={(e) => handleResizeStart(e, el.id, 's', el)}
-                                            />
-                                        </>
-                                    )}
-                                </>
-                            )}
+                                {/* Selection Border & Handles */}
+                                {selectedIds.includes(el.id) && !isDrawing && (
+                                    <>
+                                        <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
+                                        {selectedIds.length === 1 && (
+                                            <>
+                                                <div
+                                                    className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-nw-resize"
+                                                    data-handle="nw"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 'nw', el)
+                                                    }
+                                                />
+                                                <div
+                                                    className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-ne-resize"
+                                                    data-handle="ne"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 'ne', el)
+                                                    }
+                                                />
+                                                <div
+                                                    className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-sw-resize"
+                                                    data-handle="sw"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 'sw', el)
+                                                    }
+                                                />
+                                                <div
+                                                    className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-blue-500 rounded-full cursor-se-resize"
+                                                    data-handle="se"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 'se', el)
+                                                    }
+                                                />
+                                                <div
+                                                    className="absolute top-1/2 -left-1.5 w-3 h-3 -mt-1.5 bg-white border border-blue-500 rounded-full cursor-w-resize"
+                                                    data-handle="w"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 'w', el)
+                                                    }
+                                                />
+                                                <div
+                                                    className="absolute top-1/2 -right-1.5 w-3 h-3 -mt-1.5 bg-white border border-blue-500 rounded-full cursor-e-resize"
+                                                    data-handle="e"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 'e', el)
+                                                    }
+                                                />
+                                                <div
+                                                    className="absolute -top-1.5 left-1/2 w-3 h-3 -ml-1.5 bg-white border border-blue-500 rounded-full cursor-n-resize"
+                                                    data-handle="n"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 'n', el)
+                                                    }
+                                                />
+                                                <div
+                                                    className="absolute -bottom-1.5 left-1/2 w-3 h-3 -ml-1.5 bg-white border border-blue-500 rounded-full cursor-s-resize"
+                                                    data-handle="s"
+                                                    onMouseDown={(e) =>
+                                                        handleResizeStart(e, el.id, 's', el)
+                                                    }
+                                                />
+                                            </>
+                                        )}
+                                    </>
+                                )}
 
-                            {/* Content */}
-                            {el.type === 'image' && el.content && (
-                                <img src={el.content} alt="Upload" className="w-full h-full object-cover pointer-events-none select-none rounded-lg" />
-                            )}
-
-                            {el.type === 'video' && el.content && (
-                                <div className="relative w-full h-full rounded-lg overflow-hidden">
-                                    <video 
-                                        src={el.content} 
-                                        className="w-full h-full object-cover select-none"
-                                        controls
-                                        loop
-                                        playsInline
-                                        onClick={(e) => e.stopPropagation()}
+                                {/* Image */}
+                                {el.type === 'image' && el.content && (
+                                    <img
+                                        src={el.content}
+                                        alt="Upload"
+                                        className="w-full h-full object-cover pointer-events-none select-none rounded-lg"
                                     />
-                                </div>
-                            )}
+                                )}
 
-                            {el.type === 'text' && (
-                                editingTextId === el.id ? (
-                                    <textarea
-                                        autoFocus
-                                        className="w-full h-full bg-transparent outline-none resize-none overflow-hidden"
-                                        style={{
-                                            fontSize: el.fontSize || 24,
-                                            fontFamily: el.fontFamily || 'Inter',
-                                            color: el.color || '#000000'
-                                        }}
-                                        value={el.content}
-                                        onChange={(e) => onElementChange(el.id, { content: e.target.value })}
-                                        onBlur={() => setEditingTextId(null)}
-                                        onMouseDown={(e) => e.stopPropagation()}
-                                        onKeyDown={(e) => e.stopPropagation()}
-                                    />
-                                ) : (
-                                    <div
-                                        className="w-full h-full whitespace-nowrap select-none flex items-center"
-                                        style={{
-                                            fontSize: el.fontSize || 24,
-                                            fontFamily: el.fontFamily || 'Inter',
-                                            color: el.color || '#000000'
-                                        }}
-                                    >
-                                        {el.content || 'Double click to edit'}
-                                    </div>
-                                )
-                            )}
-
-                            {el.type === 'shape' && (
-                                <div className="w-full h-full flex items-center justify-center">
-                                    {(!el.shapeType || el.shapeType === 'square') && (
-                                        <div className="w-full h-full" style={{ backgroundColor: el.color || '#9CA3AF' }} />
-                                    )}
-                                    {el.shapeType === 'circle' && (
-                                        <div className="w-full h-full rounded-full" style={{ backgroundColor: el.color || '#9CA3AF' }} />
-                                    )}
-                                    {el.shapeType === 'triangle' && (
-                                        <div
-                                            className="w-0 h-0 border-l-[50px] border-r-[50px] border-b-[100px] border-l-transparent border-r-transparent"
-                                            style={{
-                                                borderBottomColor: el.color || '#9CA3AF',
-                                                borderBottomWidth: el.height,
-                                                borderLeftWidth: (el.width || 0) / 2,
-                                                borderRightWidth: (el.width || 0) / 2,
-                                            }}
+                                {/* Video */}
+                                {el.type === 'video' && el.content && (
+                                    <div className="relative w-full h-full rounded-lg overflow-hidden">
+                                        <video
+                                            src={el.content}
+                                            className="w-full h-full object-cover select-none"
+                                            controls
+                                            loop
+                                            playsInline
+                                            onClick={(e) => e.stopPropagation()}
                                         />
-                                    )}
-                                    {el.shapeType === 'message' && (
-                                        <svg viewBox="0 0 24 24" className="w-full h-full" fill={el.color || '#9CA3AF'}>
-                                            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-                                        </svg>
-                                    )}
-                                    {el.shapeType === 'arrow-left' && (
-                                        <svg viewBox="0 0 24 24" className="w-full h-full" fill={el.color || '#9CA3AF'}>
-                                            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-                                        </svg>
-                                    )}
-                                    {el.shapeType === 'arrow-right' && (
-                                        <svg viewBox="0 0 24 24" className="w-full h-full" fill={el.color || '#9CA3AF'}>
-                                            <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
-                                        </svg>
-                                    )}
-                                </div>
-                            )}
+                                    </div>
+                                )}
 
-                            {el.type === 'path' && el.points && (
-                                <svg
-                                    className="w-full h-full overflow-visible pointer-events-none"
-                                    viewBox={`0 0 ${el.width} ${el.height}`}
-                                    preserveAspectRatio="none"
-                                >
-                                    <path
-                                        d={renderPath(el.points)}
-                                        stroke={el.color || '#000000'}
-                                        strokeWidth={el.strokeWidth || 3}
-                                        fill="none"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                    />
-                                </svg>
-                            )}
-                        </div>
-                    ))}
+                                {/* Text */}
+                                {el.type === 'text' &&
+                                    (editingTextId === el.id ? (
+                                        <textarea
+                                            autoFocus
+                                            className="w-full h-full bg-transparent outline-none resize-none overflow-hidden"
+                                            style={{
+                                                fontSize: el.fontSize || 24,
+                                                fontFamily: el.fontFamily || 'Inter',
+                                                color: el.color || '#000000',
+                                            }}
+                                            value={el.content}
+                                            onChange={(e) =>
+                                                onElementChange(el.id, { content: e.target.value })
+                                            }
+                                            onBlur={() => setEditingTextId(null)}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onKeyDown={(e) => e.stopPropagation()}
+                                        />
+                                    ) : (
+                                        <div
+                                            className="w-full h-full whitespace-nowrap select-none flex items-center"
+                                            style={{
+                                                fontSize: el.fontSize || 24,
+                                                fontFamily: el.fontFamily || 'Inter',
+                                                color: el.color || '#000000',
+                                            }}
+                                        >
+                                            {el.content || 'Double click to edit'}
+                                        </div>
+                                    ))}
+
+                                {/* Shape */}
+                                {el.type === 'shape' && (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        {(!el.shapeType || el.shapeType === 'square') && (
+                                            <div
+                                                className="w-full h-full"
+                                                style={{ backgroundColor: el.color || '#9CA3AF' }}
+                                            />
+                                        )}
+                                        {el.shapeType === 'circle' && (
+                                            <div
+                                                className="w-full h-full rounded-full"
+                                                style={{ backgroundColor: el.color || '#9CA3AF' }}
+                                            />
+                                        )}
+                                        {el.shapeType === 'triangle' && (
+                                            <div
+                                                className="w-0 h-0 border-l-[50px] border-r-[50px] border-b-[100px] border-l-transparent border-r-transparent"
+                                                style={{
+                                                    borderBottomColor: el.color || '#9CA3AF',
+                                                    borderBottomWidth: el.height,
+                                                    borderLeftWidth: (el.width || 0) / 2,
+                                                    borderRightWidth: (el.width || 0) / 2,
+                                                }}
+                                            />
+                                        )}
+                                        {el.shapeType === 'message' && (
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                className="w-full h-full"
+                                                fill={el.color || '#9CA3AF'}
+                                            >
+                                                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                                            </svg>
+                                        )}
+                                        {el.shapeType === 'arrow-left' && (
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                className="w-full h-full"
+                                                fill={el.color || '#9CA3AF'}
+                                            >
+                                                <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
+                                            </svg>
+                                        )}
+                                        {el.shapeType === 'arrow-right' && (
+                                            <svg
+                                                viewBox="0 0 24 24"
+                                                className="w-full h-full"
+                                                fill={el.color || '#9CA3AF'}
+                                            >
+                                                <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
+                                            </svg>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Path */}
+                                {el.type === 'path' && el.points && (
+                                    <svg
+                                        className="w-full h-full overflow-visible pointer-events-none"
+                                        viewBox={`0 0 ${el.width} ${el.height}`}
+                                        preserveAspectRatio="none"
+                                    >
+                                        <path
+                                            d={renderPath(el.points)}
+                                            stroke={el.color || '#000000'}
+                                            strokeWidth={el.strokeWidth || 3}
+                                            fill="none"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        />
+                                    </svg>
+                                )}
+                            </div>
+                        ))}
                 </div>
 
                 {/* Current Drawing Path */}
@@ -694,18 +811,18 @@ export function CanvasArea({ scale, pan, onPanChange, elements, selectedIds, onS
                             left: Math.min(selectionBox.startX, selectionBox.currentX),
                             top: Math.min(selectionBox.startY, selectionBox.currentY),
                             width: Math.abs(selectionBox.currentX - selectionBox.startX),
-                            height: Math.abs(selectionBox.currentY - selectionBox.startY)
+                            height: Math.abs(selectionBox.currentY - selectionBox.startY),
                         }}
                     />
                 )}
 
-                {/* Placeholder Content - Removed */}
+                {/* Empty State */}
                 {elements.length === 0 && (
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         {/* Content removed as per user request */}
                     </div>
                 )}
             </div>
-        </div >
+        </div>
     );
 }
