@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         const messageContent = response.choices[0]?.message?.content;
 
         if (messageContent) {
+            // 检查 base64 格式
             const base64Match = messageContent.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/);
             if (base64Match) {
                 return NextResponse.json({
@@ -82,6 +83,16 @@ export async function POST(request: NextRequest) {
                 });
             }
 
+            // 检查返回的是图片 URL（t8star 返回 markdown 格式的图片链接）
+            const urlMatch = messageContent.match(/https?:\/\/[^\s\)]+\.(jpg|jpeg|png|webp|gif)/i);
+            if (urlMatch) {
+                return NextResponse.json({
+                    imageData: urlMatch[0],
+                    textResponse: '',
+                });
+            }
+
+            // 纯 base64 字符串
             const trimmed = messageContent.trim();
             if (trimmed.length > 200 && !/\s/.test(trimmed)) {
                 return NextResponse.json({
