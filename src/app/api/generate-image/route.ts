@@ -12,8 +12,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log('Starting image generation:', prompt);
-
         const apiKey = process.env.GEMINI_API_KEY;
         const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
 
@@ -29,49 +27,27 @@ export async function POST(request: NextRequest) {
             baseURL: baseURL,
         });
 
-        // 构建消息内容
-        const messageContent: any[] = [
-            { type: 'text', text: prompt }
-        ];
-
-        // 如果有参考图片，加入消息
-        if (referenceImage) {
-            let imageUrl = referenceImage;
-            if (!referenceImage.startsWith('data:')) {
-                imageUrl = `data:${mimeType || 'image/jpeg'};base64,${referenceImage}`;
-            }
-            messageContent.push({
-                type: 'image_url',
-                image_url: { url: imageUrl }
-            });
-        }
-
-        const response = await client.chat.completions.create({
-            model: process.env.GEMINI_MODEL || 'gpt-4o',
-            messages: [
-                {
-                    role: 'user',
-                    content: messageContent,
-                }
-            ],
+        // 使用图片生成接口
+        const response = await client.images.generate({
+            model: process.env.IMAGE_MODEL || 'dall-e-3',
+            prompt: prompt,
+            n: 1,
+            size: '1024x1024',
+            response_format: 'b64_json',
         });
 
-        const textResponse = response.choices[0]?.message?.content || '';
+        const imageBase64 = response.data[0]?.b64_json;
 
-        // 检查返回内容里是否有 base64 图片
-        const base64Match = textResponse.match(/data:image\/[^;]+;base64,[^\s"]+/);
-        if (base64Match) {
-            return NextResponse.json({
-                imageData: base64Match[0],
-                textResponse,
-            });
+        if (!imageBase64) {
+            return NextResponse.json(
+                { error: 'No image was generated' },
+                { status: 500 }
+            );
         }
 
-        // 如果没有图片数据，返回文字内容（调试用）
         return NextResponse.json({
-            imageData: null,
-            textResponse,
-            error: 'No image data returned, check model support'
+            imageData: `data:image/png;base64,${imageBase64}`,
+            textResponse: '',
         });
 
     } catch (error: any) {
