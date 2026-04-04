@@ -13,7 +13,8 @@ export async function POST(request: NextRequest) {
         }
 
         const apiKey = process.env.XAI_API_KEY;
-        
+        const baseURL = process.env.XAI_BASE_URL || 'https://ai.t8star.cn/v1';
+
         if (!apiKey) {
             return NextResponse.json(
                 { error: 'XAI_API_KEY not configured' },
@@ -23,12 +24,12 @@ export async function POST(request: NextRequest) {
 
         const client = new OpenAI({
             apiKey: apiKey,
-            baseURL: "https://api.x.ai/v1",
+            baseURL: baseURL,
             timeout: 360000,
         });
 
         const completion = await client.chat.completions.create({
-            model: "grok-4-1-fast-non-reasoning",
+            model: process.env.XAI_MODEL || 'gpt-4o',
             messages: [
                 {
                     role: "system",
