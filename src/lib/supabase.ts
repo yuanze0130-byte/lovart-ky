@@ -1,5 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
+
 export interface Database {
   public: {
     Tables: {
@@ -22,6 +30,7 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       projects: {
         Row: {
@@ -48,39 +57,50 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
       canvas_elements: {
         Row: {
           id: string;
           project_id: string;
-          element_data: any;
+          element_data: Json;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           project_id: string;
-          element_data: any;
+          element_data: Json;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           project_id?: string;
-          element_data?: any;
+          element_data?: Json;
           created_at?: string;
           updated_at?: string;
         };
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }
 
-/**
- * Create a Supabase client with Clerk session token
- * This function is used on the client side
- * @param token - The JWT token from Clerk session
- */
+export type ProjectRow = Database['public']['Tables']['projects']['Row'];
+export type ProjectInsert = Database['public']['Tables']['projects']['Insert'];
+export type ProjectUpdate = Database['public']['Tables']['projects']['Update'];
+export type CanvasElementRow = Database['public']['Tables']['canvas_elements']['Row'];
+export type CanvasElementInsert = Database['public']['Tables']['canvas_elements']['Insert'];
+export type CanvasElementUpdate = Database['public']['Tables']['canvas_elements']['Update'];
+export type UserCreditsRow = Database['public']['Tables']['user_credits']['Row'];
+export type UserCreditsInsert = Database['public']['Tables']['user_credits']['Insert'];
+export type UserCreditsUpdate = Database['public']['Tables']['user_credits']['Update'];
+
 export function createClerkSupabaseClient(token: string | null) {
   return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,9 +113,6 @@ export function createClerkSupabaseClient(token: string | null) {
   );
 }
 
-/**
- * Create a Supabase client for server-side operations
- */
 export function createServerSupabaseClient() {
   return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

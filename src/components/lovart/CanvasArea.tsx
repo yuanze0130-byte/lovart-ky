@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ContextToolbar } from './ContextToolbar';
+import type { Json } from '@/lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
 export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'connector';
 
-export interface CanvasElement {
+export interface CanvasElement extends Record<string, Json | undefined> {
     id: string;
     type: CanvasElementType;
     x: number;
@@ -41,6 +42,7 @@ interface CanvasAreaProps {
     onDragEnd?: () => void;
     onGenerateFromImage?: (element: CanvasElement) => void;
     onConnectFlow?: (element: CanvasElement) => void;
+    onRemoveBackground?: (element: CanvasElement) => Promise<void>;
 }
 
 export function CanvasArea({
@@ -58,6 +60,7 @@ export function CanvasArea({
     onDragEnd,
     onGenerateFromImage,
     onConnectFlow,
+    onRemoveBackground,
 }: CanvasAreaProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
@@ -89,14 +92,6 @@ export function CanvasArea({
     const resizeHandleRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    const getCanvasPoint = (e: React.MouseEvent) => {
-        if (!containerRef.current) return { x: 0, y: 0 };
-        const rect = containerRef.current.getBoundingClientRect();
-        return {
-            x: (e.clientX - rect.left) / scale - pan.x / scale,
-            y: (e.clientY - rect.top) / scale - pan.y / scale,
-        };
-    };
 
     const handleMouseDown = (
         e: React.MouseEvent,
@@ -372,6 +367,8 @@ export function CanvasArea({
         };
         window.addEventListener('mouseup', handleGlobalMouseUp);
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+        // handleMouseUp intentionally stays outside deps to avoid compiler/memoization conflicts.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath]);
 
     const selectedElement = elements.find((el) => selectedIds.includes(el.id));
@@ -429,6 +426,7 @@ export function CanvasArea({
                             onGenerateFromImage={onGenerateFromImage}
                             onConnectFlow={onConnectFlow}
                             onDuplicate={handleDuplicate}
+                            onRemoveBackground={onRemoveBackground}
                         />
                     </div>
                 )}

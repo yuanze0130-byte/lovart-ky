@@ -1,20 +1,16 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Plus, Sparkles, Bell, X, Star } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { DashboardSidebar } from '@/components/lovart/DashboardSidebar';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { useSupabase } from '@/hooks/useSupabase';
+import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
 import Link from 'next/link';
 import { v4 as uuidv4 } from 'uuid';
 
-interface Project {
-    id: string;
-    title: string;
-    thumbnail: string | null;
-    updated_at: string;
-}
+type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
 
 interface Notification {
     id: string;
@@ -84,13 +80,13 @@ export default function LovartDashboard() {
         },
     ];
 
-    const placeholders = [
+    const placeholders = useMemo(() => [
         '让 Lovart 为你自动生成内容或效果图吧',
         '设计一个现代简约的 Logo',
         '创建一张社交媒体海报',
         '生成一个产品展示图',
         '制作一个品牌宣传图',
-    ];
+    ], []);
 
     // Load user's projects and credits
     useEffect(() => {
@@ -107,7 +103,7 @@ export default function LovartDashboard() {
                         .from('projects')
                         .select('*')
                         .order('updated_at', { ascending: false }),
-                    (supabase as any)
+                    supabase
                         .from('user_credits')
                         .select('credits')
                         .eq('user_id', user.id)
@@ -116,19 +112,27 @@ export default function LovartDashboard() {
 
                 // 处理项目数据
                 if (projectsResult.error) throw projectsResult.error;
-                setProjects(projectsResult.data || []);
+                const projectRows = (projectsResult.data || []) as ProjectRow[];
+                setProjects(projectRows.map((project) => ({
+                    id: project.id,
+                    title: project.title,
+                    thumbnail: project.thumbnail,
+                    updated_at: project.updated_at,
+                })));
 
                 // 处理积分数据
                 if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
                     // 用户积分记录不存在，创建新记录
-                    const { data: newData } = await (supabase as any)
+                    const { data: newData } = await supabase
                         .from('user_credits')
                         .insert({ user_id: user.id, credits: 1000 })
                         .select()
                         .single();
-                    setCredits(newData?.credits || 1000);
+                    const insertedCredits = newData as UserCreditsRow | null;
+                    setCredits(insertedCredits?.credits || 1000);
                 } else if (!creditsResult.error) {
-                    setCredits(creditsResult.data?.credits || 0);
+                    const creditsData = creditsResult.data as Pick<UserCreditsRow, 'credits'> | null;
+                    setCredits(creditsData?.credits || 0);
                 }
             } catch (error) {
                 console.error('Failed to load data:', error);
@@ -170,7 +174,7 @@ export default function LovartDashboard() {
         type();
 
         return () => clearTimeout(timeout);
-    }, [placeholderIndex]);
+    }, [placeholderIndex, placeholders]);
 
     const handleGenerate = async () => {
         if (!inputValue.trim() || isGenerating) return;
@@ -194,7 +198,7 @@ export default function LovartDashboard() {
             
             console.log('Creating project:', { id: newProjectId, title: projectTitle });
             
-            const { data: projectData, error: projectError } = await (supabase as any)
+            const { data: projectData, error: projectError } = await supabase
                 .from('projects')
                 .insert({
                     id: newProjectId,
@@ -463,7 +467,7 @@ export default function LovartDashboard() {
                             {user && projects.length === 0 && !isLoading && (
                                 <div className="text-center py-12 text-gray-400">
                                     <p className="mb-2">还没有项目</p>
-                                    <p className="text-sm">点击 "新建项目" 开始创作！</p>
+                                    <p className="text-sm">点击“新建项目”开始创作！</p>
                                 </div>
                             )}
                         </div>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles } from 'lucide-react';
 import { CanvasElement } from './CanvasArea';
-import { v4 as uuidv4 } from 'uuid';
 
 interface ContextToolbarProps {
     element: CanvasElement;
@@ -10,6 +9,7 @@ interface ContextToolbarProps {
     onGenerateFromImage?: (element: CanvasElement) => void;
     onConnectFlow?: (element: CanvasElement) => void;
     onDuplicate?: (element: CanvasElement) => void;
+    onRemoveBackground?: (element: CanvasElement) => Promise<void>;
 }
 
 export function ContextToolbar({
@@ -19,10 +19,12 @@ export function ContextToolbar({
     onGenerateFromImage,
     onConnectFlow,
     onDuplicate,
+    onRemoveBackground,
 }: ContextToolbarProps) {
     const [showEditPanel, setShowEditPanel] = useState(false);
     const [editPrompt, setEditPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isRemovingBg, setIsRemovingBg] = useState(false);
 
     if (!element) return null;
 
@@ -73,6 +75,19 @@ export function ContextToolbar({
         setIsGenerating(false);
     };
 
+    const handleRemoveBackgroundClick = async () => {
+        if (!onRemoveBackground || element.type !== 'image') return;
+
+        try {
+            setIsRemovingBg(true);
+            await onRemoveBackground(element);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : '去背景失败');
+        } finally {
+            setIsRemovingBg(false);
+        }
+    };
+
     // ==================== 图片 / 视频工具栏 ====================
     if (element.type === 'image' || element.type === 'video') {
         return (
@@ -88,11 +103,16 @@ export function ContextToolbar({
 
                     <div className="w-px h-6 bg-gray-200" />
 
-                    {/* 替换背景（待实现，置灰提示） */}
+                    {/* 去背景 */}
                     <button
-                        className="p-2 rounded-lg text-gray-300 cursor-not-allowed"
-                        title="替换背景（即将推出）"
-                        disabled
+                        onClick={handleRemoveBackgroundClick}
+                        className={`p-2 rounded-lg transition-colors ${
+                            element.type === 'image' && onRemoveBackground
+                                ? 'hover:bg-gray-50 text-gray-700'
+                                : 'text-gray-300 cursor-not-allowed'
+                        }`}
+                        title={element.type === 'image' ? '去背景' : '仅图片支持去背景'}
+                        disabled={element.type !== 'image' || !onRemoveBackground || isRemovingBg}
                     >
                         <Eraser size={18} />
                     </button>

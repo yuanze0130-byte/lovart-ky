@@ -1,0 +1,235 @@
+import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import type { CanvasPan } from '@/hooks/useCanvasViewport';
+
+interface UseCanvasGenerationParams {
+  pan: CanvasPan;
+  elements: CanvasElement[];
+  selectedIds: string[];
+  setElements: Dispatch<SetStateAction<CanvasElement[]>>;
+  setSelectedIds: Dispatch<SetStateAction<string[]>>;
+  setActiveTool: Dispatch<SetStateAction<string>>;
+  setIsGenerating: Dispatch<SetStateAction<boolean>>;
+}
+
+export function useCanvasGeneration({
+  pan,
+  elements,
+  selectedIds,
+  setElements,
+  setSelectedIds,
+  setActiveTool,
+  setIsGenerating,
+}: UseCanvasGenerationParams) {
+  const handleGenerateVideo = useCallback(
+    async (videoUrl: string) => {
+      const generatorElementId = selectedIds.find(
+        (id) => elements.find((el) => el.id === id)?.type === 'video-generator'
+      );
+
+      if (generatorElementId) {
+        setElements((prev) =>
+          prev.map((el) => {
+            if (el.id === generatorElementId) {
+              return { ...el, type: 'video', content: videoUrl };
+            }
+            return el;
+          })
+        );
+      } else {
+        const newElement: CanvasElement = {
+          id: uuidv4(),
+          type: 'video',
+          x: 300 - pan.x,
+          y: 300 - pan.y,
+          width: 400,
+          height: 300,
+          content: videoUrl,
+        };
+        setElements((prev) => [...prev, newElement]);
+        setSelectedIds([newElement.id]);
+      }
+    },
+    [elements, pan.x, pan.y, selectedIds, setElements, setSelectedIds]
+  );
+
+  const handleConnectFlow = useCallback(
+    (sourceElement: CanvasElement) => {
+      if (!sourceElement.content) return;
+
+      const spacing = 120;
+      const groupId = uuidv4();
+      const connectorId = uuidv4();
+      const generatorId = uuidv4();
+
+      const generatorElement: CanvasElement = {
+        id: generatorId,
+        type: 'image-generator',
+        x: sourceElement.x + (sourceElement.width || 400) + spacing,
+        y: sourceElement.y,
+        width: sourceElement.width || 400,
+        height: sourceElement.height || 400,
+        referenceImageId: sourceElement.id,
+        groupId,
+        linkedElements: [sourceElement.id, connectorId],
+      };
+
+      const connectorElement: CanvasElement = {
+        id: connectorId,
+        type: 'connector',
+        x: 0,
+        y: 0,
+        connectorFrom: sourceElement.id,
+        connectorTo: generatorId,
+        connectorStyle: 'dashed',
+        color: '#6B7280',
+        strokeWidth: 2,
+        groupId,
+      };
+
+      setElements((prev) => {
+        const updatedPrev = prev.map((el) => {
+          if (el.id === sourceElement.id) {
+            return {
+              ...el,
+              groupId,
+              linkedElements: [connectorId, generatorId],
+            };
+          }
+          return el;
+        });
+        return [...updatedPrev, connectorElement, generatorElement];
+      });
+
+      setSelectedIds([generatorId]);
+      setActiveTool('select');
+    },
+    [setActiveTool, setElements, setSelectedIds]
+  );
+
+  const handleGenerateFromImage = useCallback(
+    (sourceImage: CanvasElement) => {
+      handleConnectFlow(sourceImage);
+    },
+    [handleConnectFlow]
+  );
+
+  const handleGenerateImage = useCallback(
+    async (
+      prompt: string,
+      resolution: '1K' | '2K' | '4K',
+      aspectRatio: '1:1' | '4:3' | '16:9',
+      referenceImage?: string
+    ) => {
+      setIsGenerating(true);
+      try {
+        const response = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            prompt,
+            resolution,
+            aspectRatio,
+            referenceImage,
+            mimeType: referenceImage ? 'image/jpeg' : undefined,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.details || data.error || '生成失败');
+        }
+
+        const generatorElementId = selectedIds.find(
+          (id) => elements.find((el) => el.id === id)?.type === 'image-generator'
+        );
+
+        if (data.imageData) {
+          if (generatorElementId) {
+            setElements((prev) =>
+              prev.map((el) => {
+                if (el.id === generatorElementId) {
+                  return {
+                    ...el,
+                    type: 'image',
+                    content: data.imageData,
+                  };
+                }
+                return el;
+              })
+            );
+          } else {
+            const newElement: CanvasElement = {
+              id: uuidv4(),
+              type: 'image',
+              x: 300 - pan.x,
+              y: 300 - pan.y,
+              width: 400,
+              height: 400,
+              content: data.imageData,
+            };
+            setElements((prev) => [...prev, newElement]);
+            setSelectedIds([newElement.id]);
+          }
+        } else if (data.textResponse) {
+          const newElement: CanvasElement = {
+            id: uuidv4(),
+            type: 'text',
+            x: 300 - pan.x,
+            y: 300 - pan.y,
+            content: data.textResponse,
+          };
+          setElements((prev) => [...prev, newElement]);
+          setSelectedIds([newElement.id]);
+        }
+      } catch (error) {
+        console.error('Generation failed:', error);
+        alert(`生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [elements, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
+  );
+
+  const handleAiChat = useCallback(
+    async (prompt: string): Promise<string> => {
+      setIsGenerating(true);
+      try {
+        const response = await fetch('/api/generate-design', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ prompt }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.details || data.error || '生成失败');
+        }
+
+        return data.suggestion || '未收到回复';
+      } catch (error) {
+        console.error('Chat generation failed:', error);
+        throw error;
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [setIsGenerating]
+  );
+
+  return {
+    handleGenerateVideo,
+    handleConnectFlow,
+    handleGenerateFromImage,
+    handleGenerateImage,
+    handleAiChat,
+  };
+}

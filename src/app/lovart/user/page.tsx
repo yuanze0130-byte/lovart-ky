@@ -4,13 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { Coins, Calendar, User as UserIcon, Bell } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { useSupabase } from '@/hooks/useSupabase';
+import type { UserCreditsRow } from '@/lib/supabase';
 
-interface UserCredits {
-    user_id: string;
-    credits: number;
-    created_at: string;
-    updated_at: string;
-}
 
 export default function UserPage() {
     const { user } = useUser();
@@ -28,15 +23,17 @@ export default function UserPage() {
 
             try {
                 // Try to get existing credits
-                const { data, error } = await (supabase as any)
+                const { data, error } = await supabase
                     .from('user_credits')
                     .select('*')
                     .eq('user_id', user.id)
                     .single();
 
+                const creditRow = data as UserCreditsRow | null;
+
                 if (error && error.code === 'PGRST116') {
                     // User doesn't exist, create with 1000 credits
-                    const { data: newData, error: insertError } = await (supabase as any)
+                    const { data: newData, error: insertError } = await supabase
                         .from('user_credits')
                         .insert({
                             user_id: user.id,
@@ -46,11 +43,12 @@ export default function UserPage() {
                         .single();
 
                     if (insertError) throw insertError;
-                    setCredits(newData.credits);
+                    const insertedCredits = newData as UserCreditsRow;
+                    setCredits(insertedCredits.credits);
                 } else if (error) {
                     throw error;
                 } else {
-                    setCredits(data.credits);
+                    setCredits(creditRow?.credits ?? 1000);
                 }
             } catch (error) {
                 console.error('Failed to load user credits:', error);

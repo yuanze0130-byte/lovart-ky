@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Sparkles, ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2 } from 'lucide-react';
+import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2 } from 'lucide-react';
 
 type VideoSize = '720x1280' | '1280x720' | '1024x1792' | '1792x1024';
 type VideoSeconds = 10 | 15;
@@ -9,19 +9,17 @@ type VideoSeconds = 10 | 15;
 interface VideoGeneratorPanelProps {
     elementId: string;
     onGenerate: (videoUrl: string) => Promise<void>;
-    isGenerating: boolean;
     style?: React.CSSProperties;
     canvasElements?: Array<{ id: string; type: string; content?: string; referenceImageId?: string }>;
 }
 
-export function VideoGeneratorPanel({ elementId, onGenerate, isGenerating: externalIsGenerating, style, canvasElements }: VideoGeneratorPanelProps) {
+export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElements }: VideoGeneratorPanelProps) {
     const [prompt, setPrompt] = useState('');
     const [size, setSize] = useState<VideoSize>('720x1280');
     const [seconds, setSeconds] = useState<VideoSeconds>(10);
     const [referenceImage, setReferenceImage] = useState<File | string | null>(null);
     const [taskId, setTaskId] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
-    const [status, setStatus] = useState<string>('');
     const [isGenerating, setIsGenerating] = useState(false);
 
     // Dropdown states
@@ -58,7 +56,6 @@ export function VideoGeneratorPanel({ elementId, onGenerate, isGenerating: exter
 
                     console.log('Video status:', data);
                     
-                    setStatus(data.status);
                     setProgress(data.progress || 0);
 
                     // 当 progress 达到 100 且有视频 URL 时，视频准备好了
@@ -71,7 +68,6 @@ export function VideoGeneratorPanel({ elementId, onGenerate, isGenerating: exter
                         setIsGenerating(false);
                         setTaskId(null);
                         setProgress(0);
-                        setStatus('');
                     } else if (data.status === 'failed') {
                         if (pollingIntervalRef.current) {
                             clearInterval(pollingIntervalRef.current);
@@ -79,7 +75,6 @@ export function VideoGeneratorPanel({ elementId, onGenerate, isGenerating: exter
                         setIsGenerating(false);
                         setTaskId(null);
                         setProgress(0);
-                        setStatus('');
                         alert('视频生成失败，请重试');
                     }
                 } catch (error) {
@@ -150,7 +145,6 @@ export function VideoGeneratorPanel({ elementId, onGenerate, isGenerating: exter
 
             console.log('Video generation started:', data);
             setTaskId(data.taskId);
-            setStatus(data.status);
             // 轮询会在 useEffect 中自动开始
         } catch (error) {
             console.error('Error starting video generation:', error);

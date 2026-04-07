@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
-    Sparkles, Paperclip, AtSign, Lightbulb, Zap, Globe, Box, ArrowUp,
+    Paperclip, AtSign, Lightbulb, Zap, Globe, Box, ArrowUp,
     RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X
 } from 'lucide-react';
 
@@ -42,7 +42,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
         }
     ];
 
-    const handleSend = async () => {
+    const handleSend = useCallback(async () => {
         if (inputValue.trim() && !isGenerating) {
             const prompt = inputValue;
             setInputValue('');
@@ -59,7 +59,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 // Optionally add an error message
             }
         }
-    };
+    }, [inputValue, isGenerating, onGenerate]);
 
     // 自动发送 initialPrompt（如果提供）
     React.useEffect(() => {
@@ -67,7 +67,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
             setHasAutoSent(true);
             handleSend();
         }
-    }, [initialPrompt, hasAutoSent, isGenerating]);
+    }, [initialPrompt, hasAutoSent, isGenerating, handleSend]);
 
     return (
         <div className="flex flex-col h-full bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">

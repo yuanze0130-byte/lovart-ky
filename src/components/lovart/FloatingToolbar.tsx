@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { MousePointer2, PlusSquare, Square, Type, Pencil, Upload, Image as ImageIcon, Video, Circle, Triangle, Star, MessageSquare, ArrowLeft, ArrowRight, Hand, MapPin, Sparkles } from 'lucide-react';
+import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles } from 'lucide-react';
 
 interface FloatingToolbarProps {
     activeTool: string;

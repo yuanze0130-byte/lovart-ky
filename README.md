@@ -1,40 +1,33 @@
-# OpenLovart 🎨
+# Lovart-KY 🎨
 
-[![GitHub stars](https://img.shields.io/github/stars/xiaoju111a/OpenLovart?style=social)](https://github.com/xiaoju111a/OpenLovart/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/xiaoju111a/OpenLovart?style=social)](https://github.com/xiaoju111a/OpenLovart/network/members)
-[![GitHub issues](https://img.shields.io/github/issues/xiaoju111a/OpenLovart)](https://github.com/xiaoju111a/OpenLovart/issues)
-[![GitHub license](https://img.shields.io/github/license/xiaoju111a/OpenLovart)](https://github.com/xiaoju111a/OpenLovart/blob/master/LICENSE)
+一个基于 Next.js + Clerk + Supabase 的 AI 设计画布项目，支持 AI 对话、图片生成、视频生成与项目持久化。
 
-OpenLovart 是一个基于 AI 的设计平台，让创意设计变得简单而强大。通过 AI 对话和智能画布，快速实现你的设计想法。
+## 功能特性
 
-## ✨ 主要功能
+- AI 设计建议生成
+- 画布编辑与元素管理
+- 图片生成（Gemini）
+- 视频生成（外部视频 API）
+- Clerk 用户登录
+- Supabase 项目与积分存储
 
-- 🤖 **AI 设计助手** - 通过自然语言对话生成设计方案
-- 🎨 **智能画布** - 可视化编辑器，支持拖拽、缩放、旋转等操作
-- 🖼️ **AI 图像生成** - 集成 Google Gemini 和 X.AI Grok，生成高质量图像
-- 💾 **项目管理** - 保存和管理你的设计项目
-- 👤 **用户系统** - 基于 Clerk 的安全认证和积分系统
-- ☁️ **云端存储** - 使用 Supabase 实现数据持久化
+## 技术栈
 
-## 🚀 技术栈
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS 4
+- Clerk
+- Supabase
+- OpenAI SDK（兼容 Gemini / XAI 网关）
 
-- **框架**: Next.js 16 (App Router)
-- **语言**: TypeScript
-- **样式**: Tailwind CSS 4
-- **认证**: Clerk
-- **数据库**: Supabase (PostgreSQL)
-- **AI 服务**: 
-  - Google Gemini (图像生成)
-  - X.AI Grok (设计建议)
-- **部署**: Vercel
+## 本地启动
 
-## 📦 快速开始
-
-### 1. 克隆项目
+### 1. 克隆仓库
 
 ```bash
-git clone git@github.com:xiaoju111a/OpenLovart.git
-cd OpenLovart
+git clone https://github.com/yuanze0130-byte/lovart-ky.git
+cd lovart-ky
 ```
 
 ### 2. 安装依赖
@@ -45,142 +38,78 @@ npm install
 
 ### 3. 配置环境变量
 
-复制 `.env.example` 为 `.env.local` 并填入你的 API 密钥：
+复制环境模板：
 
 ```bash
 cp .env.example .env.local
 ```
 
-编辑 `.env.local` 文件：
+然后填写 `.env.local`。
+
+最少需要：
 
 ```env
-# Clerk Authentication
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
-CLERK_SECRET_KEY=your_clerk_secret_key
-
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-
-# Google Gemini AI
-GEMINI_API_KEY=your_gemini_api_key
-
-# X.AI Grok API (可选)
-XAI_API_KEY=your_xai_api_key
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
+CLERK_SECRET_KEY=...
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 ```
 
-### 4. 设置数据库
+如果要完整使用 AI 能力，再补：
 
-在 Supabase 中执行 `supabase-schema.sql` 创建必要的表：
+```env
+GEMINI_API_KEY=...
+GEMINI_BASE_URL=https://ai.t8star.cn/v1
 
-```sql
--- 在 Supabase SQL Editor 中运行
--- 文件位置: ./supabase-schema.sql
+XAI_API_KEY=...
+XAI_BASE_URL=https://ai.t8star.cn/v1
+XAI_MODEL=gpt-4o
+
+VIDEO_API_KEY=...
+VIDEO_API_BASE_URL=https://www.clockapi.fun/v1
 ```
 
-### 5. 配置 Clerk JWT 模板
-
-参考 `CLERK_JWT_SETUP.md` 文档配置 Clerk 的 Supabase JWT 模板。
-
-### 6. 运行开发服务器
+## 开发命令
 
 ```bash
 npm run dev
-```
-
-打开 [http://localhost:3000](http://localhost:3000) 查看应用。
-
-## 🔑 获取 API 密钥
-
-### Clerk (认证服务)
-1. 访问 [Clerk Dashboard](https://dashboard.clerk.com/)
-2. 创建新应用
-3. 复制 Publishable Key 和 Secret Key
-
-### Supabase (数据库)
-1. 访问 [Supabase Dashboard](https://supabase.com/dashboard)
-2. 创建新项目
-3. 在 Settings > API 中找到 URL 和 anon key
-
-### Google Gemini (AI 服务)
-1. 访问 [Google AI Studio](https://makersuite.google.com/app/apikey)
-2. 创建 API Key
-
-### X.AI Grok (可选)
-1. 访问 [X.AI Console](https://console.x.ai/)
-2. 创建 API Key
-
-## 📁 项目结构
-
-```
-OpenLovart/
-├── src/
-│   ├── app/                    # Next.js App Router 页面
-│   │   ├── api/               # API 路由
-│   │   ├── lovart/            # 主应用页面
-│   │   └── debug-*/           # 调试工具
-│   ├── components/            # React 组件
-│   │   └── lovart/           # 核心组件
-│   ├── hooks/                # 自定义 Hooks
-│   ├── lib/                  # 工具库
-│   └── middleware.ts         # 中间件
-├── public/                   # 静态资源
-├── supabase-schema.sql      # 数据库架构
-└── .env.example             # 环境变量模板
-```
-
-## 🛠️ 可用命令
-
-```bash
-# 开发模式
-npm run dev
-
-# 构建生产版本
-npm run build
-
-# 运行生产服务器
-npm run start
-
-# 代码检查
 npm run lint
+npm run build
+npm run start
 ```
 
-## 📚 文档
+## 部署到 Vercel
 
-- [Clerk JWT 设置](./CLERK_JWT_SETUP.md)
-- [Grok 集成指南](./GROK_INTEGRATION.md)
-- [用户积分功能](./USER_CREDITS_FEATURE.md)
-- [故障排除](./TROUBLESHOOTING.md)
+在 Vercel 中配置与 `.env.local` 相同的环境变量即可。
 
-## 🚢 部署到 Vercel
+当前项目依赖以下变量：
 
-1. 推送代码到 GitHub
-2. 在 [Vercel](https://vercel.com) 导入项目
-3. 配置环境变量（与 `.env.local` 相同）
-4. 部署！
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `GEMINI_API_KEY`
+- `GEMINI_BASE_URL`
+- `XAI_API_KEY`
+- `XAI_BASE_URL`
+- `XAI_MODEL`
+- `VIDEO_API_KEY`
+- `VIDEO_API_BASE_URL`
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/xiaoju111a/OpenLovart)
+## 当前已完成的工程优化
 
-## 🤝 贡献
+- 清理并修复了一批 TypeScript / ESLint 问题
+- 重构了 `useSupabase` 初始化逻辑
+- 补齐了 Supabase `Database` 类型定义
+- 修复了多个页面的查询结果类型收口问题
+- 加强了图片 / 视频 / 设计生成 API 的错误处理
+- 将 Next 16 的 `middleware` 迁移为 `proxy`
+- 补充 `.env.example`
 
-欢迎提交 Issue 和 Pull Request！
+## 当前仍需注意
 
-## 📄 许可证
+如果本地 `npm run build` 报错缺少 Clerk key，通常不是代码问题，而是本地没有提供 `.env.local`。
 
-MIT License
+## License
 
-## 🙏 致谢
-
-- [Next.js](https://nextjs.org/)
-- [Clerk](https://clerk.com/)
-- [Supabase](https://supabase.com/)
-- [Google Gemini](https://ai.google.dev/)
-- [X.AI](https://x.ai/)
-
-## 📊 Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=xiaoju111a/OpenLovart&type=Date)](https://star-history.com/#xiaoju111a/OpenLovart&Date)
-
----
-
-Made with ❤️ by Xiaoju
+MIT

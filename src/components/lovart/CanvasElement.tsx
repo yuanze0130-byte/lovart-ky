@@ -21,7 +21,6 @@ export const CanvasElementComponent = memo<CanvasElementProps>(({
     element: el,
     isSelected,
     isEditing,
-    scale,
     onMouseDown,
     onDoubleClick,
     onElementChange,

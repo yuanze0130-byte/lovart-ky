@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, AtSign, MapPin, Zap, Globe, Loader2, ArrowUp } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Paperclip, AtSign, MapPin, Zap, Globe, Loader2, ArrowUp } from 'lucide-react';
 
 interface Message {
     id: string;
@@ -16,7 +16,6 @@ interface Message {
 }
 
 interface DesignChatProps {
-    projectId: string;
     initialPrompt?: string;
 }
 
@@ -38,7 +37,7 @@ const exampleProjects = [
     },
 ];
 
-export function DesignChat({ projectId, initialPrompt }: DesignChatProps) {
+export function DesignChat({ initialPrompt }: DesignChatProps) {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -52,14 +51,7 @@ export function DesignChat({ projectId, initialPrompt }: DesignChatProps) {
         scrollToBottom();
     }, [messages]);
 
-    // Load initial message if prompt is provided
-    useEffect(() => {
-        if (initialPrompt && messages.length === 0) {
-            handleSendMessage(initialPrompt);
-        }
-    }, [initialPrompt]);
-
-    const handleSendMessage = async (messageText?: string) => {
+    const handleSendMessage = useCallback(async (messageText?: string) => {
         const text = messageText || input.trim();
         if (!text || isLoading) return;
 
@@ -111,7 +103,14 @@ export function DesignChat({ projectId, initialPrompt }: DesignChatProps) {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [input, isLoading]);
+
+    // Load initial message if prompt is provided
+    useEffect(() => {
+        if (initialPrompt && messages.length === 0) {
+            void handleSendMessage(initialPrompt);
+        }
+    }, [handleSendMessage, initialPrompt, messages.length]);
 
     const formatDate = (date: Date) => {
         return date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric', year: 'numeric' });
