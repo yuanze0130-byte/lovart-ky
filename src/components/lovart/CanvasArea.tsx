@@ -43,6 +43,7 @@ interface CanvasAreaProps {
     onGenerateFromImage?: (element: CanvasElement) => void;
     onConnectFlow?: (element: CanvasElement) => void;
     onRemoveBackground?: (element: CanvasElement) => Promise<void>;
+    onUpscale?: (element: CanvasElement, scale?: number) => Promise<void>;
 }
 
 export function CanvasArea({
@@ -61,6 +62,7 @@ export function CanvasArea({
     onGenerateFromImage,
     onConnectFlow,
     onRemoveBackground,
+    onUpscale,
 }: CanvasAreaProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
@@ -427,6 +429,7 @@ export function CanvasArea({
                             onConnectFlow={onConnectFlow}
                             onDuplicate={handleDuplicate}
                             onRemoveBackground={onRemoveBackground}
+                            onUpscale={onUpscale}
                         />
                     </div>
                 )}

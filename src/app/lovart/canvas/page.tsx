@@ -80,7 +80,7 @@ function LovartCanvasContent() {
         setIsGenerating,
     });
 
-    const { handleRemoveBackground } = useCanvasImageActions({
+    const { handleRemoveBackground, handleUpscale, handleCrop } = useCanvasImageActions({
         setElements,
     });
 
@@ -198,6 +198,8 @@ function LovartCanvasContent() {
                     onGenerateFromImage={handleGenerateFromImage}
                     onConnectFlow={handleConnectFlow}
                     onRemoveBackground={handleRemoveBackground}
+                    onUpscale={handleUpscale}
+                    onCrop={handleCrop}
                 />
                 <FloatingToolbar
                     activeTool={activeTool}
