@@ -60,7 +60,7 @@ export function ContextToolbar({
     const [showEditPanel, setShowEditPanel] = useState(false);
     const [showUpscalePanel, setShowUpscalePanel] = useState(false);
     const [showCropPanel, setShowCropPanel] = useState(false);
-    const [selectedUpscale, setSelectedUpscale] = useState<2 | 4>(4);
+    const [selectedUpscale, setSelectedUpscale] = useState<2 | 4>(2);
     const [editPrompt, setEditPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [isRemovingBg, setIsRemovingBg] = useState(false);

@@ -12,6 +12,33 @@ interface CropOptions {
   height: number;
 }
 
+async function pollUpscaleTask(taskId: string, timeoutMs = 300000, pollIntervalMs = 3500) {
+  const startedAt = Date.now();
+
+  while (true) {
+    const response = await fetch(`/api/upscale-status?taskId=${encodeURIComponent(taskId)}`);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.details || data.error || '获取超分状态失败');
+    }
+
+    if (data.status === 'SUCCESS' && data.imageData) {
+      return data.imageData as string;
+    }
+
+    if (data.status === 'FAILED') {
+      throw new Error(data.details || data.error || '超分任务失败');
+    }
+
+    if (Date.now() - startedAt > timeoutMs) {
+      throw new Error('超分任务等待超时');
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+}
+
 export function useCanvasImageActions({ setElements }: UseCanvasImageActionsParams) {
   const handleRemoveBackground = useCallback(
     async (element: CanvasElement) => {
@@ -51,7 +78,7 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
   );
 
   const handleUpscale = useCallback(
-    async (element: CanvasElement, scale = 4) => {
+    async (element: CanvasElement, scale = 2) => {
       if (!element.content) {
         throw new Error('当前元素没有图片内容');
       }
@@ -66,19 +93,35 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.details || data.error || '超分失败');
+        throw new Error(data.details || data.error || '启动超分失败');
       }
 
-      if (!data.imageData) {
-        throw new Error('超分结果为空');
+      if (data.imageData) {
+        setElements((prev) =>
+          prev.map((item) =>
+            item.id === element.id
+              ? {
+                  ...item,
+                  content: data.imageData,
+                }
+              : item
+          )
+        );
+        return;
       }
+
+      if (!data.taskId) {
+        throw new Error('超分任务未返回 taskId');
+      }
+
+      const imageData = await pollUpscaleTask(data.taskId);
 
       setElements((prev) =>
         prev.map((item) =>
           item.id === element.id
             ? {
                 ...item,
-                content: data.imageData,
+                content: imageData,
               }
             : item
         )
