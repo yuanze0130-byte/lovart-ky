@@ -76,7 +76,7 @@ export default function UserPage() {
                     <div className="flex items-center justify-between px-8 py-4">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
-                            <span className="text-lg font-semibold text-gray-900">Lovart</span>
+                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </div>
 
                         <div className="flex items-center gap-2">

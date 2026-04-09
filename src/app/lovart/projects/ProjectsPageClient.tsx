@@ -129,7 +129,7 @@ export default function ProjectsPage() {
                     {!user ? (
                         <div className="flex flex-col items-center justify-center h-full">
                             <div className="text-center max-w-md">
-                                <h2 className="text-2xl font-bold mb-4">欢迎来到 Lovart</h2>
+                                <h2 className="text-2xl font-bold mb-4">欢迎来到 Doodleverse</h2>
                                 <p className="text-gray-600 mb-6">登录以查看和管理您的项目</p>
                                 <button
                                     onClick={() => setShowLoginModal(true)}

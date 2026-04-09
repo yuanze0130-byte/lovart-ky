@@ -252,7 +252,7 @@ export default function LovartDashboard() {
                     <div className="flex items-center justify-between px-8 py-4">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
-                            <span className="text-lg font-semibold text-gray-900">Lovart</span>
+                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -369,7 +369,7 @@ export default function LovartDashboard() {
 
                             <div className="flex items-center justify-center gap-3 mb-4">
                                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">L</div>
-                                <h1 className="text-4xl font-bold text-gray-900">Lovart 让设计更简单</h1>
+                                <h1 className="text-4xl font-bold text-gray-900">doodleverse让设计更简单</h1>
                             </div>
                             <p className="text-gray-500 mb-8">输入想法即可生成，帮你完成一切</p>
 

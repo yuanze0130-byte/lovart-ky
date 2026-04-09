@@ -44,7 +44,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
         </button>
 
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">登录 Lovart</h2>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">登录 Doodleverse</h2>
           <p className="text-sm text-gray-500">输入邮箱，我们会发送一个免密码登录链接。</p>
         </div>
 

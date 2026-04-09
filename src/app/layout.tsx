@@ -3,8 +3,8 @@ import { SupabaseAuthProvider } from '@/components/auth/SupabaseAuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Lovart',
-  description: 'AI-powered design canvas with image, video, and project workflows.',
+  title: 'Doodleverse',
+  description: 'Doodleverse 让设计更简单。',
 };
 
 export default function RootLayout({

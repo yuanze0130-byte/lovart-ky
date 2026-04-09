@@ -7,9 +7,9 @@ export default function Home() {
         {/* Logo */}
         <div className="flex items-center gap-3">
           <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-            L
+            D
           </div>
-          <h1 className="text-5xl font-bold text-gray-900">Lovart</h1>
+          <h1 className="text-5xl font-bold text-gray-900">Doodleverse</h1>
         </div>
 
         {/* Tagline */}
