@@ -1,9 +1,6 @@
-import { NextResponse } from 'next/server';
+import { clerkMiddleware } from '@clerk/nextjs/server';
 
-// Keep proxy for Next.js 16 compatibility, but Clerk auth is handled by src/middleware.ts
-export function proxy() {
-  return NextResponse.next();
-}
+export default clerkMiddleware();
 
 export const config = {
   matcher: [
