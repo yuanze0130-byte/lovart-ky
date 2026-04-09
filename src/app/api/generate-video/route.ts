@@ -1,7 +1,12 @@
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const { prompt, seconds, size, referenceImage } = await request.json();
 
     if (!prompt || typeof prompt !== 'string') {

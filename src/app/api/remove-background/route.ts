@@ -1,8 +1,13 @@
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { removeBackground } from '@/lib/remove-background';
 
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const { image } = await request.json();
 
     if (!image || typeof image !== 'string') {

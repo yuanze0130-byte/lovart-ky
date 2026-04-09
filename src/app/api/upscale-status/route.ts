@@ -1,8 +1,13 @@
+import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { queryUpscaleTask } from '@/lib/upscale';
 
 export async function GET(request: NextRequest) {
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const taskId = request.nextUrl.searchParams.get('taskId');
     if (!taskId) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
