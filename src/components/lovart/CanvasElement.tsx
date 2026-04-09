@@ -105,7 +105,7 @@ export const CanvasElementComponent = memo<CanvasElementProps>(({
                 <img 
                     src={el.content} 
                     alt="Canvas element" 
-                    className="w-full h-full object-cover pointer-events-none select-none rounded-lg"
+                    className="w-full h-full object-contain pointer-events-none select-none rounded-lg"
                     loading="lazy"
                 />
             )}

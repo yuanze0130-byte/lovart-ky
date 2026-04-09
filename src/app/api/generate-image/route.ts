@@ -21,7 +21,12 @@ interface GeminiChatCompletion {
 
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, referenceImage } = await request.json();
+    const {
+      prompt,
+      referenceImage,
+      resolution = '1K',
+      aspectRatio = '1:1',
+    } = await request.json();
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
@@ -39,6 +44,14 @@ export async function POST(request: NextRequest) {
     const hasChinese = /[\u4e00-\u9fff]/.test(prompt);
     let finalPrompt = prompt;
 
+    const aspectRatioInstruction = `Generate the image in ${aspectRatio} aspect ratio.`;
+    const resolutionInstruction =
+      resolution === '4K'
+        ? 'Target a high-detail 4K-style composition.'
+        : resolution === '2K'
+        ? 'Target a high-detail 2K-style composition.'
+        : 'Target a clear 1K-style composition.';
+
     if (hasChinese) {
       const translateRes = await client.chat.completions.create({
         model: 'gpt-4o',
@@ -51,6 +64,8 @@ export async function POST(request: NextRequest) {
       });
       finalPrompt = translateRes.choices[0]?.message?.content?.trim() || prompt;
     }
+
+    finalPrompt = `${finalPrompt}\n\n${aspectRatioInstruction}\n${resolutionInstruction}`;
 
     const content: Array<
       | { type: 'text'; text: string }

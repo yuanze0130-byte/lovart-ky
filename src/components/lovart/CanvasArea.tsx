@@ -669,7 +669,7 @@ export function CanvasArea({
                                     <img
                                         src={el.content}
                                         alt="Upload"
-                                        className="w-full h-full object-cover pointer-events-none select-none rounded-lg"
+                                        className="w-full h-full object-contain pointer-events-none select-none rounded-lg"
                                     />
                                 )}
 
