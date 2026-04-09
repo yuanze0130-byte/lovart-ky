@@ -200,7 +200,7 @@ export function ContextToolbar({
                             setCropHeight(safeHeight);
                             setShowCropPanel((prev) => !prev);
                         }}
-                        className={`p-2 rounded-lg transition-colors ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
                             element.type === 'image' && onCrop
                                 ? showCropPanel
                                     ? 'bg-gray-100 text-gray-900'
@@ -211,6 +211,7 @@ export function ContextToolbar({
                         disabled={element.type !== 'image' || !onCrop || isCropping}
                     >
                         <CropIcon className="w-4 h-4" />
+                        <span className="text-xs font-medium">裁切</span>
                     </button>
 
                     <button
@@ -218,7 +219,7 @@ export function ContextToolbar({
                             if (element.type !== 'image' || !onUpscale) return;
                             setShowUpscalePanel((prev) => !prev);
                         }}
-                        className={`p-2 rounded-lg transition-colors ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
                             element.type === 'image' && onUpscale
                                 ? showUpscalePanel
                                     ? 'bg-gray-100 text-gray-900'
@@ -229,6 +230,7 @@ export function ContextToolbar({
                         disabled={element.type !== 'image' || !onUpscale || isUpscaling}
                     >
                         <UpscaleIcon className="w-4 h-4" />
+                        <span className="text-xs font-medium">超分</span>
                     </button>
 
                     <button
@@ -259,10 +261,11 @@ export function ContextToolbar({
                     {onConnectFlow && (
                         <button
                             onClick={() => onConnectFlow(element)}
-                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                             title="创建流程图连接"
                         >
                             <ArrowRight size={16} />
+                            <span className="text-xs font-medium">流程</span>
                         </button>
                     )}
 
