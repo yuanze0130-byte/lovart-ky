@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles } from 'lucide-react';
+import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles, Loader2 } from 'lucide-react';
 import { CanvasElement } from './CanvasArea';
 
 interface ContextToolbarProps {
@@ -177,15 +177,15 @@ export function ContextToolbar({
 
                     <button
                         onClick={handleRemoveBackgroundClick}
-                        className={`p-2 rounded-lg transition-colors ${
+                        className={`p-2 rounded-lg transition-colors relative ${
                             element.type === 'image' && onRemoveBackground
                                 ? 'hover:bg-gray-50 text-gray-700'
                                 : 'text-gray-300 cursor-not-allowed'
                         }`}
-                        title={element.type === 'image' ? '去背景' : '仅图片支持去背景'}
+                        title={element.type === 'image' ? (isRemovingBg ? '去背景处理中...' : '去背景') : '仅图片支持去背景'}
                         disabled={element.type !== 'image' || !onRemoveBackground || isRemovingBg}
                     >
-                        <Eraser size={18} />
+                        {isRemovingBg ? <Loader2 size={18} className="animate-spin" /> : <Eraser size={18} />}
                     </button>
 
                     <button
@@ -197,7 +197,7 @@ export function ContextToolbar({
                             setCropHeight(safeHeight);
                             setShowCropPanel((prev) => !prev);
                         }}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+                        className={`p-2 rounded-lg transition-colors ${
                             element.type === 'image' && onCrop
                                 ? showCropPanel
                                     ? 'bg-gray-100 text-gray-900'
@@ -208,7 +208,6 @@ export function ContextToolbar({
                         disabled={element.type !== 'image' || !onCrop || isCropping}
                     >
                         <CropIcon className="w-4 h-4" />
-                        <span className="text-xs font-medium">裁切</span>
                     </button>
 
                     <button
@@ -216,7 +215,7 @@ export function ContextToolbar({
                             if (element.type !== 'image' || !onUpscale) return;
                             setShowUpscalePanel((prev) => !prev);
                         }}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+                        className={`p-2 rounded-lg transition-colors ${
                             element.type === 'image' && onUpscale
                                 ? showUpscalePanel
                                     ? 'bg-gray-100 text-gray-900'
@@ -227,7 +226,6 @@ export function ContextToolbar({
                         disabled={element.type !== 'image' || !onUpscale || isUpscaling}
                     >
                         <UpscaleIcon className="w-4 h-4" />
-                        <span className="text-xs font-medium">超分</span>
                     </button>
 
                     <button
@@ -258,11 +256,10 @@ export function ContextToolbar({
                     {onConnectFlow && (
                         <button
                             onClick={() => onConnectFlow(element)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
                             title="创建流程图连接"
                         >
                             <ArrowRight size={16} />
-                            <span className="text-xs font-medium">流程</span>
                         </button>
                     )}
 
