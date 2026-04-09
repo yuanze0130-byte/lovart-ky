@@ -7,16 +7,22 @@ export const metadata: Metadata = {
   description: 'AI-powered design canvas with image, video, and project workflows.',
 };
 
+const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <ClerkProvider>
-      <html lang="zh-CN">
-        <body className="antialiased">{children}</body>
-      </html>
-    </ClerkProvider>
+  const content = (
+    <html lang="zh-CN">
+      <body className="antialiased">{children}</body>
+    </html>
   );
+
+  if (!clerkPublishableKey) {
+    return content;
+  }
+
+  return <ClerkProvider publishableKey={clerkPublishableKey}>{content}</ClerkProvider>;
 }
