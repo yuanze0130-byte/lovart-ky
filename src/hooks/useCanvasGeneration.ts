@@ -153,6 +153,14 @@ export function useCanvasGeneration({
           const dimensions = await getImageDimensions(data.imageData);
           const displaySize = getSmartDisplaySize(dimensions);
 
+          console.log('[generate-image] result', {
+            requestedAspectRatio: data.requestedAspectRatio || aspectRatio,
+            requestedResolution: data.requestedResolution || resolution,
+            actualWidth: dimensions.width,
+            actualHeight: dimensions.height,
+            actualAspectRatio: `${dimensions.width}:${dimensions.height}`,
+          });
+
           if (generatorElementId) {
             setElements((prev) =>
               prev.map((el) => {
@@ -180,6 +188,8 @@ export function useCanvasGeneration({
               height: displaySize.height,
               originalWidth: displaySize.originalWidth,
               originalHeight: displaySize.originalHeight,
+              requestedAspectRatio: data.requestedAspectRatio || aspectRatio,
+              requestedResolution: data.requestedResolution || resolution,
               content: data.imageData,
             };
             setElements((prev) => [...prev, newElement]);

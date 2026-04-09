@@ -271,10 +271,15 @@ export function ContextToolbar({
         return (
             <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-1.5 flex items-center gap-1">
-                    <div className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600">
+                    <div className="flex items-center gap-2 px-2 py-1 text-xs text-gray-600">
                         <span className="font-mono">
                             {Math.round(element.originalWidth || element.width || 0)} × {Math.round(element.originalHeight || element.height || 0)}
                         </span>
+                        {element.requestedAspectRatio && (
+                            <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                                目标 {element.requestedAspectRatio}
+                            </span>
+                        )}
                     </div>
 
                     <div className="w-px h-6 bg-gray-200" />

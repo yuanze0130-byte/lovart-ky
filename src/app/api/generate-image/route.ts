@@ -116,6 +116,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
           imageData: urlMatch[0],
           textResponse: '',
+          requestedAspectRatio: aspectRatio,
+          requestedResolution: resolution,
         });
       }
 

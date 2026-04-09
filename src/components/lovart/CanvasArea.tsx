@@ -15,6 +15,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     height?: number;
     originalWidth?: number;
     originalHeight?: number;
+    requestedAspectRatio?: '1:1' | '4:3' | '16:9';
+    requestedResolution?: '1K' | '2K' | '4K';
     color?: string;
     shapeType?: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right';
     fontSize?: number;
