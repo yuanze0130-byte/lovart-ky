@@ -5,10 +5,10 @@ export const DEFAULT_SIGNUP_CREDITS = 80;
 
 // 10 积分 = 1 元，以下是偏保守、可覆盖成本的建议档位
 export const CREDIT_COSTS = {
-  generateImage: 12,
-  generateVideo: 40,
+  generateImage: 5,
+  generateVideo: 30,
   removeBackground: 2,
-  upscale: 6,
+  upscale: 5,
 } as const;
 
 type CreditAction =
