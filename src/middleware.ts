@@ -1,9 +1,6 @@
-import { NextResponse } from 'next/server';
+import { clerkMiddleware } from '@clerk/nextjs/server';
 
-// Next.js 16: use proxy instead of middleware
-export function proxy() {
-  return NextResponse.next();
-}
+export default clerkMiddleware();
 
 export const config = {
   matcher: [
