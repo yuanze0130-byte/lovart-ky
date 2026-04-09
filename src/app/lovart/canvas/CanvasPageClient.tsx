@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect, Suspense } from 'react';
 import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff } from 'lucide-react';
 import Link from 'next/link';
-import { useUser } from '@clerk/nextjs';
+import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
 import { CanvasArea, CanvasElement } from '@/components/lovart/CanvasArea';
@@ -17,7 +17,7 @@ import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 
 function LovartCanvasContent() {
-    const { user } = useUser();
+    const { user } = useAuth();
     const searchParams = useSearchParams();
     const projectId = searchParams.get('id');
 
@@ -290,3 +290,4 @@ export default function LovartCanvas() {
         </Suspense>
     );
 }
+

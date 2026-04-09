@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { ClerkProvider } from '@clerk/nextjs';
+import { SupabaseAuthProvider } from '@/components/auth/SupabaseAuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -7,22 +7,16 @@ export const metadata: Metadata = {
   description: 'AI-powered design canvas with image, video, and project workflows.',
 };
 
-const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
-
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const content = (
+  return (
     <html lang="zh-CN">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <SupabaseAuthProvider>{children}</SupabaseAuthProvider>
+      </body>
     </html>
   );
-
-  if (!clerkPublishableKey) {
-    return content;
-  }
-
-  return <ClerkProvider publishableKey={clerkPublishableKey}>{content}</ClerkProvider>;
 }

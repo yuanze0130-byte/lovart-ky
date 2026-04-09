@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { UserResource } from '@clerk/types';
+import type { User } from '@supabase/supabase-js';
 import type {
   CanvasElementInsert,
   CanvasElementRow,
@@ -12,7 +12,7 @@ import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { useSupabase } from '@/hooks/useSupabase';
 
 interface UseProjectPersistenceParams {
-  user: UserResource | null | undefined;
+  user: User | null | undefined;
   initialProjectId: string | null;
   elements: CanvasElement[];
   title: string;

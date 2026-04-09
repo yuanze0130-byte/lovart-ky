@@ -1,6 +1,7 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
+import { authedFetch } from '@/lib/authed-fetch';
 
 interface UseCanvasImageActionsParams {
   setElements: Dispatch<SetStateAction<CanvasElement[]>>;
@@ -92,7 +93,7 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
         throw new Error('当前元素没有图片内容');
       }
 
-      const response = await fetch('/api/remove-background', {
+      const response = await authedFetch('/api/remove-background', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

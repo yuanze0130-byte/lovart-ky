@@ -1,13 +1,10 @@
-import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
+import { requireUser } from '@/lib/require-user';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    await requireUser(request);
     const { prompt } = await request.json();
 
     if (!prompt || typeof prompt !== 'string') {

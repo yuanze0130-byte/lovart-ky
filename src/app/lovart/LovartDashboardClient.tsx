@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Plus, Sparkles, Bell, X, Star } from 'lucide-react';
-import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { Plus, Sparkles, Bell, X, Star, LogOut } from 'lucide-react';
 import { DashboardSidebar } from '@/components/lovart/DashboardSidebar';
+import { LoginModal } from '@/components/auth/LoginModal';
+import { useAuth } from '@/hooks/useAuth';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { useSupabase } from '@/hooks/useSupabase';
 import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
@@ -24,8 +25,9 @@ interface Notification {
 }
 
 export default function LovartDashboard() {
-    const { user } = useUser();
+    const { user, signOut } = useAuth();
     const supabase = useSupabase();
+    const [showLoginModal, setShowLoginModal] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [credits, setCredits] = useState<number | null>(null);
@@ -322,26 +324,32 @@ export default function LovartDashboard() {
                             </div>
 
                             {/* Credits Display */}
-                            <SignedIn>
-                                {credits !== null && (
-                                    <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
-                                        <span className="text-sm">⚡</span>
-                                        <span>{credits.toLocaleString()}</span>
-                                    </div>
-                                )}
-                            </SignedIn>
+                            {user && credits !== null && (
+                                <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
+                                    <span className="text-sm">⚡</span>
+                                    <span>{credits.toLocaleString()}</span>
+                                </div>
+                            )}
 
-                            {/* User Button or Sign In */}
-                            <SignedOut>
-                                <SignInButton mode="modal">
-                                    <button className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">
-                                        登录
-                                    </button>
-                                </SignInButton>
-                            </SignedOut>
-                            <SignedIn>
-                                <UserButton />
-                            </SignedIn>
+                            {!user ? (
+                                <button
+                                    onClick={() => setShowLoginModal(true)}
+                                    className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors"
+                                >
+                                    登录
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => void signOut()}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 hover:bg-gray-50 text-sm text-gray-700"
+                                >
+                                    <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center text-xs font-semibold">
+                                        {(user.email?.[0] || 'U').toUpperCase()}
+                                    </div>
+                                    <span className="max-w-[140px] truncate">{user.email}</span>
+                                    <LogOut size={14} />
+                                </button>
+                            )}
                         </div>
                     </div>
                     <div className="px-8 py-12">
@@ -474,6 +482,7 @@ export default function LovartDashboard() {
                     </div>
                 </div>
             </main>
+            <LoginModal open={showLoginModal} onClose={() => setShowLoginModal(false)} />
         </div>
     );
 }

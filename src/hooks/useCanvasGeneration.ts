@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
+import { authedFetch } from '@/lib/authed-fetch';
 
 interface UseCanvasGenerationParams {
   pan: CanvasPan;
@@ -125,7 +126,7 @@ export function useCanvasGeneration({
     ) => {
       setIsGenerating(true);
       try {
-        const response = await fetch('/api/generate-image', {
+        const response = await authedFetch('/api/generate-image', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

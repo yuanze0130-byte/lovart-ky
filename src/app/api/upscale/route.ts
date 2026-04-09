@@ -1,13 +1,10 @@
-import { auth } from '@clerk/nextjs/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { submitUpscaleTask } from '@/lib/upscale';
+import { requireUser } from '@/lib/require-user';
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    }
+    await requireUser(request);
     const { image, scale } = await request.json();
 
     if (!image || typeof image !== 'string') {
