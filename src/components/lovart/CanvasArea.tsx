@@ -13,6 +13,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     content?: string;
     width?: number;
     height?: number;
+    originalWidth?: number;
+    originalHeight?: number;
     color?: string;
     shapeType?: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right';
     fontSize?: number;

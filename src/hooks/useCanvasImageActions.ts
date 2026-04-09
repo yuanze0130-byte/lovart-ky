@@ -1,5 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 
 interface UseCanvasImageActionsParams {
   setElements: Dispatch<SetStateAction<CanvasElement[]>>;
@@ -142,12 +143,19 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
       }
 
       if (data.imageData) {
+        const dimensions = await getImageDimensions(data.imageData);
+        const displaySize = getSmartDisplaySize(dimensions);
+
         setElements((prev) =>
           prev.map((item) =>
             item.id === element.id
               ? {
                   ...item,
                   content: data.imageData,
+                  width: displaySize.width,
+                  height: displaySize.height,
+                  originalWidth: displaySize.originalWidth,
+                  originalHeight: displaySize.originalHeight,
                 }
               : item
           )
@@ -160,6 +168,8 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
       }
 
       const imageData = await pollUpscaleTask(data.taskId);
+      const dimensions = await getImageDimensions(imageData);
+      const displaySize = getSmartDisplaySize(dimensions);
 
       setElements((prev) =>
         prev.map((item) =>
@@ -167,6 +177,10 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
             ? {
                 ...item,
                 content: imageData,
+                width: displaySize.width,
+                height: displaySize.height,
+                originalWidth: displaySize.originalWidth,
+                originalHeight: displaySize.originalHeight,
               }
             : item
         )
@@ -191,6 +205,8 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
                 content: cropped.imageData,
                 width: cropped.width,
                 height: cropped.height,
+                originalWidth: cropped.width,
+                originalHeight: cropped.height,
               }
             : item
         )

@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
+import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 
 interface UseCanvasGenerationParams {
   pan: CanvasPan;
@@ -149,6 +150,9 @@ export function useCanvasGeneration({
         );
 
         if (data.imageData) {
+          const dimensions = await getImageDimensions(data.imageData);
+          const displaySize = getSmartDisplaySize(dimensions);
+
           if (generatorElementId) {
             setElements((prev) =>
               prev.map((el) => {
@@ -157,6 +161,10 @@ export function useCanvasGeneration({
                     ...el,
                     type: 'image',
                     content: data.imageData,
+                    width: displaySize.width,
+                    height: displaySize.height,
+                    originalWidth: displaySize.originalWidth,
+                    originalHeight: displaySize.originalHeight,
                   };
                 }
                 return el;
@@ -168,8 +176,10 @@ export function useCanvasGeneration({
               type: 'image',
               x: 300 - pan.x,
               y: 300 - pan.y,
-              width: 400,
-              height: 400,
+              width: displaySize.width,
+              height: displaySize.height,
+              originalWidth: displaySize.originalWidth,
+              originalHeight: displaySize.originalHeight,
               content: data.imageData,
             };
             setElements((prev) => [...prev, newElement]);

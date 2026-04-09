@@ -81,8 +81,14 @@ export function ContextToolbar({
         cropHeight: number;
     } | null>(null);
 
-    const safeWidth = useMemo(() => Math.max(1, Math.round(element.width || 300)), [element.width]);
-    const safeHeight = useMemo(() => Math.max(1, Math.round(element.height || 300)), [element.height]);
+    const safeWidth = useMemo(
+        () => Math.max(1, Math.round(element.originalWidth || element.width || 300)),
+        [element.originalWidth, element.width]
+    );
+    const safeHeight = useMemo(
+        () => Math.max(1, Math.round(element.originalHeight || element.height || 300)),
+        [element.originalHeight, element.height]
+    );
     const cropScale = useMemo(() => {
         const maxPreviewWidth = 240;
         const maxPreviewHeight = 180;
@@ -267,7 +273,7 @@ export function ContextToolbar({
                 <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-1.5 flex items-center gap-1">
                     <div className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600">
                         <span className="font-mono">
-                            {Math.round(element.width || 0)} × {Math.round(element.height || 0)}
+                            {Math.round(element.originalWidth || element.width || 0)} × {Math.round(element.originalHeight || element.height || 0)}
                         </span>
                     </div>
 
