@@ -80,6 +80,58 @@ export default function ProjectsPage() {
         return date.toLocaleDateString('zh-CN');
     };
 
+    const handleRenameProject = async (project: Project) => {
+        if (!supabase) return;
+
+        const nextTitle = window.prompt('输入新的项目名称', project.title)?.trim();
+        if (!nextTitle || nextTitle === project.title) return;
+
+        const { error } = await supabase
+            .from('projects')
+            .update({ title: nextTitle })
+            .eq('id', project.id);
+
+        if (error) {
+            alert(`重命名失败：${error.message}`);
+            return;
+        }
+
+        setProjects((prev) =>
+            prev.map((item) =>
+                item.id === project.id ? { ...item, title: nextTitle } : item
+            )
+        );
+    };
+
+    const handleDeleteProject = async (project: Project) => {
+        if (!supabase) return;
+
+        const confirmed = window.confirm(`确定删除项目“${project.title}”吗？删除后无法恢复。`);
+        if (!confirmed) return;
+
+        const { error: canvasError } = await supabase
+            .from('canvas_elements')
+            .delete()
+            .eq('project_id', project.id);
+
+        if (canvasError) {
+            alert(`删除项目内容失败：${canvasError.message}`);
+            return;
+        }
+
+        const { error: projectError } = await supabase
+            .from('projects')
+            .delete()
+            .eq('id', project.id);
+
+        if (projectError) {
+            alert(`删除项目失败：${projectError.message}`);
+            return;
+        }
+
+        setProjects((prev) => prev.filter((item) => item.id !== project.id));
+    };
+
     return (
         <div className="h-screen bg-white text-gray-900 font-sans">
             <main className="h-full flex flex-col overflow-hidden">
@@ -87,7 +139,7 @@ export default function ProjectsPage() {
                     <div className="flex items-center justify-between px-8 py-4">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
-                            <span className="text-lg font-semibold text-gray-900">Lovart</span>
+                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -181,6 +233,8 @@ export default function ProjectsPage() {
                                                 title={project.title}
                                                 date={formatDate(project.updated_at)}
                                                 imageUrl={project.thumbnail || undefined}
+                                                onRename={() => void handleRenameProject(project)}
+                                                onDelete={() => void handleDeleteProject(project)}
                                             />
                                         </Link>
                                     ))}

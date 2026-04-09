@@ -1,17 +1,37 @@
 import Image from 'next/image';
-import React from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 
 interface ProjectCardProps {
     title: string;
     date: string;
     imageUrl?: string;
+    onRename?: () => void;
+    onDelete?: () => void;
 }
 
-export function ProjectCard({ title, date, imageUrl }: ProjectCardProps) {
+export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: ProjectCardProps) {
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setMenuOpen(false);
+            }
+        }
+
+        if (menuOpen) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [menuOpen]);
+
     return (
         <div className="group relative bg-white rounded-2xl overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-300 cursor-pointer">
-            {/* Image Area */}
             <div className="aspect-[4/3] bg-gray-50 relative overflow-hidden">
                 {imageUrl ? (
                     <Image
@@ -28,15 +48,59 @@ export function ProjectCard({ title, date, imageUrl }: ProjectCardProps) {
                     </div>
                 )}
 
-                {/* Overlay Actions */}
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    <button className="p-1.5 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white shadow-sm">
-                        <MoreHorizontal size={16} className="text-gray-600" />
-                    </button>
-                </div>
+                {(onRename || onDelete) && (
+                    <div
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                        ref={menuRef}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                setMenuOpen((prev) => !prev);
+                            }}
+                            className="p-1.5 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white shadow-sm"
+                        >
+                            <MoreHorizontal size={16} className="text-gray-600" />
+                        </button>
+
+                        {menuOpen && (
+                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+                                {onRename && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            setMenuOpen(false);
+                                            onRename();
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                                    >
+                                        <Pencil size={14} />
+                                        重命名
+                                    </button>
+                                )}
+                                {onDelete && (
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            setMenuOpen(false);
+                                            onDelete();
+                                        }}
+                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                                    >
+                                        <Trash2 size={14} />
+                                        删除项目
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
 
-            {/* Content */}
             <div className="p-4">
                 <h3 className="font-medium text-gray-900 truncate">{title}</h3>
                 <p className="text-xs text-gray-500 mt-1">{date}</p>
