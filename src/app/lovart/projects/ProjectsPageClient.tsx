@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plus, Bell } from 'lucide-react';
-import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import { Plus, Bell, LogOut } from 'lucide-react';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
+import { LoginModal } from '@/components/auth/LoginModal';
+import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
 import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
 import Link from 'next/link';
@@ -11,13 +12,13 @@ import Link from 'next/link';
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
 
 export default function ProjectsPage() {
-    const { user } = useUser();
+    const { user, signOut } = useAuth();
     const supabase = useSupabase();
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [credits, setCredits] = useState<number | null>(null);
+    const [showLoginModal, setShowLoginModal] = useState(false);
 
-    // Load user's projects and credits
     useEffect(() => {
         async function loadData() {
             if (!user || !supabase) {
@@ -26,32 +27,23 @@ export default function ProjectsPage() {
             }
 
             try {
-                // 并行加载项目和积分，减少等待时间
                 const [projectsResult, creditsResult] = await Promise.all([
-                    supabase
-                        .from('projects')
-                        .select('*')
-                        .order('updated_at', { ascending: false }),
-                    supabase
-                        .from('user_credits')
-                        .select('credits')
-                        .eq('user_id', user.id)
-                        .single()
+                    supabase.from('projects').select('*').order('updated_at', { ascending: false }),
+                    supabase.from('user_credits').select('credits').eq('user_id', user.id).single(),
                 ]);
 
-                // 处理项目数据
                 if (projectsResult.error) throw projectsResult.error;
                 const projectRows = (projectsResult.data || []) as ProjectRow[];
-                setProjects(projectRows.map((project) => ({
-                    id: project.id,
-                    title: project.title,
-                    thumbnail: project.thumbnail,
-                    updated_at: project.updated_at,
-                })));
+                setProjects(
+                    projectRows.map((project) => ({
+                        id: project.id,
+                        title: project.title,
+                        thumbnail: project.thumbnail,
+                        updated_at: project.updated_at,
+                    }))
+                );
 
-                // 处理积分数据
                 if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
-                    // 用户积分记录不存在，创建新记录
                     const { data: newData } = await supabase
                         .from('user_credits')
                         .insert({ user_id: user.id, credits: 1000 })
@@ -88,14 +80,10 @@ export default function ProjectsPage() {
         return date.toLocaleDateString('zh-CN');
     };
 
-
-
     return (
         <div className="h-screen bg-white text-gray-900 font-sans">
             <main className="h-full flex flex-col overflow-hidden">
-                {/* Content */}
                 <div className="flex-1 overflow-y-auto">
-                    {/* Top Bar */}
                     <div className="flex items-center justify-between px-8 py-4">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
@@ -108,25 +96,32 @@ export default function ProjectsPage() {
                                 <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
                             </button>
 
-                            <SignedIn>
-                                {credits !== null && (
-                                    <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
-                                        <span className="text-sm">⚡</span>
-                                        <span>{credits.toLocaleString()}</span>
-                                    </div>
-                                )}
-                            </SignedIn>
+                            {user && credits !== null && (
+                                <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
+                                    <span className="text-sm">⚡</span>
+                                    <span>{credits.toLocaleString()}</span>
+                                </div>
+                            )}
 
-                            <SignedOut>
-                                <SignInButton mode="modal">
-                                    <button className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">
-                                        登录
-                                    </button>
-                                </SignInButton>
-                            </SignedOut>
-                            <SignedIn>
-                                <UserButton />
-                            </SignedIn>
+                            {!user ? (
+                                <button
+                                    onClick={() => setShowLoginModal(true)}
+                                    className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors"
+                                >
+                                    登录
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() => void signOut()}
+                                    className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 hover:bg-gray-50 text-sm text-gray-700"
+                                >
+                                    <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center text-xs font-semibold">
+                                        {(user.email?.[0] || 'U').toUpperCase()}
+                                    </div>
+                                    <span className="max-w-[140px] truncate">{user.email}</span>
+                                    <LogOut size={14} />
+                                </button>
+                            )}
                         </div>
                     </div>
 
@@ -136,11 +131,12 @@ export default function ProjectsPage() {
                             <div className="text-center max-w-md">
                                 <h2 className="text-2xl font-bold mb-4">欢迎来到 Lovart</h2>
                                 <p className="text-gray-600 mb-6">登录以查看和管理您的项目</p>
-                                <SignInButton mode="modal">
-                                    <button className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors">
-                                        立即登录
-                                    </button>
-                                </SignInButton>
+                                <button
+                                    onClick={() => setShowLoginModal(true)}
+                                    className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors"
+                                >
+                                    立即登录
+                                </button>
                             </div>
                         </div>
                     ) : isLoading ? (
@@ -180,10 +176,7 @@ export default function ProjectsPage() {
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {projects.map((project) => (
-                                        <Link
-                                            key={project.id}
-                                            href={`/lovart/canvas?id=${project.id}`}
-                                        >
+                                        <Link key={project.id} href={`/lovart/canvas?id=${project.id}`}>
                                             <ProjectCard
                                                 title={project.title}
                                                 date={formatDate(project.updated_at)}
@@ -198,6 +191,7 @@ export default function ProjectsPage() {
                     </div>
                 </div>
             </main>
+            <LoginModal open={showLoginModal} onClose={() => setShowLoginModal(false)} />
         </div>
     );
 }
