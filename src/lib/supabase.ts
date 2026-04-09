@@ -101,7 +101,7 @@ export type UserCreditsRow = Database['public']['Tables']['user_credits']['Row']
 export type UserCreditsInsert = Database['public']['Tables']['user_credits']['Insert'];
 export type UserCreditsUpdate = Database['public']['Tables']['user_credits']['Update'];
 
-export function createClerkSupabaseClient(token: string | null) {
+export function createAuthedSupabaseClient(token: string | null) {
   return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

@@ -9,8 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@clerk/backend": "^2.23.2",
-    "@clerk/nextjs": "^6.35.4",
     "@google/genai": "^1.30.0",
     "@supabase/supabase-js": "^2.84.0",
     "@types/uuid": "^10.0.0",
