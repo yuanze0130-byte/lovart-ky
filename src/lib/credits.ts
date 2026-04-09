@@ -1,11 +1,14 @@
 import { createServerSupabaseClient } from '@/lib/supabase';
 import type { UserCreditsRow } from '@/lib/supabase';
 
+export const DEFAULT_SIGNUP_CREDITS = 80;
+
+// 10 积分 = 1 元，以下是偏保守、可覆盖成本的建议档位
 export const CREDIT_COSTS = {
-  generateImage: 10,
-  generateVideo: 30,
+  generateImage: 12,
+  generateVideo: 40,
   removeBackground: 2,
-  upscale: 5,
+  upscale: 6,
 } as const;
 
 type CreditAction =
@@ -31,7 +34,7 @@ export async function ensureUserCredits(userId: string): Promise<UserCreditsRow>
 
   const { data: inserted, error: insertError } = await supabase
     .from('user_credits')
-    .insert({ user_id: userId, credits: 1000 })
+    .insert({ user_id: userId, credits: DEFAULT_SIGNUP_CREDITS })
     .select()
     .single();
 
@@ -43,9 +46,9 @@ export async function ensureUserCredits(userId: string): Promise<UserCreditsRow>
 
   await logCreditTransaction({
     userId,
-    amount: 1000,
+    amount: DEFAULT_SIGNUP_CREDITS,
     type: 'signup_bonus',
-    description: '新用户赠送积分',
+    description: `新用户赠送 ${DEFAULT_SIGNUP_CREDITS} 积分`,
   });
 
   return insertedRow;

@@ -1,16 +1,17 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Coins, Calendar, User as UserIcon, Bell, LogOut } from 'lucide-react';
+import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift } from 'lucide-react';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
-import type { UserCreditsRow } from '@/lib/supabase';
+import type { UserCreditsRow, CreditTransactionRow } from '@/lib/supabase';
 
 export default function UserPage() {
     const { user, signOut } = useAuth();
     const supabase = useSupabase();
     const [credits, setCredits] = useState<number | null>(null);
+    const [transactions, setTransactions] = useState<CreditTransactionRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showLoginModal, setShowLoginModal] = useState(false);
 
@@ -22,20 +23,32 @@ export default function UserPage() {
             }
 
             try {
-                const { data, error } = await supabase
-                    .from('user_credits')
-                    .select('*')
-                    .eq('user_id', user.id)
-                    .single();
+                const [{ data, error }, { data: txData, error: txError }] = await Promise.all([
+                    supabase
+                        .from('user_credits')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .single(),
+                    supabase
+                        .from('credit_transactions')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .order('created_at', { ascending: false })
+                        .limit(10),
+                ]);
 
                 const creditRow = data as UserCreditsRow | null;
+                const txRows = (txData || []) as CreditTransactionRow[];
+                if (!txError) {
+                    setTransactions(txRows);
+                }
 
                 if (error && error.code === 'PGRST116') {
                     const { data: newData, error: insertError } = await supabase
                         .from('user_credits')
                         .insert({
                             user_id: user.id,
-                            credits: 1000,
+                            credits: 80,
                         })
                         .select()
                         .single();
@@ -46,11 +59,11 @@ export default function UserPage() {
                 } else if (error) {
                     throw error;
                 } else {
-                    setCredits(creditRow?.credits ?? 1000);
+                    setCredits(creditRow?.credits ?? 80);
                 }
             } catch (error) {
                 console.error('Failed to load user credits:', error);
-                setCredits(1000);
+                setCredits(80);
             } finally {
                 setIsLoading(false);
             }
@@ -66,6 +79,16 @@ export default function UserPage() {
             year: 'numeric',
             month: 'long',
             day: 'numeric',
+        });
+    };
+
+    const formatDateTime = (dateString: string) => {
+        const date = new Date(dateString);
+        return date.toLocaleString('zh-CN', {
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
         });
     };
 
@@ -121,7 +144,7 @@ export default function UserPage() {
                                 <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                                     <UserIcon size={32} className="text-gray-400" />
                                 </div>
-                                <h2 className="text-2xl font-bold mb-4">欢迎来到 Lovart</h2>
+                                <h2 className="text-2xl font-bold mb-4">欢迎来到 Doodleverse</h2>
                                 <p className="text-gray-600 mb-6">登录以查看您的账户信息</p>
                                 <button
                                     onClick={() => setShowLoginModal(true)}
@@ -172,9 +195,38 @@ export default function UserPage() {
                                         <p className="text-2xl font-bold text-gray-900">
                                             {formatDate(user.created_at)}
                                         </p>
-                                        <p className="text-sm text-gray-500 mt-2">感谢您使用 Lovart</p>
+                                        <p className="text-sm text-gray-500 mt-2">感谢您使用 Doodleverse</p>
                                     </div>
                                 </div>
+                            </div>
+
+                            <div className="bg-white rounded-2xl shadow-sm p-8 mb-6">
+                                <h3 className="text-lg font-semibold text-gray-900 mb-4">最近积分流水</h3>
+                                {transactions.length === 0 ? (
+                                    <p className="text-sm text-gray-500">暂无积分变动记录。执行 SQL 建表后，新的消费记录会显示在这里。</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {transactions.map((tx) => {
+                                            const isIncome = tx.amount > 0;
+                                            return (
+                                                <div key={tx.id} className="flex items-center justify-between p-4 rounded-xl bg-gray-50">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isIncome ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                                                            {isIncome ? <Gift size={18} /> : <ArrowDownRight size={18} />}
+                                                        </div>
+                                                        <div>
+                                                            <div className="text-sm font-medium text-gray-900">{tx.description || tx.type}</div>
+                                                            <div className="text-xs text-gray-500">{formatDateTime(tx.created_at)}</div>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`text-sm font-semibold ${isIncome ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {isIncome ? '+' : ''}{tx.amount}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="bg-gray-50 rounded-xl p-6">
@@ -182,15 +234,19 @@ export default function UserPage() {
                                 <ul className="space-y-2 text-gray-600">
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
-                                        <span>新用户注册即获得 <strong className="text-gray-900">1000 积分</strong></span>
+                                        <span>新用户注册即获得 <strong className="text-gray-900">80 积分</strong></span>
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
-                                        <span>使用 AI 图像生成功能会消耗积分</span>
+                                        <span>图片生成默认消耗 <strong className="text-gray-900">12 积分</strong></span>
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
-                                        <span>更多获取积分的方式即将推出</span>
+                                        <span>视频生成默认消耗 <strong className="text-gray-900">40 积分</strong></span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <span className="text-gray-400 mt-1">•</span>
+                                        <span>去背景消耗 2 积分，超分消耗 6 积分</span>
                                     </li>
                                 </ul>
                             </div>

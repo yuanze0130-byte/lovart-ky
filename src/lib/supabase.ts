@@ -59,6 +59,36 @@ export interface Database {
         };
         Relationships: [];
       };
+      credit_transactions: {
+        Row: {
+          id: string;
+          user_id: string;
+          amount: number;
+          type: string;
+          description: string | null;
+          reference_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          amount: number;
+          type: string;
+          description?: string | null;
+          reference_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          amount?: number;
+          type?: string;
+          description?: string | null;
+          reference_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       canvas_elements: {
         Row: {
           id: string;
@@ -100,6 +130,9 @@ export type CanvasElementUpdate = Database['public']['Tables']['canvas_elements'
 export type UserCreditsRow = Database['public']['Tables']['user_credits']['Row'];
 export type UserCreditsInsert = Database['public']['Tables']['user_credits']['Insert'];
 export type UserCreditsUpdate = Database['public']['Tables']['user_credits']['Update'];
+export type CreditTransactionRow = Database['public']['Tables']['credit_transactions']['Row'];
+export type CreditTransactionInsert = Database['public']['Tables']['credit_transactions']['Insert'];
+export type CreditTransactionUpdate = Database['public']['Tables']['credit_transactions']['Update'];
 
 export function createAuthedSupabaseClient(token: string | null) {
   return createClient<Database>(

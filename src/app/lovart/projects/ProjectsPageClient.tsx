@@ -50,7 +50,7 @@ export default function ProjectsPage() {
                         .select()
                         .single();
                     const insertedCredits = newData as UserCreditsRow | null;
-                    setCredits(insertedCredits?.credits || 1000);
+                    setCredits(insertedCredits?.credits || 80);
                 } else if (!creditsResult.error) {
                     const creditsData = creditsResult.data as Pick<UserCreditsRow, 'credits'> | null;
                     setCredits(creditsData?.credits || 0);
