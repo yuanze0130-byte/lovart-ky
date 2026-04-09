@@ -1,17 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { consumeCredits, refundCredits } from '@/lib/credits';
-import { getBillingQuote } from '@/lib/pricing';
 
 export async function POST(request: NextRequest) {
-  let quote = getBillingQuote('generate_video');
-
   try {
     const { prompt, seconds, size, referenceImage } = await request.json();
-    quote = getBillingQuote('generate_video', {
-      seconds,
-      size,
-      referenceImage: Boolean(referenceImage),
-    });
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
@@ -23,19 +14,6 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ error: 'VIDEO_API_KEY not configured' }, { status: 500 });
     }
-
-    await consumeCredits({
-      action: 'generate_video',
-      quote,
-      meta: {
-        requestPath: '/api/generate-video',
-        provider: 'video_api',
-        seconds: seconds || 10,
-        size: size || '720x1280',
-        hasReferenceImage: Boolean(referenceImage),
-        promptLength: prompt.length,
-      },
-    });
 
     const form = new FormData();
     form.append('model', 'sora-2');
@@ -70,40 +48,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ taskId: data.id, status: data.status });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-
-    if (message === 'UNAUTHENTICATED') {
-      return NextResponse.json({ error: '请先登录后再使用 AI 功能' }, { status: 401 });
-    }
-
-    if (message === 'SUPABASE_TOKEN_MISSING') {
-      return NextResponse.json({ error: '未获取到积分系统认证令牌' }, { status: 401 });
-    }
-
-    if (message === 'INSUFFICIENT_CREDITS') {
-      return NextResponse.json(
-        {
-          error: '积分不足',
-          details: `当前功能需要 ${quote.credits} 积分`,
-          requiredCredits: quote.credits,
-        },
-        { status: 402 }
-      );
-    }
-
-    try {
-      await refundCredits({
-        action: 'generate_video',
-        quote,
-        meta: {
-          requestPath: '/api/generate-video',
-          provider: 'video_api',
-          reason: message,
-        },
-      });
-    } catch (refundError) {
-      console.error('Failed to refund credits for generate-video:', refundError);
-    }
-
     return NextResponse.json(
       { error: 'Failed to generate video', details: message },
       { status: 500 }

@@ -1,7 +1,5 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
-import { consumeCredits, refundCredits } from '@/lib/credits';
-import { getBillingQuote } from '@/lib/pricing';
 
 interface GeminiInlineDataPart {
   inlineData?: {
@@ -22,14 +20,8 @@ interface GeminiChatCompletion {
 }
 
 export async function POST(request: NextRequest) {
-  let quote = getBillingQuote('generate_image');
-
   try {
-    const { prompt, referenceImage, resolution } = await request.json();
-    quote = getBillingQuote('generate_image', {
-      resolution,
-      referenceImage: Boolean(referenceImage),
-    });
+    const { prompt, referenceImage } = await request.json();
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
@@ -41,18 +33,6 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
     }
-
-    await consumeCredits({
-      action: 'generate_image',
-      quote,
-      meta: {
-        requestPath: '/api/generate-image',
-        provider: 'gemini',
-        resolution: resolution || '1K',
-        hasReferenceImage: Boolean(referenceImage),
-        promptLength: prompt.length,
-      },
-    });
 
     const client = new OpenAI({ apiKey, baseURL });
 
@@ -147,39 +127,6 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Error generating image:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
-
-    if (message === 'UNAUTHENTICATED') {
-      return NextResponse.json({ error: '请先登录后再使用 AI 功能' }, { status: 401 });
-    }
-
-    if (message === 'SUPABASE_TOKEN_MISSING') {
-      return NextResponse.json({ error: '未获取到积分系统认证令牌' }, { status: 401 });
-    }
-
-    if (message === 'INSUFFICIENT_CREDITS') {
-      return NextResponse.json(
-        {
-          error: '积分不足',
-          details: `当前功能需要 ${quote.credits} 积分`,
-          requiredCredits: quote.credits,
-        },
-        { status: 402 }
-      );
-    }
-
-    try {
-      await refundCredits({
-        action: 'generate_image',
-        quote,
-        meta: {
-          requestPath: '/api/generate-image',
-          provider: 'gemini',
-          reason: message,
-        },
-      });
-    } catch (refundError) {
-      console.error('Failed to refund credits for generate-image:', refundError);
-    }
 
     return NextResponse.json(
       {

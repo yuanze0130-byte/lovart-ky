@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { consumeCredits, refundCredits } from '@/lib/credits';
-import { getBillingQuote } from '@/lib/pricing';
 
 export async function POST(request: NextRequest) {
-  const quote = getBillingQuote('generate_design');
-
   try {
     const { prompt } = await request.json();
 
@@ -19,16 +15,6 @@ export async function POST(request: NextRequest) {
     if (!apiKey) {
       return NextResponse.json({ error: 'XAI_API_KEY not configured' }, { status: 500 });
     }
-
-    await consumeCredits({
-      action: 'generate_design',
-      quote,
-      meta: {
-        requestPath: '/api/generate-design',
-        provider: 'xai',
-        promptLength: prompt.length,
-      },
-    });
 
     const client = new OpenAI({
       apiKey,
@@ -59,39 +45,6 @@ export async function POST(request: NextRequest) {
   } catch (error: unknown) {
     console.error('Error generating design:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
-
-    if (message === 'UNAUTHENTICATED') {
-      return NextResponse.json({ error: '请先登录后再使用 AI 功能' }, { status: 401 });
-    }
-
-    if (message === 'SUPABASE_TOKEN_MISSING') {
-      return NextResponse.json({ error: '未获取到积分系统认证令牌' }, { status: 401 });
-    }
-
-    if (message === 'INSUFFICIENT_CREDITS') {
-      return NextResponse.json(
-        {
-          error: '积分不足',
-          details: `当前功能需要 ${quote.credits} 积分`,
-          requiredCredits: quote.credits,
-        },
-        { status: 402 }
-      );
-    }
-
-    try {
-      await refundCredits({
-        action: 'generate_design',
-        quote,
-        meta: {
-          requestPath: '/api/generate-design',
-          provider: 'xai',
-          reason: message,
-        },
-      });
-    } catch (refundError) {
-      console.error('Failed to refund credits for generate-design:', refundError);
-    }
 
     return NextResponse.json(
       {

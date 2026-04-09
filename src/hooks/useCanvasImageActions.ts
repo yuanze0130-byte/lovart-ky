@@ -1,6 +1,5 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
-import { notifyCreditsBalanceUpdated } from '@/lib/credits-balance-events';
 
 interface UseCanvasImageActionsParams {
   setElements: Dispatch<SetStateAction<CanvasElement[]>>;
@@ -13,17 +12,14 @@ interface CropOptions {
   height: number;
 }
 
-async function pollUpscaleTask(taskId: string, scale = 2, timeoutMs = 300000, pollIntervalMs = 3500) {
+async function pollUpscaleTask(taskId: string, timeoutMs = 300000, pollIntervalMs = 3500) {
   const startedAt = Date.now();
 
   while (true) {
-    const response = await fetch(`/api/upscale-status?taskId=${encodeURIComponent(taskId)}&scale=${encodeURIComponent(scale)}`);
+    const response = await fetch(`/api/upscale-status?taskId=${encodeURIComponent(taskId)}`);
     const data = await response.json();
 
     if (!response.ok) {
-      if (data.refunded) {
-        notifyCreditsBalanceUpdated();
-      }
       throw new Error(data.details || data.error || '获取超分状态失败');
     }
 
@@ -63,8 +59,6 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
         throw new Error(data.details || data.error || '去背景失败');
       }
 
-      notifyCreditsBalanceUpdated();
-
       if (!data.imageData) {
         throw new Error('去背景结果为空');
       }
@@ -89,8 +83,6 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
         throw new Error('当前元素没有图片内容');
       }
 
-      const upscaleScale = typeof scale === 'number' ? scale : Number(scale || 2);
-
       const response = await fetch('/api/upscale', {
         method: 'POST',
         headers: {
@@ -103,8 +95,6 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
       if (!response.ok) {
         throw new Error(data.details || data.error || '启动超分失败');
       }
-
-      notifyCreditsBalanceUpdated();
 
       if (data.imageData) {
         setElements((prev) =>
@@ -124,7 +114,7 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
         throw new Error('超分任务未返回 taskId');
       }
 
-      const imageData = await pollUpscaleTask(data.taskId, upscaleScale);
+      const imageData = await pollUpscaleTask(data.taskId);
 
       setElements((prev) =>
         prev.map((item) =>

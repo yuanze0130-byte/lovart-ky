@@ -1,15 +1,66 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Coins, Calendar, User as UserIcon, Bell } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
-import { CreditsBadge } from '@/components/lovart/CreditsBadge';
-import { useCreditsBalance } from '@/hooks/useCreditsBalance';
+import { useSupabase } from '@/hooks/useSupabase';
+import type { UserCreditsRow } from '@/lib/supabase';
 
 
 export default function UserPage() {
     const { user } = useUser();
-    const { credits, isLoadingCredits: isLoading } = useCreditsBalance();
+    const supabase = useSupabase();
+    const [credits, setCredits] = useState<number | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Load or create user credits
+    useEffect(() => {
+        async function loadUserCredits() {
+            if (!user || !supabase) {
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                // Try to get existing credits
+                const { data, error } = await supabase
+                    .from('user_credits')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .single();
+
+                const creditRow = data as UserCreditsRow | null;
+
+                if (error && error.code === 'PGRST116') {
+                    // User doesn't exist, create with 1000 credits
+                    const { data: newData, error: insertError } = await supabase
+                        .from('user_credits')
+                        .insert({
+                            user_id: user.id,
+                            credits: 1000,
+                        })
+                        .select()
+                        .single();
+
+                    if (insertError) throw insertError;
+                    const insertedCredits = newData as UserCreditsRow;
+                    setCredits(insertedCredits.credits);
+                } else if (error) {
+                    throw error;
+                } else {
+                    setCredits(creditRow?.credits ?? 1000);
+                }
+            } catch (error) {
+                console.error('Failed to load user credits:', error);
+                // Default to 1000 if there's an error
+                setCredits(1000);
+            } finally {
+                setIsLoading(false);
+            }
+        }
+
+        loadUserCredits();
+    }, [user, supabase]);
 
     const formatDate = (dateString: string | undefined) => {
         if (!dateString) return '未知';
@@ -40,7 +91,12 @@ export default function UserPage() {
                             </button>
 
                             <SignedIn>
-                                <CreditsBadge credits={credits} loading={isLoading} compact />
+                                {credits !== null && (
+                                    <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
+                                        <span className="text-sm">⚡</span>
+                                        <span>{credits.toLocaleString()}</span>
+                                    </div>
+                                )}
                             </SignedIn>
 
                             <SignedOut>

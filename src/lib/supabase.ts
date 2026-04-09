@@ -83,39 +83,6 @@ export interface Database {
         };
         Relationships: [];
       };
-      credit_transactions: {
-        Row: {
-          id: string;
-          user_id: string;
-          action: string;
-          credits: number;
-          direction: string;
-          status: string;
-          meta: Json | null;
-          created_at: string;
-        };
-        Insert: {
-          id?: string;
-          user_id: string;
-          action: string;
-          credits: number;
-          direction: string;
-          status: string;
-          meta?: Json | null;
-          created_at?: string;
-        };
-        Update: {
-          id?: string;
-          user_id?: string;
-          action?: string;
-          credits?: number;
-          direction?: string;
-          status?: string;
-          meta?: Json | null;
-          created_at?: string;
-        };
-        Relationships: [];
-      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
@@ -133,9 +100,6 @@ export type CanvasElementUpdate = Database['public']['Tables']['canvas_elements'
 export type UserCreditsRow = Database['public']['Tables']['user_credits']['Row'];
 export type UserCreditsInsert = Database['public']['Tables']['user_credits']['Insert'];
 export type UserCreditsUpdate = Database['public']['Tables']['user_credits']['Update'];
-export type CreditTransactionRow = Database['public']['Tables']['credit_transactions']['Row'];
-export type CreditTransactionInsert = Database['public']['Tables']['credit_transactions']['Insert'];
-export type CreditTransactionUpdate = Database['public']['Tables']['credit_transactions']['Update'];
 
 export function createClerkSupabaseClient(token: string | null) {
   return createClient<Database>(

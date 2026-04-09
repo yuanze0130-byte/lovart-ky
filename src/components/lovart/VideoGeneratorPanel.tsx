@@ -2,8 +2,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2 } from 'lucide-react';
-import { getBillingQuote } from '@/lib/pricing';
-import { notifyCreditsBalanceUpdated } from '@/lib/credits-balance-events';
 
 type VideoSize = '720x1280' | '1280x720' | '1024x1792' | '1792x1024';
 type VideoSeconds = 10 | 15;
@@ -74,13 +72,10 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                         if (pollingIntervalRef.current) {
                             clearInterval(pollingIntervalRef.current);
                         }
-                        if (data.refundIssued) {
-                            notifyCreditsBalanceUpdated();
-                        }
                         setIsGenerating(false);
                         setTaskId(null);
                         setProgress(0);
-                        alert(data.refundIssued ? '视频生成失败，积分已自动退回' : '视频生成失败，请重试');
+                        alert('视频生成失败，请重试');
                     }
                 } catch (error) {
                     console.error('Error polling video status:', error);
@@ -148,7 +143,6 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                 throw new Error(data.details || data.error || '生成失败');
             }
 
-            notifyCreditsBalanceUpdated();
             console.log('Video generation started:', data);
             setTaskId(data.taskId);
             // 轮询会在 useEffect 中自动开始
@@ -177,11 +171,6 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
     };
 
     const imageElements = getImageElements();
-    const videoQuote = getBillingQuote('generate_video', {
-        seconds,
-        size,
-        referenceImage: Boolean(referenceImage),
-    });
 
     return (
         <div
@@ -379,7 +368,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                     ) : (
                         <Zap size={16} className="fill-current" />
                     )}
-                    <span className="font-medium">{videoQuote.credits}</span>
+                    <span className="font-medium">80</span>
                 </button>
             </div>
         </div>

@@ -2,7 +2,6 @@
 
 import React, { useState, useRef } from 'react';
 import { X, Loader2, Sparkles, Image as ImageIcon, ChevronDown, Zap } from 'lucide-react';
-import { getBillingQuote } from '@/lib/pricing';
 
 interface ImageGeneratorDialogProps {
     isOpen: boolean;
@@ -32,11 +31,6 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
 
     const resolutions: Resolution[] = ['1K', '2K', '4K'];
     const aspectRatios: AspectRatio[] = ['1:1', '4:3', '16:9'];
-    const imageQuote = getBillingQuote('generate_image', {
-        resolution,
-        aspectRatio,
-        referenceImage: Boolean(referenceImage),
-    });
 
     if (!isOpen) return null;
 
@@ -225,7 +219,6 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
                             <button
                                 onClick={handleGenerate}
                                 disabled={isGenerating || !prompt.trim()}
-                                title={`预计消耗 ${imageQuote.credits} 积分`}
                                 className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {isGenerating ? (
@@ -233,7 +226,7 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
                                 ) : (
                                     <>
                                         <Zap size={18} className="fill-gray-600" />
-                                        <span>{imageQuote.credits}</span>
+                                        <span>40</span>
                                     </>
                                 )}
                             </button>
