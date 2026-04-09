@@ -1,9 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
+import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
 
 export async function POST(request: NextRequest) {
   try {
-    await requireUser(request);
+    const user = await requireUser(request);
+
+    const creditResult = await consumeCredits({
+      userId: user.id,
+      amount: CREDIT_COSTS.generateVideo,
+      type: 'generate_video',
+      description: '生成视频',
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        {
+          error: '积分不足',
+          details: `当前积分 ${creditResult.currentCredits}，生成视频需要 ${creditResult.requiredCredits} 积分`,
+        },
+        { status: 402 }
+      );
+    }
+
     const { prompt, seconds, size, referenceImage } = await request.json();
 
     if (!prompt || typeof prompt !== 'string') {

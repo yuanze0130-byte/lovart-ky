@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
+import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
 
 interface GeminiInlineDataPart {
   inlineData?: {
@@ -22,7 +23,25 @@ interface GeminiChatCompletion {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireUser(request);
+    const user = await requireUser(request);
+
+    const creditResult = await consumeCredits({
+      userId: user.id,
+      amount: CREDIT_COSTS.generateImage,
+      type: 'generate_image',
+      description: '生成图片',
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        {
+          error: '积分不足',
+          details: `当前积分 ${creditResult.currentCredits}，生成图片需要 ${creditResult.requiredCredits} 积分`,
+        },
+        { status: 402 }
+      );
+    }
+
     const {
       prompt,
       referenceImage,
