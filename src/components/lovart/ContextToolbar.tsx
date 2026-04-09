@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles, Loader2 } from 'lucide-react';
 import { CanvasElement } from './CanvasArea';
 
@@ -70,9 +70,26 @@ export function ContextToolbar({
     const [cropY, setCropY] = useState(0);
     const [cropWidth, setCropWidth] = useState(Math.round(element.width || 300));
     const [cropHeight, setCropHeight] = useState(Math.round(element.height || 300));
+    const [cropInteraction, setCropInteraction] = useState<null | 'move' | 'nw' | 'ne' | 'sw' | 'se'>(null);
+    const cropPreviewRef = useRef<HTMLDivElement | null>(null);
+    const cropDragStartRef = useRef<{
+        clientX: number;
+        clientY: number;
+        cropX: number;
+        cropY: number;
+        cropWidth: number;
+        cropHeight: number;
+    } | null>(null);
 
     const safeWidth = useMemo(() => Math.max(1, Math.round(element.width || 300)), [element.width]);
     const safeHeight = useMemo(() => Math.max(1, Math.round(element.height || 300)), [element.height]);
+    const cropScale = useMemo(() => {
+        const maxPreviewWidth = 240;
+        const maxPreviewHeight = 180;
+        return Math.min(maxPreviewWidth / safeWidth, maxPreviewHeight / safeHeight, 1);
+    }, [safeWidth, safeHeight]);
+    const previewWidth = Math.max(1, Math.round(safeWidth * cropScale));
+    const previewHeight = Math.max(1, Math.round(safeHeight * cropScale));
 
     if (!element) return null;
 
@@ -161,6 +178,87 @@ export function ContextToolbar({
         } finally {
             setIsCropping(false);
         }
+    };
+
+    const updateCropFromPointer = (clientX: number, clientY: number) => {
+        const preview = cropPreviewRef.current;
+        if (!preview) return;
+
+        const rect = preview.getBoundingClientRect();
+        const px = Math.min(Math.max(clientX - rect.left, 0), rect.width);
+        const py = Math.min(Math.max(clientY - rect.top, 0), rect.height);
+
+        const nextX = Math.round((px / rect.width) * safeWidth);
+        const nextY = Math.round((py / rect.height) * safeHeight);
+
+        const remainingWidth = Math.max(1, safeWidth - nextX);
+        const remainingHeight = Math.max(1, safeHeight - nextY);
+
+        setCropX(nextX);
+        setCropY(nextY);
+        setCropWidth((prev) => Math.min(Math.max(1, prev), remainingWidth));
+        setCropHeight((prev) => Math.min(Math.max(1, prev), remainingHeight));
+    };
+
+    const beginCropInteraction = (
+        mode: 'move' | 'nw' | 'ne' | 'sw' | 'se',
+        clientX: number,
+        clientY: number
+    ) => {
+        cropDragStartRef.current = {
+            clientX,
+            clientY,
+            cropX,
+            cropY,
+            cropWidth,
+            cropHeight,
+        };
+        setCropInteraction(mode);
+    };
+
+    const updateCropInteraction = (clientX: number, clientY: number) => {
+        const start = cropDragStartRef.current;
+        if (!start || !cropInteraction || !cropPreviewRef.current) return;
+
+        const rect = cropPreviewRef.current.getBoundingClientRect();
+        const deltaX = Math.round(((clientX - start.clientX) / rect.width) * safeWidth);
+        const deltaY = Math.round(((clientY - start.clientY) / rect.height) * safeHeight);
+
+        if (cropInteraction === 'move') {
+            const nextX = Math.min(Math.max(0, start.cropX + deltaX), Math.max(0, safeWidth - start.cropWidth));
+            const nextY = Math.min(Math.max(0, start.cropY + deltaY), Math.max(0, safeHeight - start.cropHeight));
+            setCropX(nextX);
+            setCropY(nextY);
+            return;
+        }
+
+        let nextX = start.cropX;
+        let nextY = start.cropY;
+        let nextWidth = start.cropWidth;
+        let nextHeight = start.cropHeight;
+
+        if (cropInteraction === 'nw' || cropInteraction === 'sw') {
+            nextX = Math.min(Math.max(0, start.cropX + deltaX), start.cropX + start.cropWidth - 1);
+            nextWidth = start.cropWidth + (start.cropX - nextX);
+        }
+
+        if (cropInteraction === 'ne' || cropInteraction === 'se') {
+            nextWidth = Math.min(Math.max(1, start.cropWidth + deltaX), safeWidth - start.cropX);
+        }
+
+        if (cropInteraction === 'nw' || cropInteraction === 'ne') {
+            nextY = Math.min(Math.max(0, start.cropY + deltaY), start.cropY + start.cropHeight - 1);
+            nextHeight = start.cropHeight + (start.cropY - nextY);
+        }
+
+        if (cropInteraction === 'sw' || cropInteraction === 'se') {
+            nextHeight = Math.min(Math.max(1, start.cropHeight + deltaY), safeHeight - start.cropY);
+        }
+
+        setCropX(nextX);
+        setCropY(nextY);
+        setCropWidth(Math.max(1, nextWidth));
+        setCropHeight(Math.max(1, nextHeight));
     };
 
     if (element.type === 'image' || element.type === 'video') {
@@ -307,14 +405,84 @@ export function ContextToolbar({
                             </button>
                         </div>
 
+                        <div className="mb-3 flex flex-col items-center">
+                            <div
+                                ref={cropPreviewRef}
+                                className={`relative border border-gray-200 rounded-lg overflow-hidden bg-gray-50 ${cropInteraction ? 'cursor-grabbing' : 'cursor-crosshair'}`}
+                                style={{ width: previewWidth, height: previewHeight }}
+                                onMouseDown={(e) => {
+                                    if (e.target !== e.currentTarget) return;
+                                    updateCropFromPointer(e.clientX, e.clientY);
+                                }}
+                                onMouseMove={(e) => {
+                                    if (!cropInteraction) return;
+                                    updateCropInteraction(e.clientX, e.clientY);
+                                }}
+                                onMouseUp={() => {
+                                    setCropInteraction(null);
+                                    cropDragStartRef.current = null;
+                                }}
+                                onMouseLeave={() => {
+                                    setCropInteraction(null);
+                                    cropDragStartRef.current = null;
+                                }}
+                            >
+                                {element.content && (
+                                    <img
+                                        src={element.content}
+                                        alt="Crop preview"
+                                        className="w-full h-full object-contain pointer-events-none select-none"
+                                        draggable={false}
+                                    />
+                                )}
+
+                                <div className="absolute inset-0 bg-black/35 pointer-events-none" />
+
+                                <div
+                                    className="absolute border-2 border-white shadow-[0_0_0_9999px_rgba(0,0,0,0.15)]"
+                                    style={{
+                                        left: `${(cropX / safeWidth) * previewWidth}px`,
+                                        top: `${(cropY / safeHeight) * previewHeight}px`,
+                                        width: `${(cropWidth / safeWidth) * previewWidth}px`,
+                                        height: `${(cropHeight / safeHeight) * previewHeight}px`,
+                                    }}
+                                    onMouseDown={(e) => {
+                                        e.stopPropagation();
+                                        beginCropInteraction('move', e.clientX, e.clientY);
+                                    }}
+                                >
+                                    {([
+                                        ['nw', 'top-0 left-0 cursor-nwse-resize'],
+                                        ['ne', 'top-0 right-0 cursor-nesw-resize'],
+                                        ['sw', 'bottom-0 left-0 cursor-nesw-resize'],
+                                        ['se', 'bottom-0 right-0 cursor-nwse-resize'],
+                                    ] as const).map(([mode, position]) => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            className={`absolute -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border border-black/20 ${position}`}
+                                            onMouseDown={(e) => {
+                                                e.stopPropagation();
+                                                beginCropInteraction(mode, e.clientX, e.clientY);
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                            <p className="text-xs text-gray-400 mt-2 text-center">
+                                拖动选区可移动，拖四角圆点可缩放裁切框。
+                            </p>
+                        </div>
+
                         <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
                             <label className="flex flex-col gap-1 text-gray-600">
                                 X
                                 <input
                                     type="number"
                                     min={0}
+                                    max={Math.max(0, safeWidth - 1)}
                                     value={cropX}
-                                    onChange={(e) => setCropX(Math.max(0, Number(e.target.value) || 0))}
+                                    onChange={(e) => setCropX(Math.min(Math.max(0, Number(e.target.value) || 0), Math.max(0, safeWidth - cropWidth)))}
                                     className="border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-black"
                                 />
                             </label>
@@ -323,8 +491,9 @@ export function ContextToolbar({
                                 <input
                                     type="number"
                                     min={0}
+                                    max={Math.max(0, safeHeight - 1)}
                                     value={cropY}
-                                    onChange={(e) => setCropY(Math.max(0, Number(e.target.value) || 0))}
+                                    onChange={(e) => setCropY(Math.min(Math.max(0, Number(e.target.value) || 0), Math.max(0, safeHeight - cropHeight)))}
                                     className="border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-black"
                                 />
                             </label>
@@ -333,8 +502,9 @@ export function ContextToolbar({
                                 <input
                                     type="number"
                                     min={1}
+                                    max={Math.max(1, safeWidth - cropX)}
                                     value={cropWidth}
-                                    onChange={(e) => setCropWidth(Math.max(1, Number(e.target.value) || 1))}
+                                    onChange={(e) => setCropWidth(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, safeWidth - cropX)))}
                                     className="border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-black"
                                 />
                             </label>
@@ -343,16 +513,13 @@ export function ContextToolbar({
                                 <input
                                     type="number"
                                     min={1}
+                                    max={Math.max(1, safeHeight - cropY)}
                                     value={cropHeight}
-                                    onChange={(e) => setCropHeight(Math.max(1, Number(e.target.value) || 1))}
+                                    onChange={(e) => setCropHeight(Math.min(Math.max(1, Number(e.target.value) || 1), Math.max(1, safeHeight - cropY)))}
                                     className="border border-gray-200 rounded-lg px-2 py-1.5 outline-none focus:border-black"
                                 />
                             </label>
                         </div>
-
-                        <p className="text-xs text-gray-400 mb-3">
-                            当前为功能骨架版，先支持参数式裁切；后面我可以继续升级成拖拽裁切框。
-                        </p>
 
                         <button
                             onClick={handleCropConfirm}
