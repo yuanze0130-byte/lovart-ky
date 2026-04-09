@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { getBillingQuote } from '@/lib/pricing';
 import {
     Paperclip, AtSign, Lightbulb, Zap, Globe, Box, ArrowUp,
     RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X
@@ -20,6 +21,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     const [inputValue, setInputValue] = useState(initialPrompt || '');
     const [messages, setMessages] = useState<Message[]>([]);
     const [hasAutoSent, setHasAutoSent] = useState(false);
+    const designQuote = getBillingQuote('generate_design');
 
     const suggestions = [
         {
@@ -196,6 +198,9 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                 </button>
                             </div>
 
+                            <div className="text-xs text-gray-400 mr-1">
+                                预计 {designQuote.credits} 积分
+                            </div>
                             <button
                                 onClick={handleSend}
                                 disabled={!inputValue.trim() || isGenerating}

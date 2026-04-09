@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles } from 'lucide-react';
 import { CanvasElement } from './CanvasArea';
+import { getBillingQuote } from '@/lib/pricing';
 
 interface ContextToolbarProps {
     element: CanvasElement;
@@ -73,6 +74,8 @@ export function ContextToolbar({
 
     const safeWidth = useMemo(() => Math.max(1, Math.round(element.width || 300)), [element.width]);
     const safeHeight = useMemo(() => Math.max(1, Math.round(element.height || 300)), [element.height]);
+    const removeBgQuote = getBillingQuote('remove_background');
+    const upscaleQuote = getBillingQuote('upscale', { scale: selectedUpscale });
 
     if (!element) return null;
 
@@ -182,7 +185,7 @@ export function ContextToolbar({
                                 ? 'hover:bg-gray-50 text-gray-700'
                                 : 'text-gray-300 cursor-not-allowed'
                         }`}
-                        title={element.type === 'image' ? '去背景' : '仅图片支持去背景'}
+                        title={element.type === 'image' ? `去背景（${removeBgQuote.credits}积分）` : '仅图片支持去背景'}
                         disabled={element.type !== 'image' || !onRemoveBackground || isRemovingBg}
                     >
                         <Eraser size={18} />
@@ -223,7 +226,7 @@ export function ContextToolbar({
                                     : 'hover:bg-gray-50 text-gray-700'
                                 : 'text-gray-300 cursor-not-allowed'
                         }`}
-                        title={element.type === 'image' ? '超分' : '仅图片支持超分'}
+                        title={element.type === 'image' ? `超分（${upscaleQuote.credits}积分）` : '仅图片支持超分'}
                         disabled={element.type !== 'image' || !onUpscale || isUpscaling}
                     >
                         <UpscaleIcon className="w-4 h-4" />
@@ -300,7 +303,7 @@ export function ContextToolbar({
                         <div className="flex items-center justify-between mb-3">
                             <span className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
                                 <CropIcon className="w-4 h-4 text-gray-700" />
-                                裁切
+                                裁切 · 免费
                             </span>
                             <button
                                 onClick={() => setShowCropPanel(false)}
@@ -362,7 +365,7 @@ export function ContextToolbar({
                             disabled={isCropping}
                             className="w-full px-3 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            {isCropping ? '裁切处理中...' : '应用裁切'}
+                            {isCropping ? '裁切处理中...' : '应用裁切（不扣积分）'}
                         </button>
                     </div>
                 )}
@@ -372,7 +375,7 @@ export function ContextToolbar({
                         <div className="flex items-center justify-between mb-3">
                             <span className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
                                 <UpscaleIcon className="w-4 h-4 text-gray-700" />
-                                Upscale
+                                Upscale · {upscaleQuote.credits}积分
                             </span>
                             <button
                                 onClick={() => setShowUpscalePanel(false)}
@@ -406,7 +409,7 @@ export function ContextToolbar({
                             disabled={isUpscaling}
                             className="w-full px-3 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            {isUpscaling ? '超分处理中...' : `开始 ${selectedUpscale}x 超分`}
+                            {isUpscaling ? '超分处理中...' : `开始 ${selectedUpscale}x 超分（${upscaleQuote.credits}积分）`}
                         </button>
                     </div>
                 )}

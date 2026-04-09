@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
+import { notifyCreditsBalanceUpdated } from '@/lib/credits-balance-events';
 
 interface UseCanvasGenerationParams {
   pan: CanvasPan;
@@ -144,6 +145,8 @@ export function useCanvasGeneration({
           throw new Error(data.details || data.error || '生成失败');
         }
 
+        notifyCreditsBalanceUpdated();
+
         const generatorElementId = selectedIds.find(
           (id) => elements.find((el) => el.id === id)?.type === 'image-generator'
         );
@@ -213,6 +216,8 @@ export function useCanvasGeneration({
         if (!response.ok) {
           throw new Error(data.details || data.error || '生成失败');
         }
+
+        notifyCreditsBalanceUpdated();
 
         return data.suggestion || '未收到回复';
       } catch (error) {

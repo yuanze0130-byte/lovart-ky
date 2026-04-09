@@ -5,8 +5,10 @@ import { Plus, Sparkles, Bell, X, Star } from 'lucide-react';
 import { SignedIn, SignedOut, SignInButton, UserButton, useUser } from "@clerk/nextjs";
 import { DashboardSidebar } from '@/components/lovart/DashboardSidebar';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
+import { CreditsBadge } from '@/components/lovart/CreditsBadge';
 import { useSupabase } from '@/hooks/useSupabase';
-import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
+import { useCreditsBalance } from '@/hooks/useCreditsBalance';
+import type { ProjectRow } from '@/lib/supabase';
 import Link from 'next/link';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -28,7 +30,7 @@ export default function LovartDashboard() {
     const supabase = useSupabase();
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [credits, setCredits] = useState<number | null>(null);
+    const { credits, isLoadingCredits } = useCreditsBalance();
     const [placeholder, setPlaceholder] = useState('');
     const [placeholderIndex, setPlaceholderIndex] = useState(0);
     const [inputValue, setInputValue] = useState('');
@@ -97,43 +99,19 @@ export default function LovartDashboard() {
             }
 
             try {
-                // 并行加载项目和积分，提升性能
-                const [projectsResult, creditsResult] = await Promise.all([
-                    supabase
-                        .from('projects')
-                        .select('*')
-                        .order('updated_at', { ascending: false }),
-                    supabase
-                        .from('user_credits')
-                        .select('credits')
-                        .eq('user_id', user.id)
-                        .single()
-                ]);
+                const { data: projectsData, error: projectsError } = await supabase
+                    .from('projects')
+                    .select('*')
+                    .order('updated_at', { ascending: false });
 
-                // 处理项目数据
-                if (projectsResult.error) throw projectsResult.error;
-                const projectRows = (projectsResult.data || []) as ProjectRow[];
+                if (projectsError) throw projectsError;
+                const projectRows = (projectsData || []) as ProjectRow[];
                 setProjects(projectRows.map((project) => ({
                     id: project.id,
                     title: project.title,
                     thumbnail: project.thumbnail,
                     updated_at: project.updated_at,
                 })));
-
-                // 处理积分数据
-                if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
-                    // 用户积分记录不存在，创建新记录
-                    const { data: newData } = await supabase
-                        .from('user_credits')
-                        .insert({ user_id: user.id, credits: 1000 })
-                        .select()
-                        .single();
-                    const insertedCredits = newData as UserCreditsRow | null;
-                    setCredits(insertedCredits?.credits || 1000);
-                } else if (!creditsResult.error) {
-                    const creditsData = creditsResult.data as Pick<UserCreditsRow, 'credits'> | null;
-                    setCredits(creditsData?.credits || 0);
-                }
             } catch (error) {
                 console.error('Failed to load data:', error);
             } finally {
@@ -323,12 +301,7 @@ export default function LovartDashboard() {
 
                             {/* Credits Display */}
                             <SignedIn>
-                                {credits !== null && (
-                                    <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
-                                        <span className="text-sm">⚡</span>
-                                        <span>{credits.toLocaleString()}</span>
-                                    </div>
-                                )}
+                                <CreditsBadge credits={credits} loading={isLoadingCredits} compact />
                             </SignedIn>
 
                             {/* User Button or Sign In */}

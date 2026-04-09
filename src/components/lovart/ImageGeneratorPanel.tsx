@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Sparkles, ChevronDown, Zap, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { getBillingQuote } from '@/lib/pricing';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
@@ -99,6 +100,11 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
     };
 
     const imageElements = getImageElements();
+    const imageQuote = getBillingQuote('generate_image', {
+        resolution,
+        aspectRatio,
+        referenceImage: Boolean(referenceImage),
+    });
 
     return (
         <div
@@ -270,7 +276,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                     }`}
                 >
                     <Zap size={16} className={isGenerating ? 'animate-pulse' : 'fill-current'} />
-                    <span className="font-medium">40</span>
+                    <span className="font-medium">{imageQuote.credits}</span>
                 </button>
             </div>
         </div>
