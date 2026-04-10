@@ -46,7 +46,7 @@ export default function ProjectsPage() {
                 if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
                     const { data: newData } = await supabase
                         .from('user_credits')
-                        .insert({ user_id: user.id, credits: 1000 })
+                        .insert({ user_id: user.id, credits: 80 })
                         .select()
                         .single();
                     const insertedCredits = newData as UserCreditsRow | null;
