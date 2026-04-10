@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { SupabaseAuthProvider } from '@/components/auth/SupabaseAuthProvider';
+import { ThemeProvider } from '@/components/theme/ThemeProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -14,8 +15,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="antialiased">
-        <SupabaseAuthProvider>{children}</SupabaseAuthProvider>
+      <body className="antialiased bg-background text-foreground transition-colors">
+        <ThemeProvider>
+          <SupabaseAuthProvider>{children}</SupabaseAuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

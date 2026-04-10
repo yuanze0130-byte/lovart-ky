@@ -270,7 +270,7 @@ export function ContextToolbar({
     if (element.type === 'image' || element.type === 'video') {
         return (
             <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
-                <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-1.5 flex items-center gap-1">
+                <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 p-1.5 flex items-center gap-1">
                     <div className="flex items-center gap-2 px-2 py-1 text-xs text-gray-600">
                         <span className="font-mono">
                             {Math.round(element.originalWidth || element.width || 0)} × {Math.round(element.originalHeight || element.height || 0)}

@@ -5,10 +5,17 @@ import { Sparkles, ChevronDown, Zap, Image as ImageIcon, Upload, X } from 'lucid
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
+type BananaVariant = 'standard' | 'pro';
 
 interface ImageGeneratorPanelProps {
     elementId: string;
-    onGenerate: (prompt: string, resolution: Resolution, aspectRatio: AspectRatio, referenceImage?: string) => Promise<void>;
+    onGenerate: (
+        prompt: string,
+        resolution: Resolution,
+        aspectRatio: AspectRatio,
+        referenceImage?: string,
+        modelVariant?: BananaVariant
+    ) => Promise<void>;
     isGenerating: boolean;
     style?: React.CSSProperties;
     canvasElements?: Array<{ id: string; type: string; content?: string; referenceImageId?: string }>;
@@ -18,9 +25,9 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
     const [prompt, setPrompt] = useState('');
     const [resolution, setResolution] = useState<Resolution>('1K');
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+    const [modelVariant, setModelVariant] = useState<BananaVariant>('pro');
     const [referenceImage, setReferenceImage] = useState<File | string | null>(null);
 
-    // Auto-fill reference image from source
     React.useEffect(() => {
         if (canvasElements) {
             const currentElement = canvasElements.find(el => el.id === elementId);
@@ -33,15 +40,19 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
         }
     }, [elementId, canvasElements, referenceImage]);
 
-    // Dropdown states
     const [showResolutionMenu, setShowResolutionMenu] = useState(false);
     const [showAspectRatioMenu, setShowAspectRatioMenu] = useState(false);
     const [showReferenceMenu, setShowReferenceMenu] = useState(false);
+    const [showModelMenu, setShowModelMenu] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const resolutions: Resolution[] = ['1K', '2K', '4K'];
     const aspectRatios: AspectRatio[] = ['1:1', '4:3', '16:9'];
+    const modelOptions: Array<{ value: BananaVariant; label: string }> = [
+        { value: 'standard', label: 'Nano Banana 标准' },
+        { value: 'pro', label: 'Nano Banana Pro' },
+    ];
 
     const handleKeyDown = async (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -57,15 +68,12 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
 
         if (referenceImage) {
             if (typeof referenceImage === 'string') {
-                // It's already a base64 string from canvas
                 referenceImageBase64 = referenceImage;
             } else {
-                // It's a File object, need to convert to base64
                 referenceImageBase64 = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = () => {
                         const result = reader.result as string;
-                        // Extract base64 part
                         if (result && result.includes(',')) {
                             resolve(result.split(',')[1]);
                         } else {
@@ -78,7 +86,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
             }
         }
 
-        await onGenerate(prompt, resolution, aspectRatio, referenceImageBase64);
+        await onGenerate(prompt, resolution, aspectRatio, referenceImageBase64, modelVariant);
     };
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -99,14 +107,14 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
     };
 
     const imageElements = getImageElements();
+    const activeModelLabel = modelOptions.find(option => option.value === modelVariant)?.label || 'Nano Banana Pro';
 
     return (
         <div
-            className="absolute z-50 bg-white rounded-2xl shadow-xl border border-gray-100 w-[450px] overflow-hidden"
+            className="absolute z-50 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-[450px] overflow-hidden"
             style={style}
             onMouseDown={(e) => e.stopPropagation()}
         >
-            {/* Hidden file input */}
             <input
                 type="file"
                 ref={fileInputRef}
@@ -126,7 +134,6 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                 />
             </div>
 
-            {/* Reference Image Preview */}
             {referenceImage && (
                 <div className="px-4 pb-2">
                     <div className="flex items-center gap-2 p-2 bg-blue-50 rounded-lg">
@@ -144,19 +151,39 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                 </div>
             )}
 
-            {/* Footer Controls */}
-            <div className="px-4 py-3 bg-gray-50/50 border-t border-gray-100 flex items-center justify-between">
+            <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/60 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                    {/* Model Selector */}
-                    <button className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors text-xs font-medium text-gray-700">
-                        <div className="w-3.5 h-3.5 rounded-full bg-black flex items-center justify-center">
-                            <Sparkles size={8} className="text-white" />
-                        </div>
-                        <span>Nano Banana Pro</span>
-                        <ChevronDown size={12} className="text-gray-400" />
-                    </button>
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowModelMenu(!showModelMenu)}
+                            className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors text-xs font-medium text-gray-700"
+                        >
+                            <div className="w-3.5 h-3.5 rounded-full bg-black flex items-center justify-center">
+                                <Sparkles size={8} className="text-white" />
+                            </div>
+                            <span>{activeModelLabel}</span>
+                            <ChevronDown size={12} className="text-gray-400" />
+                        </button>
+                        {showModelMenu && (
+                            <div className="absolute bottom-full mb-1 left-0 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[160px]">
+                                {modelOptions.map((option) => (
+                                    <div
+                                        key={option.value}
+                                        onClick={() => {
+                                            setModelVariant(option.value);
+                                            setShowModelMenu(false);
+                                        }}
+                                        className={`px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 ${
+                                            modelVariant === option.value ? 'text-blue-500 font-medium' : 'text-gray-700'
+                                        }`}
+                                    >
+                                        {option.label}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
-                    {/* Reference Image Button */}
                     <div className="relative">
                         <button
                             onClick={() => setShowReferenceMenu(!showReferenceMenu)}
@@ -200,7 +227,6 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                         )}
                     </div>
 
-                    {/* Resolution Selector */}
                     <div className="relative">
                         <div
                             onClick={() => setShowResolutionMenu(!showResolutionMenu)}
@@ -229,7 +255,6 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                         )}
                     </div>
 
-                    {/* Aspect Ratio Selector */}
                     <div className="relative">
                         <div
                             onClick={() => setShowAspectRatioMenu(!showAspectRatioMenu)}
@@ -259,7 +284,6 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                     </div>
                 </div>
 
-                {/* Generate Button */}
                 <button
                     onClick={() => prompt.trim() && !isGenerating && handleGenerate()}
                     disabled={!prompt.trim() || isGenerating}

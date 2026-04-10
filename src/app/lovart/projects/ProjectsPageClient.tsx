@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Plus, Bell, LogOut } from 'lucide-react';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { LoginModal } from '@/components/auth/LoginModal';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
 import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
@@ -138,11 +139,12 @@ export default function ProjectsPage() {
                 <div className="flex-1 overflow-y-auto">
                     <div className="flex items-center justify-between px-8 py-4">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
+                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
                             <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </div>
 
                         <div className="flex items-center gap-2">
+                            <ThemeToggle />
                             <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative">
                                 <Bell size={18} className="text-gray-600" />
                                 <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
@@ -213,11 +215,11 @@ export default function ProjectsPage() {
 
                             {projects.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-20">
-                                    <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                                        <Plus size={32} className="text-gray-400" />
+                                    <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                                        <Plus size={32} className="text-gray-400 dark:text-gray-500" />
                                     </div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">还没有项目</h3>
-                                    <p className="text-gray-500 mb-6">创建您的第一个项目开始设计</p>
+                                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">还没有项目</h3>
+                                    <p className="text-gray-500 dark:text-gray-400 mb-6">创建您的第一个项目开始设计</p>
                                     <Link
                                         href="/lovart/canvas"
                                         className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors"

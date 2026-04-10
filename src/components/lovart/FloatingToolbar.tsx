@@ -55,7 +55,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
 
     return (
         <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-50">
-            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-2 flex flex-col gap-2 w-14 items-center">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 flex flex-col gap-2 w-14 items-center">
                 {/* Select / Hand / Mark Tool */}
                 <div
                     className="relative"

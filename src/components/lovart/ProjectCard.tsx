@@ -102,8 +102,8 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
             </div>
 
             <div className="p-4">
-                <h3 className="font-medium text-gray-900 truncate">{title}</h3>
-                <p className="text-xs text-gray-500 mt-1">{date}</p>
+                <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">{title}</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{date}</p>
             </div>
         </div>
     );

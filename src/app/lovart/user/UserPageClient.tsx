@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift, Shield, Search, Save } from 'lucide-react';
 import { LoginModal } from '@/components/auth/LoginModal';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
 import type { UserCreditsRow, CreditTransactionRow } from '@/lib/supabase';
@@ -150,12 +151,12 @@ export default function UserPage() {
     };
 
     return (
-        <div className="h-screen bg-white text-gray-900 font-sans">
+        <div className="h-screen bg-white text-gray-900 font-sans dark:bg-[#0b0f17] dark:text-gray-100">
             <main className="h-full flex flex-col overflow-hidden">
                 <div className="flex-1 overflow-y-auto">
                     <div className="flex items-center justify-between px-8 py-4">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
+                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
                             <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </div>
 
@@ -227,12 +228,12 @@ export default function UserPage() {
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-gray-50 rounded-xl p-6">
+                                    <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6">
                                         <div className="flex items-center gap-3 mb-3">
                                             <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center">
                                                 <Coins size={20} className="text-white" />
                                             </div>
-                                            <h3 className="text-lg font-semibold text-gray-900">我的积分</h3>
+                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">我的积分</h3>
                                         </div>
                                         {isLoading ? (
                                             <p className="text-3xl font-bold text-gray-400">加载中...</p>
@@ -258,7 +259,7 @@ export default function UserPage() {
                             </div>
 
                             {isAdmin && (
-                                <div className="bg-white rounded-2xl shadow-sm p-8 mb-6 border border-gray-100">
+                                <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-8 mb-6 border border-gray-100 dark:border-gray-800">
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white">
                                             <Shield size={18} />

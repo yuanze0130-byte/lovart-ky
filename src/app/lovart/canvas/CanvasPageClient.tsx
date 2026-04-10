@@ -10,6 +10,7 @@ import { CanvasArea, CanvasElement } from '@/components/lovart/CanvasArea';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
 import { useCanvasElements } from '@/hooks/useCanvasElements';
@@ -215,7 +216,7 @@ function LovartCanvasContent() {
             <header className="absolute top-0 left-0 w-full h-14 flex items-center justify-between px-4 z-50 pointer-events-none">
                 <div className="flex items-center gap-2 pointer-events-auto">
                     <Link href="/lovart" className="flex items-center gap-1 p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold">L</div>
+                        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold">D</div>
                         <ChevronDown size={16} className="text-gray-500" />
                     </Link>
                     <input
@@ -250,6 +251,7 @@ function LovartCanvasContent() {
                 </div>
 
                 <div className="flex items-center gap-2 pointer-events-auto">
+                    <ThemeToggle />
                     <button
                         onClick={() => setShowChat(!showChat)}
                         className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showChat ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
@@ -354,7 +356,7 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                <div className="absolute bottom-4 left-4 flex items-center bg-white rounded-lg shadow-sm border border-gray-100 p-1 z-50">
+                <div className="absolute bottom-4 left-4 flex items-center bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800 p-1 z-50">
                     <button onClick={() => zoomOut()} className="p-1.5 hover:bg-gray-50 rounded text-gray-500">
                         <Minus size={16} />
                     </button>
@@ -373,10 +375,10 @@ function LovartCanvasContent() {
 export default function LovartCanvas() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+            <div className="min-h-screen bg-gray-50 dark:bg-[#0b0f17] flex items-center justify-center">
                 <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading canvas...</p>
+                    <p className="text-gray-600 dark:text-gray-300">Loading canvas...</p>
                 </div>
             </div>
         }>

@@ -174,7 +174,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
 
     return (
         <div
-            className="absolute z-50 bg-white rounded-2xl shadow-xl border border-gray-100 w-[450px] overflow-hidden"
+            className="absolute z-50 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-[450px] overflow-hidden"
             style={style}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -240,7 +240,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
             )}
 
             {/* Footer Controls */}
-            <div className="px-4 py-3 bg-gray-50/50 border-t border-gray-100 flex items-center justify-between">
+            <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/60 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     {/* Model Indicator */}
                     <button className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors text-xs font-medium text-gray-700">

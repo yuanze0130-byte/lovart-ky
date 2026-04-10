@@ -16,7 +16,7 @@ export function DashboardSidebar() {
             {/* Create Button */}
             <Link 
                 href="/lovart/canvas"
-                className="w-14 h-14 bg-black rounded-full flex items-center justify-center text-white hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl"
+                className="w-14 h-14 bg-black rounded-full flex items-center justify-center text-white hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl dark:bg-white dark:text-black dark:hover:bg-gray-200"
                 title="新建项目"
             >
                 <Plus size={24} />

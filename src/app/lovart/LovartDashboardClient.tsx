@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Plus, Sparkles, Bell, X, Star, LogOut } from 'lucide-react';
 import { DashboardSidebar } from '@/components/lovart/DashboardSidebar';
 import { LoginModal } from '@/components/auth/LoginModal';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { useSupabase } from '@/hooks/useSupabase';
@@ -251,11 +252,12 @@ export default function LovartDashboard() {
                     {/* Top Bar */}
                     <div className="flex items-center justify-between px-8 py-4">
                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
+                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
                             <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </div>
 
                         <div className="flex items-center gap-2">
+                            <ThemeToggle />
                             {/* Notification Bell */}
                             <div className="relative" ref={notificationRef}>
                                 <button 
@@ -285,7 +287,7 @@ export default function LovartDashboard() {
                                                     className={`px-4 py-3 border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors ${notification.isPinned ? 'bg-orange-50/50' : ''}`}
                                                 >
                                                     <div className="flex items-start gap-3">
-                                                        <div className="shrink-0 pt-0.5">
+                                                                <div className="shrink-0 pt-0.5">
                                                             {notification.isPinned ? (
                                                                 <span className="inline-block px-1.5 py-0.5 bg-orange-400 text-white rounded text-xs font-medium">置顶</span>
                                                             ) : notification.isNew ? (
@@ -355,21 +357,9 @@ export default function LovartDashboard() {
                     <div className="px-8 py-12">
                         {/* Hero Section */}
                         <div className="max-w-3xl mx-auto text-center mb-16">
-                            {/* Promo Badge */}
-                            <a 
-                                href="https://github.com/xiaoju111a/OpenLovart" 
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 px-4 py-2 bg-orange-50 hover:bg-orange-100 rounded-full text-sm text-gray-700 transition-colors mb-6"
-                            >
-                                <span className="px-2 py-0.5 bg-orange-400 text-white rounded text-xs font-medium">NEW</span>
-                                <span>OpenLovart 已开源，欢迎 Star ⭐</span>
-                                <span className="text-orange-600">→</span>
-                            </a>
-
                             <div className="flex items-center justify-center gap-3 mb-4">
                                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">L</div>
-                                <h1 className="text-4xl font-bold text-gray-900">doodleverse让设计更简单</h1>
+                                <h1 className="text-4xl font-bold text-gray-900">Doodleverse让设计更简单</h1>
                             </div>
                             <p className="text-gray-500 mb-8">输入想法即可生成，帮你完成一切</p>
 
@@ -440,11 +430,11 @@ export default function LovartDashboard() {
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                     {/* New Project Card */}
-                                    <Link href="/lovart/canvas" className="group flex flex-col items-center justify-center aspect-[4/3] bg-white rounded-2xl hover:bg-gray-50 transition-all cursor-pointer shadow-sm">
-                                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-gray-200 transition-colors">
-                                            <Plus size={24} className="text-gray-600" />
+                                    <Link href="/lovart/canvas" className="group flex flex-col items-center justify-center aspect-[4/3] bg-white dark:bg-gray-900 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer shadow-sm border border-gray-100 dark:border-gray-800">
+                                        <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
+                                            <Plus size={24} className="text-gray-600 dark:text-gray-300" />
                                         </div>
-                                        <span className="font-medium text-gray-600">新建项目</span>
+                                        <span className="font-medium text-gray-600 dark:text-gray-300">新建项目</span>
                                     </Link>
 
                                     {/* User's Projects */}
