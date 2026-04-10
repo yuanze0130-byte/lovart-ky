@@ -108,27 +108,31 @@ export function useCanvasElements({
     [setElements, setSelectedIds]
   );
 
+  const createImageGeneratorElement = useCallback((): CanvasElement => ({
+    id: uuidv4(),
+    type: 'image-generator',
+    x: 300 - pan.x + elements.length * 20,
+    y: 300 - pan.y + elements.length * 20,
+    width: 400,
+    height: 400,
+  }), [elements.length, pan.x, pan.y]);
+
+  const createVideoGeneratorElement = useCallback((): CanvasElement => ({
+    id: uuidv4(),
+    type: 'video-generator',
+    x: 300 - pan.x + elements.length * 20,
+    y: 300 - pan.y + elements.length * 20,
+    width: 400,
+    height: 300,
+  }), [elements.length, pan.x, pan.y]);
+
   const handleOpenImageGenerator = useCallback(() => {
-    appendElement({
-      id: uuidv4(),
-      type: 'image-generator',
-      x: 300 - pan.x + elements.length * 20,
-      y: 300 - pan.y + elements.length * 20,
-      width: 400,
-      height: 400,
-    });
-  }, [appendElement, elements.length, pan.x, pan.y]);
+    appendElement(createImageGeneratorElement());
+  }, [appendElement, createImageGeneratorElement]);
 
   const handleOpenVideoGenerator = useCallback(() => {
-    appendElement({
-      id: uuidv4(),
-      type: 'video-generator',
-      x: 300 - pan.x + elements.length * 20,
-      y: 300 - pan.y + elements.length * 20,
-      width: 400,
-      height: 300,
-    });
-  }, [appendElement, elements.length, pan.x, pan.y]);
+    appendElement(createVideoGeneratorElement());
+  }, [appendElement, createVideoGeneratorElement]);
 
   return {
     appendElement,
@@ -140,5 +144,7 @@ export function useCanvasElements({
     handleDelete,
     handleOpenImageGenerator,
     handleOpenVideoGenerator,
+    createImageGeneratorElement,
+    createVideoGeneratorElement,
   };
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, useEffect, Suspense } from 'react';
+import React, { useMemo, useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -15,25 +15,31 @@ import { useProjectPersistence } from '@/hooks/useProjectPersistence';
 import { useCanvasElements } from '@/hooks/useCanvasElements';
 import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
+import { v4 as uuidv4 } from 'uuid';
 
 function LovartCanvasContent() {
     const { user } = useAuth();
     const searchParams = useSearchParams();
     const projectId = searchParams.get('id');
 
-    const { scale, pan, setPan, zoomIn, zoomOut } = useCanvasViewport();
+    const { scale, pan, setPan, zoomIn, zoomOut, zoomTo } = useCanvasViewport();
     const [elements, setElements] = useState<CanvasElement[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [activeTool, setActiveTool] = useState('select'); // 'select', 'hand', 'mark', 'shape', 'text', 'draw'
+    const [activeTool, setActiveTool] = useState('select');
     const [title, setTitle] = useState('Untitled');
     const [isGenerating, setIsGenerating] = useState(false);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
     const [showChat, setShowChat] = useState(Boolean(promptFromUrl));
+    const historyRef = useRef<CanvasElement[][]>([]);
+    const futureRef = useRef<CanvasElement[][]>([]);
+    const clipboardRef = useRef<CanvasElement[]>([]);
+    const suppressHistoryRef = useRef(false);
 
     const {
         saveStatus,
         isLoading,
+        saveProject,
     } = useProjectPersistence({
         user,
         initialProjectId: projectId,
@@ -45,7 +51,6 @@ function LovartCanvasContent() {
         },
     });
 
-
     const {
         appendElement,
         handleAddImage,
@@ -56,6 +61,7 @@ function LovartCanvasContent() {
         handleDelete,
         handleOpenImageGenerator,
         handleOpenVideoGenerator,
+        createImageGeneratorElement,
     } = useCanvasElements({
         pan,
         elements,
@@ -84,25 +90,114 @@ function LovartCanvasContent() {
         setElements,
     });
 
-    // Handle Delete Key
+    useEffect(() => {
+        if (isLoading || suppressHistoryRef.current) return;
+        historyRef.current.push(JSON.parse(JSON.stringify(elements)));
+        if (historyRef.current.length > 100) {
+            historyRef.current.shift();
+        }
+        futureRef.current = [];
+    }, [elements, isLoading]);
+
+    const restoreElements = useCallback((nextElements: CanvasElement[]) => {
+        suppressHistoryRef.current = true;
+        setElements(nextElements);
+        window.setTimeout(() => {
+            suppressHistoryRef.current = false;
+        }, 0);
+    }, []);
+
+    const duplicateElements = useCallback((source: CanvasElement[]) => {
+        const idMap = new Map<string, string>();
+        source.forEach((element) => {
+            idMap.set(element.id, uuidv4());
+        });
+
+        return source.map((element) => ({
+            ...element,
+            id: idMap.get(element.id)!,
+            x: element.x + 24,
+            y: element.y + 24,
+            referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) || element.referenceImageId : element.referenceImageId,
+            connectorFrom: element.connectorFrom ? idMap.get(element.connectorFrom) || element.connectorFrom : element.connectorFrom,
+            connectorTo: element.connectorTo ? idMap.get(element.connectorTo) || element.connectorTo : element.connectorTo,
+            linkedElements: element.linkedElements?.map((id) => idMap.get(id) || id),
+            groupId: element.groupId ? uuidv4() : element.groupId,
+        }));
+    }, []);
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            // Don't delete if user is typing in an input or textarea
-            if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+            const isMac = navigator.platform.toUpperCase().includes('MAC');
+            const modKey = isMac ? e.metaKey : e.ctrlKey;
+            const activeTag = document.activeElement?.tagName;
+            const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA';
+
+            if (modKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                void saveProject();
                 return;
             }
 
+            if (modKey && e.shiftKey && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                void saveProject();
+                return;
+            }
+
+            if (isTyping) return;
+
             if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
+                e.preventDefault();
                 setElements(prev => prev.filter(el => !selectedIds.includes(el.id)));
                 setSelectedIds([]);
+                return;
+            }
+
+            if (modKey && e.key.toLowerCase() === 'c' && selectedIds.length > 0) {
+                e.preventDefault();
+                clipboardRef.current = elements.filter(el => selectedIds.includes(el.id));
+                return;
+            }
+
+            if (modKey && e.key.toLowerCase() === 'v' && clipboardRef.current.length > 0) {
+                e.preventDefault();
+                const duplicated = duplicateElements(clipboardRef.current);
+                setElements(prev => [...prev, ...duplicated]);
+                setSelectedIds(duplicated.map(el => el.id));
+                return;
+            }
+
+            if (modKey && e.key.toLowerCase() === 'z') {
+                e.preventDefault();
+                if (historyRef.current.length > 1) {
+                    const current = historyRef.current.pop();
+                    if (current) futureRef.current.unshift(current);
+                    const previous = historyRef.current[historyRef.current.length - 1];
+                    if (previous) {
+                        restoreElements(JSON.parse(JSON.stringify(previous)));
+                        setSelectedIds([]);
+                    }
+                }
+                return;
+            }
+
+            if (modKey && e.key.toLowerCase() === 'r') {
+                e.preventDefault();
+                const next = futureRef.current.shift();
+                if (next) {
+                    historyRef.current.push(JSON.parse(JSON.stringify(next)));
+                    restoreElements(JSON.parse(JSON.stringify(next)));
+                    setSelectedIds([]);
+                }
+                return;
             }
         };
+
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds]);
+    }, [duplicateElements, elements, restoreElements, saveProject, selectedIds]);
 
-
-    // 显示加载状态
     if (isLoading) {
         return (
             <div className="h-screen w-full bg-white flex items-center justify-center">
@@ -117,7 +212,6 @@ function LovartCanvasContent() {
 
     return (
         <div className="h-screen w-full bg-white relative overflow-hidden">
-            {/* Header */}
             <header className="absolute top-0 left-0 w-full h-14 flex items-center justify-between px-4 z-50 pointer-events-none">
                 <div className="flex items-center gap-2 pointer-events-auto">
                     <Link href="/lovart" className="flex items-center gap-1 p-1 hover:bg-gray-100 rounded-lg transition-colors">
@@ -132,7 +226,6 @@ function LovartCanvasContent() {
                         placeholder="Untitled"
                         disabled={isLoading}
                     />
-                    {/* Save Status Indicator */}
                     <div className="flex items-center gap-1.5 text-xs text-gray-500">
                         {saveStatus === 'saving' && (
                             <>
@@ -152,9 +245,7 @@ function LovartCanvasContent() {
                                 <span className="text-red-600">离线</span>
                             </>
                         )}
-                        {!user && (
-                            <span className="text-amber-600">未登录</span>
-                        )}
+                        {!user && <span className="text-amber-600">未登录</span>}
                     </div>
                 </div>
 
@@ -168,7 +259,6 @@ function LovartCanvasContent() {
                 </div>
             </header>
 
-            {/* AI Designer Panel */}
             {showChat && (
                 <div className="absolute right-4 top-20 bottom-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300">
                     <AiDesignerPanel
@@ -180,18 +270,27 @@ function LovartCanvasContent() {
                 </div>
             )}
 
-            {/* Main Editor Area */}
             <div className="absolute inset-0">
                 <CanvasArea
                     scale={scale}
                     pan={pan}
                     onPanChange={setPan}
+                    onZoomIn={zoomIn}
+                    onZoomOut={zoomOut}
+                    onZoomTo={zoomTo}
                     elements={elements}
                     selectedIds={selectedIds}
                     onSelect={setSelectedIds}
                     onElementChange={handleElementChange}
                     onDelete={handleDelete}
                     onAddElement={appendElement}
+                    onCreateNodeAt={(x, y) => {
+                        appendElement({
+                            ...createImageGeneratorElement(),
+                            x,
+                            y,
+                        });
+                    }}
                     activeTool={activeTool}
                     onDragStart={() => setIsDraggingElement(true)}
                     onDragEnd={() => setIsDraggingElement(false)}
@@ -212,13 +311,11 @@ function LovartCanvasContent() {
                     onOpenVideoGenerator={handleOpenVideoGenerator}
                 />
 
-                {/* Image Generator Panel */}
                 {selectedIds.length === 1 && !isDraggingElement && (() => {
                     const selectedEl = elements.find(el => el.id === selectedIds[0]);
                     if (selectedEl?.type === 'image-generator') {
-                        // Calculate position
                         const left = (selectedEl.x * scale) + pan.x;
-                        const top = ((selectedEl.y + (selectedEl.height || 400)) * scale) + pan.y + 20; // 20px margin
+                        const top = ((selectedEl.y + (selectedEl.height || 400)) * scale) + pan.y + 20;
 
                         return (
                             <ImageGeneratorPanel
@@ -236,13 +333,11 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                {/* Video Generator Panel */}
                 {selectedIds.length === 1 && !isDraggingElement && (() => {
                     const selectedEl = elements.find(el => el.id === selectedIds[0]);
                     if (selectedEl?.type === 'video-generator') {
-                        // Calculate position
                         const left = (selectedEl.x * scale) + pan.x;
-                        const top = ((selectedEl.y + (selectedEl.height || 300)) * scale) + pan.y + 20; // 20px margin
+                        const top = ((selectedEl.y + (selectedEl.height || 300)) * scale) + pan.y + 20;
 
                         return (
                             <VideoGeneratorPanel
@@ -259,15 +354,14 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                {/* Zoom Controls */}
                 <div className="absolute bottom-4 left-4 flex items-center bg-white rounded-lg shadow-sm border border-gray-100 p-1 z-50">
-                    <button onClick={zoomOut} className="p-1.5 hover:bg-gray-50 rounded text-gray-500">
+                    <button onClick={() => zoomOut()} className="p-1.5 hover:bg-gray-50 rounded text-gray-500">
                         <Minus size={16} />
                     </button>
                     <span className="px-2 text-xs font-medium text-gray-600 min-w-[3rem] text-center">
                         {Math.round(scale * 100)}%
                     </span>
-                    <button onClick={zoomIn} className="p-1.5 hover:bg-gray-50 rounded text-gray-500">
+                    <button onClick={() => zoomIn()} className="p-1.5 hover:bg-gray-50 rounded text-gray-500">
                         <Plus size={16} />
                     </button>
                 </div>
@@ -290,4 +384,3 @@ export default function LovartCanvas() {
         </Suspense>
     );
 }
-
