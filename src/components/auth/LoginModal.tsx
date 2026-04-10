@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X, Mail } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -9,29 +9,67 @@ interface LoginModalProps {
   onClose: () => void;
 }
 
+const RESEND_COOLDOWN_SECONDS = 60;
+
 export function LoginModal({ open, onClose }: LoginModalProps) {
   const { signInWithOtp } = useAuth();
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+
+    const timer = window.setTimeout(() => {
+      setCooldown((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [cooldown]);
+
+  useEffect(() => {
+    if (!open) {
+      setLoading(false);
+      setMessage(null);
+      setError(null);
+      setCooldown(0);
+    }
+  }, [open]);
 
   if (!open) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || cooldown > 0) return;
+
     setLoading(true);
     setMessage(null);
     setError(null);
+
     try {
       await signInWithOtp(email.trim());
-      setMessage('登录链接已发送到你的邮箱，请查收。');
+      setCooldown(RESEND_COOLDOWN_SECONDS);
+      setMessage('邮件已发送，请检查邮箱并在 60 秒内不要重复点击。若没看到，也请先查看垃圾箱。');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '发送登录邮件失败');
+      const rawMessage = err instanceof Error ? err.message : '发送登录邮件失败';
+      if (rawMessage.toLowerCase().includes('rate limit')) {
+        setCooldown(RESEND_COOLDOWN_SECONDS);
+        setError('发送过于频繁，请稍等 60 秒后再试，不要连续点击。');
+      } else {
+        setError(rawMessage);
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const buttonText = loading
+    ? '发送中...'
+    : cooldown > 0
+      ? `请 ${cooldown}s 后重试`
+      : '发送登录链接';
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4">
@@ -69,10 +107,10 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
 
           <button
             type="submit"
-            disabled={loading || !email.trim()}
+            disabled={loading || cooldown > 0 || !email.trim()}
             className="w-full px-4 py-3 bg-black text-white rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? '发送中...' : '发送登录链接'}
+            {buttonText}
           </button>
         </form>
       </div>
