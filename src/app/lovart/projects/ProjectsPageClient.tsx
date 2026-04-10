@@ -205,7 +205,7 @@ export default function ProjectsPage() {
                                     <span className="ml-2 text-sm font-normal text-gray-500">({projects.length})</span>
                                 </h2>
                                 <Link
-                                    href="/lovart/canvas"
+                                    href="/canvas"
                                     className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors"
                                 >
                                     <Plus size={18} />
@@ -221,7 +221,7 @@ export default function ProjectsPage() {
                                     <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">还没有项目</h3>
                                     <p className="text-gray-500 dark:text-gray-400 mb-6">创建您的第一个项目开始设计</p>
                                     <Link
-                                        href="/lovart/canvas"
+                                        href="/canvas"
                                         className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors"
                                     >
                                         创建项目
@@ -230,7 +230,7 @@ export default function ProjectsPage() {
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                                     {projects.map((project) => (
-                                        <Link key={project.id} href={`/lovart/canvas?id=${project.id}`}>
+                                        <Link key={project.id} href={`/canvas?id=${project.id}`}>
                                             <ProjectCard
                                                 title={project.title}
                                                 date={formatDate(project.updated_at)}

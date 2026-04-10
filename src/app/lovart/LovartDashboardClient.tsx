@@ -219,7 +219,7 @@ export default function LovartDashboard() {
 
             // 2. Redirect to canvas page with the new project and prompt
             // Don't wait for API call, let the canvas page handle it
-            window.location.href = `/lovart/canvas?id=${newProjectId}&prompt=${encodeURIComponent(inputValue.trim())}`;
+            window.location.href = `/canvas?id=${newProjectId}&prompt=${encodeURIComponent(inputValue.trim())}`;
         } catch (error) {
             console.error('Generation failed:', error);
             alert(error instanceof Error ? error.message : '生成失败，请重试');
@@ -418,7 +418,7 @@ export default function LovartDashboard() {
                                     最近项目
                                     {user && !isLoading && <span className="ml-2 text-sm font-normal text-gray-500">({projects.length})</span>}
                                 </h2>
-                                <Link href="/lovart/projects" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">
+                                <Link href="/projects" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">
                                     查看全部 →
                                 </Link>
                             </div>
@@ -430,7 +430,7 @@ export default function LovartDashboard() {
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                     {/* New Project Card */}
-                                    <Link href="/lovart/canvas" className="group flex flex-col items-center justify-center aspect-[4/3] bg-white dark:bg-gray-900 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer shadow-sm border border-gray-100 dark:border-gray-800">
+                                    <Link href="/canvas" className="group flex flex-col items-center justify-center aspect-[4/3] bg-white dark:bg-gray-900 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer shadow-sm border border-gray-100 dark:border-gray-800">
                                         <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
                                             <Plus size={24} className="text-gray-600 dark:text-gray-300" />
                                         </div>
@@ -441,7 +441,7 @@ export default function LovartDashboard() {
                                     {user && projects.slice(0, 3).map((project) => (
                                         <Link
                                             key={project.id}
-                                            href={`/lovart/canvas?id=${project.id}`}
+                                            href={`/canvas?id=${project.id}`}
                                         >
                                             <ProjectCard
                                                 title={project.title}

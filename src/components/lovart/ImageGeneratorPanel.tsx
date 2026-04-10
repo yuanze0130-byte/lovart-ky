@@ -111,7 +111,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
 
     return (
         <div
-            className="absolute z-50 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-[450px] overflow-hidden"
+            className="absolute z-50 w-[450px] overflow-hidden rounded-3xl border border-white/10 bg-slate-950/78 shadow-[0_28px_80px_rgba(2,6,23,0.5)] backdrop-blur-2xl"
             style={style}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -162,7 +162,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                                 <Sparkles size={8} className="text-white" />
                             </div>
                             <span>{activeModelLabel}</span>
-                            <ChevronDown size={12} className="text-gray-400" />
+                            <ChevronDown size={12} className="text-slate-500" />
                         </button>
                         {showModelMenu && (
                             <div className="absolute bottom-full mb-1 left-0 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 py-1 z-10 min-w-[160px]">
@@ -214,7 +214,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                                                 <div
                                                     key={el.id}
                                                     onClick={() => handleCanvasImageSelect(el.content!)}
-                                                    className="px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+                                                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-white/8"
                                                 >
                                                     <ImageIcon size={14} />
                                                     <span>图片 {idx + 1}</span>
@@ -258,13 +258,13 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                     <div className="relative">
                         <div
                             onClick={() => setShowAspectRatioMenu(!showAspectRatioMenu)}
-                            className="flex items-center gap-1 text-xs text-gray-600 font-medium cursor-pointer hover:bg-gray-100 px-1.5 py-1 rounded-lg transition-colors"
+                            className="flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-white/8"
                         >
                             <span>{aspectRatio}</span>
                             <ChevronDown size={12} />
                         </div>
                         {showAspectRatioMenu && (
-                            <div className="absolute bottom-full mb-1 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[60px]">
+                            <div className="absolute bottom-full z-10 mb-1 min-w-[60px] rounded-xl border border-white/10 bg-slate-950/92 py-1 shadow-[0_20px_50px_rgba(2,6,23,0.45)] backdrop-blur-xl">
                                 {aspectRatios.map((ratio) => (
                                     <div
                                         key={ratio}
@@ -272,8 +272,8 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                                             setAspectRatio(ratio);
                                             setShowAspectRatioMenu(false);
                                         }}
-                                        className={`px-3 py-1 text-xs cursor-pointer hover:bg-gray-50 ${
-                                            aspectRatio === ratio ? 'text-blue-500 font-medium' : 'text-gray-700'
+                                        className={`cursor-pointer px-3 py-1 text-xs transition-colors hover:bg-white/8 ${
+                                            aspectRatio === ratio ? 'font-medium text-sky-300' : 'text-slate-200'
                                         }`}
                                     >
                                         {ratio}
@@ -287,10 +287,10 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                 <button
                     onClick={() => prompt.trim() && !isGenerating && handleGenerate()}
                     disabled={!prompt.trim() || isGenerating}
-                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg transition-all ${
+                    className={`flex items-center gap-1.5 rounded-xl px-4 py-1.5 transition-all ${
                         prompt.trim() && !isGenerating
-                            ? 'bg-gray-900 text-white shadow-md hover:bg-gray-800'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            ? 'bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-500 text-white shadow-[0_12px_30px_rgba(37,99,235,0.35)] hover:brightness-110'
+                            : 'cursor-not-allowed bg-white/8 text-slate-500'
                     }`}
                 >
                     <Zap size={16} className={isGenerating ? 'animate-pulse' : 'fill-current'} />

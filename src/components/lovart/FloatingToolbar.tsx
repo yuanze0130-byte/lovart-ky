@@ -54,8 +54,8 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
     };
 
     return (
-        <div className="absolute left-4 top-1/2 -translate-y-1/2 flex flex-col gap-4 z-50">
-            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 flex flex-col gap-2 w-14 items-center">
+        <div className="absolute left-4 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-4">
+            <div className="flex w-14 flex-col items-center gap-2 rounded-[1.25rem] border border-white/10 bg-slate-950/72 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.4)] backdrop-blur-xl">
                 {/* Select / Hand / Mark Tool */}
                 <div
                     className="relative"
@@ -120,7 +120,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     onMouseLeave={() => setShowUploadMenu(false)}
                 >
                     <button
-                        className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${showUploadMenu ? 'bg-gray-100 text-gray-900' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                        className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${showUploadMenu ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
                             }`}
                         title="Add / Upload"
                     >
@@ -223,14 +223,14 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     {/* Text Submenu */}
                     {showTextMenu && (
                         <div className="absolute left-full top-0 pl-3 z-50">
-                            <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-2 min-w-[160px] flex flex-col gap-1">
+                            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 min-w-[160px] flex flex-col gap-1">
                                 <button
                                     onClick={() => {
                                         onToolChange('text');
                                         onAddText();
                                         setShowTextMenu(false);
                                     }}
-                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors text-left"
+                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-sm text-gray-700 dark:text-gray-300 transition-colors text-left"
                                 >
                                     <Type size={16} />
                                     <span>Default Text</span>
@@ -246,9 +246,9 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     onMouseLeave={() => setShowDrawMenu(false)}
                 >
                     <button
-                        className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${activeTool === 'draw' || showDrawMenu
-                            ? 'bg-gray-100 text-gray-900'
-                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                        className={`flex items-center justify-center rounded-xl p-2.5 transition-all ${activeTool === 'draw' || showDrawMenu
+                            ? 'bg-sky-400/14 text-sky-200 shadow-[0_0_0_1px_rgba(56,189,248,0.18)]'
+                            : 'text-slate-400 hover:bg-white/8 hover:text-slate-100'
                             }`}
                         title="Draw"
                     >

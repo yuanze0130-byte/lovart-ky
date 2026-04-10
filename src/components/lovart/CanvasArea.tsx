@@ -453,15 +453,15 @@ export function CanvasArea({
 
             {selectedIds.length > 1 && !isDragging && (
                 <div
-                    className="absolute z-50 bg-white dark:bg-gray-900 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 p-2 flex items-center gap-3"
+                    className="absolute z-50 rounded-2xl border border-white/10 bg-slate-950/72 p-2.5 flex items-center gap-3 shadow-[0_20px_60px_rgba(2,6,23,0.45)] backdrop-blur-xl"
                     style={{ left: '50%', top: 20, transform: 'translateX(-50%)' }}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
-                    <span className="text-sm font-medium text-gray-600 px-2">{selectedIds.length} items selected</span>
-                    <div className="w-px h-6 bg-gray-200" />
+                    <span className="px-2 text-sm font-medium text-slate-200">{selectedIds.length} items selected</span>
+                    <div className="h-6 w-px bg-white/10" />
                     <button
                         onClick={() => selectedIds.forEach((id) => onDelete(id))}
-                        className="p-1.5 hover:bg-red-50 text-red-500 rounded-md"
+                        className="rounded-md px-2.5 py-1.5 text-red-300 transition-colors hover:bg-red-500/12 hover:text-red-200"
                     >
                         Delete All
                     </button>
@@ -474,9 +474,9 @@ export function CanvasArea({
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
             >
                 <div
-                    className="absolute inset-0 opacity-[0.03]"
+                    className="absolute inset-0 opacity-[0.22] dark:opacity-[0.22]"
                     style={{
-                        backgroundImage: 'radial-gradient(#000 1px, transparent 1px)',
+                        backgroundImage: 'radial-gradient(rgba(148,163,184,0.28) 1px, transparent 1px)',
                         backgroundSize: '20px 20px',
                         width: '10000px',
                         height: '10000px',
@@ -537,8 +537,8 @@ export function CanvasArea({
                                 onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
                             >
                                 {el.type === 'image-generator' && (
-                                    <div className="w-full h-full bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-400 dark:border-blue-500 rounded-xl flex flex-col items-center justify-center text-blue-500 dark:text-blue-300">
-                                        <div className="w-20 h-20 mb-4 opacity-50">
+                                    <div className="w-full h-full rounded-2xl border border-sky-400/35 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.24),_rgba(15,23,42,0.92)_62%)] flex flex-col items-center justify-center text-sky-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_40px_rgba(2,6,23,0.35)] backdrop-blur-sm">
+                                        <div className="w-20 h-20 mb-4 opacity-60">
                                             <svg viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
                                             </svg>
@@ -638,14 +638,14 @@ export function CanvasArea({
                 {currentPath && (
                     <div className="absolute inset-0 pointer-events-none z-50">
                         <svg className="w-full h-full overflow-visible">
-                            <path d={renderPath(currentPath.points)} stroke="#000000" strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            <path d={renderPath(currentPath.points)} stroke="#38BDF8" strokeWidth={3} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                     </div>
                 )}
 
                 {selectionBox && (
                     <div
-                        className="absolute border border-blue-500 dark:border-blue-400 bg-blue-500/10 dark:bg-blue-400/10 pointer-events-none z-50"
+                        className="absolute z-50 pointer-events-none border border-sky-400/80 bg-sky-400/12 shadow-[0_0_0_1px_rgba(56,189,248,0.14)]"
                         style={{
                             left: Math.min(selectionBox.startX, selectionBox.currentX),
                             top: Math.min(selectionBox.startY, selectionBox.currentY),

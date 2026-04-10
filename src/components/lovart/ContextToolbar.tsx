@@ -270,7 +270,7 @@ export function ContextToolbar({
     if (element.type === 'image' || element.type === 'video') {
         return (
             <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
-                <div className="bg-white dark:bg-gray-900 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 p-1.5 flex items-center gap-1">
+                <div className="flex items-center gap-1 rounded-2xl border border-white/10 bg-slate-950/76 p-1.5 shadow-[0_20px_60px_rgba(2,6,23,0.4)] backdrop-blur-xl">
                     <div className="flex items-center gap-2 px-2 py-1 text-xs text-gray-600">
                         <span className="font-mono">
                             {Math.round(element.originalWidth || element.width || 0)} × {Math.round(element.originalHeight || element.height || 0)}
@@ -306,12 +306,12 @@ export function ContextToolbar({
                             setCropHeight(safeHeight);
                             setShowCropPanel((prev) => !prev);
                         }}
-                        className={`p-2 rounded-lg transition-colors ${
+                        className={`rounded-lg p-2 transition-colors ${
                             element.type === 'image' && onCrop
                                 ? showCropPanel
-                                    ? 'bg-gray-100 text-gray-900'
-                                    : 'hover:bg-gray-50 text-gray-700'
-                                : 'text-gray-300 cursor-not-allowed'
+                                    ? 'bg-sky-400/14 text-sky-200'
+                                    : 'text-slate-200 hover:bg-white/8'
+                                : 'cursor-not-allowed text-slate-600'
                         }`}
                         title={element.type === 'image' ? '裁切' : '仅图片支持裁切'}
                         disabled={element.type !== 'image' || !onCrop || isCropping}

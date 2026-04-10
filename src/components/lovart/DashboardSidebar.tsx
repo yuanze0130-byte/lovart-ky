@@ -7,15 +7,15 @@ import { usePathname } from 'next/navigation';
 
 export function DashboardSidebar() {
     const pathname = usePathname();
-    const isHomePage = pathname === '/lovart';
-    const isProjectsPage = pathname === '/lovart/projects';
-    const isUserPage = pathname === '/lovart/user';
+    const isHomePage = pathname === '/' || pathname === '/lovart';
+    const isProjectsPage = pathname === '/projects' || pathname === '/lovart/projects';
+    const isUserPage = pathname === '/user' || pathname === '/lovart/user';
 
     return (
         <aside className="fixed left-8 top-1/3 flex flex-col items-center gap-4 z-50">
             {/* Create Button */}
             <Link 
-                href="/lovart/canvas"
+                href="/canvas"
                 className="w-14 h-14 bg-black rounded-full flex items-center justify-center text-white hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl dark:bg-white dark:text-black dark:hover:bg-gray-200"
                 title="新建项目"
             >
@@ -25,7 +25,7 @@ export function DashboardSidebar() {
             {/* Navigation Container */}
             <nav className="bg-white rounded-full shadow-lg p-3 flex flex-col items-center gap-3">
                 <Link 
-                    href="/lovart" 
+                    href="/" 
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                         isHomePage 
                             ? 'bg-gray-100 text-black' 
@@ -36,7 +36,7 @@ export function DashboardSidebar() {
                     <Home size={20} />
                 </Link>
                 <Link 
-                    href="/lovart/projects" 
+                    href="/projects" 
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                         isProjectsPage 
                             ? 'bg-gray-100 text-black' 
@@ -47,7 +47,7 @@ export function DashboardSidebar() {
                     <Folder size={20} />
                 </Link>
                 <Link 
-                    href="/lovart/user" 
+                    href="/user" 
                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
                         isUserPage 
                             ? 'bg-gray-100 text-black' 

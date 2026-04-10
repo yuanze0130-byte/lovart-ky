@@ -201,21 +201,21 @@ function LovartCanvasContent() {
 
     if (isLoading) {
         return (
-            <div className="h-screen w-full bg-white flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-600 font-medium">加载画布中...</p>
-                    <p className="text-gray-400 text-sm mt-2">正在从云端获取数据</p>
+            <div className="h-screen w-full bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)] flex items-center justify-center">
+                <div className="text-center rounded-3xl border border-white/10 bg-slate-950/50 px-8 py-7 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-xl">
+                    <div className="w-16 h-16 border-4 border-slate-700 border-t-sky-400 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="font-medium text-slate-100">加载画布中...</p>
+                    <p className="text-sm mt-2 text-slate-400">正在从云端获取数据</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="h-screen w-full bg-white relative overflow-hidden">
+        <div className="h-screen w-full relative overflow-hidden bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)]">
             <header className="absolute top-0 left-0 w-full h-14 flex items-center justify-between px-4 z-50 pointer-events-none">
                 <div className="flex items-center gap-2 pointer-events-auto">
-                    <Link href="/lovart" className="flex items-center gap-1 p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                    <Link href="/" className="flex items-center gap-1 p-1 hover:bg-gray-100 rounded-lg transition-colors">
                         <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold">D</div>
                         <ChevronDown size={16} className="text-gray-500" />
                     </Link>
@@ -236,8 +236,8 @@ function LovartCanvasContent() {
                         )}
                         {saveStatus === 'saved' && user && (
                             <>
-                                <Cloud size={14} className="text-green-500" />
-                                <span className="text-green-600">已保存</span>
+                                <Cloud size={14} className="text-emerald-400" />
+                                <span className="text-emerald-300">已保存</span>
                             </>
                         )}
                         {saveStatus === 'offline' && (
@@ -356,14 +356,14 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                <div className="absolute bottom-4 left-4 flex items-center bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-100 dark:border-gray-800 p-1 z-50">
-                    <button onClick={() => zoomOut()} className="p-1.5 hover:bg-gray-50 rounded text-gray-500">
+                <div className="absolute bottom-4 left-4 z-50 flex items-center rounded-2xl border border-white/10 bg-slate-950/70 p-1.5 shadow-[0_16px_40px_rgba(2,6,23,0.38)] backdrop-blur-xl">
+                    <button onClick={() => zoomOut()} className="rounded-xl p-2 text-slate-300 transition-colors hover:bg-white/8 hover:text-sky-200">
                         <Minus size={16} />
                     </button>
-                    <span className="px-2 text-xs font-medium text-gray-600 min-w-[3rem] text-center">
+                    <span className="min-w-[3.4rem] px-2 text-center text-xs font-medium text-slate-200">
                         {Math.round(scale * 100)}%
                     </span>
-                    <button onClick={() => zoomIn()} className="p-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 rounded text-gray-500 dark:text-gray-300">
+                    <button onClick={() => zoomIn()} className="rounded-xl p-2 text-slate-300 transition-colors hover:bg-white/8 hover:text-sky-200">
                         <Plus size={16} />
                     </button>
                 </div>
@@ -375,10 +375,10 @@ function LovartCanvasContent() {
 export default function LovartCanvas() {
     return (
         <Suspense fallback={
-            <div className="min-h-screen bg-gray-50 dark:bg-[#0b0f17] flex items-center justify-center">
-                <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600 dark:text-gray-300">Loading canvas...</p>
+            <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)] flex items-center justify-center">
+                <div className="text-center rounded-3xl border border-white/10 bg-slate-950/50 px-7 py-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-xl">
+                    <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-sky-400"></div>
+                    <p className="text-slate-200">Loading canvas...</p>
                 </div>
             </div>
         }>

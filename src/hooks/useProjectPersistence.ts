@@ -119,7 +119,7 @@ export function useProjectPersistence({
 
         setCurrentProjectId(newProjectId);
         if (typeof window !== 'undefined') {
-          window.history.pushState({}, '', `/lovart/canvas?id=${newProjectId}`);
+          window.history.pushState({}, '', `/canvas?id=${newProjectId}`);
         }
       }
 

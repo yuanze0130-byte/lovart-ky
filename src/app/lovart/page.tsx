@@ -1,9 +1,5 @@
-'use client';
-
-import dynamic from 'next/dynamic';
-
-const LovartDashboardClient = dynamic(() => import('./LovartDashboardClient'), { ssr: false });
+import { redirect } from 'next/navigation';
 
 export default function LovartPage() {
-  return <LovartDashboardClient />;
+  redirect('/');
 }

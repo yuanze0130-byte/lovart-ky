@@ -174,7 +174,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
 
     return (
         <div
-            className="absolute z-50 bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800 w-[450px] overflow-hidden"
+            className="absolute z-50 w-[450px] overflow-hidden rounded-3xl border border-white/10 bg-slate-950/78 shadow-[0_28px_80px_rgba(2,6,23,0.5)] backdrop-blur-2xl"
             style={style}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -193,7 +193,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                     onChange={(e) => setPrompt(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="描述你想要生成的视频..."
-                    className="w-full h-24 resize-none outline-none text-gray-700 placeholder-gray-400 text-lg bg-transparent"
+                    className="h-24 w-full resize-none bg-transparent text-lg text-slate-100 outline-none placeholder:text-slate-500"
                     disabled={isGenerating}
                 />
             </div>
@@ -228,11 +228,11 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                              progress < 100 ? '即将完成...' : 
                              '视频准备好了！'}
                         </span>
-                        <span className="text-xs text-gray-500 ml-auto">{progress}%</span>
+                        <span className="ml-auto text-xs text-slate-500">{progress}%</span>
                     </div>
-                    <div className="bg-gray-100 rounded-full h-1 overflow-hidden">
+                    <div className="h-1 overflow-hidden rounded-full bg-white/10">
                         <div
-                            className="bg-gray-900 h-full transition-all duration-300"
+                            className="h-full bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-500 transition-all duration-300"
                             style={{ width: `${progress}%` }}
                         />
                     </div>
@@ -281,7 +281,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                                                 <div
                                                     key={el.id}
                                                     onClick={() => handleCanvasImageSelect(el.content!)}
-                                                    className="px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+                                                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-white/8"
                                                 >
                                                     <ImageIcon size={14} />
                                                     <span>图片 {idx + 1}</span>
