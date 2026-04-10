@@ -270,14 +270,14 @@ export default function LovartDashboard() {
 
                                 {/* Notifications Dropdown */}
                                 {showNotifications && (
-                                    <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
-                                        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-                                            <h3 className="font-semibold text-gray-900">通知</h3>
+                                    <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 z-50 overflow-hidden">
+                                        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+                                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">通知</h3>
                                             <button 
                                                 onClick={() => setShowNotifications(false)}
-                                                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                                                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                                             >
-                                                <X size={16} className="text-gray-500" />
+                                                <X size={16} className="text-gray-500 dark:text-gray-400" />
                                             </button>
                                         </div>
                                         <div className="max-h-80 overflow-y-auto">
@@ -418,7 +418,7 @@ export default function LovartDashboard() {
                                     最近项目
                                     {user && !isLoading && <span className="ml-2 text-sm font-normal text-gray-500">({projects.length})</span>}
                                 </h2>
-                                <Link href="/lovart/projects" className="text-sm text-gray-600 hover:text-gray-900">
+                                <Link href="/lovart/projects" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">
                                     查看全部 →
                                 </Link>
                             </div>

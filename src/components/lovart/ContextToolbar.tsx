@@ -640,7 +640,7 @@ export function ContextToolbar({
 
     return (
         <div
-            className="bg-white rounded-xl shadow-lg border border-gray-200 p-2 flex items-center gap-3"
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 p-2 flex items-center gap-3"
             onMouseDown={(e) => e.stopPropagation()}
         >
             <div className="flex items-center gap-2">

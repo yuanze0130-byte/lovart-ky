@@ -333,7 +333,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                             <ChevronDown size={12} />
                         </div>
                         {showSecondsMenu && (
-                            <div className="absolute bottom-full mb-1 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[60px]">
+                            <div className="absolute bottom-full mb-1 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 py-1 z-10 min-w-[60px]">
                                 {secondsOptions.map((sec) => (
                                     <div
                                         key={sec}

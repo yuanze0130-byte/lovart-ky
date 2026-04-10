@@ -165,7 +165,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                             <ChevronDown size={12} className="text-gray-400" />
                         </button>
                         {showModelMenu && (
-                            <div className="absolute bottom-full mb-1 left-0 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[160px]">
+                            <div className="absolute bottom-full mb-1 left-0 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 py-1 z-10 min-w-[160px]">
                                 {modelOptions.map((option) => (
                                     <div
                                         key={option.value}
@@ -195,7 +195,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                             <Upload size={16} />
                         </button>
                         {showReferenceMenu && (
-                            <div className="absolute bottom-full mb-1 left-0 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[140px]">
+                            <div className="absolute bottom-full mb-1 left-0 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 py-1 z-10 min-w-[140px]">
                                 <div
                                     onClick={() => {
                                         fileInputRef.current?.click();

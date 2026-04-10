@@ -363,7 +363,7 @@ function LovartCanvasContent() {
                     <span className="px-2 text-xs font-medium text-gray-600 min-w-[3rem] text-center">
                         {Math.round(scale * 100)}%
                     </span>
-                    <button onClick={() => zoomIn()} className="p-1.5 hover:bg-gray-50 rounded text-gray-500">
+                    <button onClick={() => zoomIn()} className="p-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 rounded text-gray-500 dark:text-gray-300">
                         <Plus size={16} />
                     </button>
                 </div>

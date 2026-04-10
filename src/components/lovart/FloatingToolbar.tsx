@@ -192,7 +192,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     {/* Shape Submenu */}
                     {showShapeMenu && (
                         <div className="absolute left-full top-0 pl-3 z-50">
-                            <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-3 min-w-[200px]">
+                            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-3 min-w-[200px]">
                                 <div className="mb-2 text-xs text-gray-500 font-medium">Shapes</div>
                                 <div className="flex gap-2 mb-4">
                                     <button onClick={() => handleShapeClick('square')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><Square size={20} /></button>
@@ -258,13 +258,13 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     {/* Draw Submenu */}
                     {showDrawMenu && (
                         <div className="absolute left-full top-0 pl-3 z-50">
-                            <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-2 min-w-[160px] flex flex-col gap-1">
+                            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-2 min-w-[160px] flex flex-col gap-1">
                                 <button
                                     onClick={() => {
                                         onToolChange('draw');
                                         setShowDrawMenu(false);
                                     }}
-                                    className={`flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm transition-colors text-left ${activeTool === 'draw' ? 'bg-gray-50 text-black font-medium' : 'text-gray-700'}`}
+                                    className={`flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 text-sm transition-colors text-left ${activeTool === 'draw' ? 'bg-gray-50 dark:bg-gray-800 text-black dark:text-white font-medium' : 'text-gray-700 dark:text-gray-300'}`}
                                 >
                                     <Pencil size={16} />
                                     <span>Pen</span>

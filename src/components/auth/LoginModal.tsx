@@ -96,7 +96,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full outline-none text-sm"
+                className="w-full outline-none text-sm bg-transparent text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                 required
               />
             </div>

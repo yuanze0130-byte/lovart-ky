@@ -453,7 +453,7 @@ export function CanvasArea({
 
             {selectedIds.length > 1 && !isDragging && (
                 <div
-                    className="absolute z-50 bg-white rounded-xl shadow-lg border border-gray-200 p-2 flex items-center gap-3"
+                    className="absolute z-50 bg-white dark:bg-gray-900 rounded-xl shadow-lg border border-gray-200 dark:border-gray-800 p-2 flex items-center gap-3"
                     style={{ left: '50%', top: 20, transform: 'translateX(-50%)' }}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
@@ -537,7 +537,7 @@ export function CanvasArea({
                                 onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
                             >
                                 {el.type === 'image-generator' && (
-                                    <div className="w-full h-full bg-blue-50 border-2 border-blue-400 rounded-xl flex flex-col items-center justify-center text-blue-500">
+                                    <div className="w-full h-full bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-400 dark:border-blue-500 rounded-xl flex flex-col items-center justify-center text-blue-500 dark:text-blue-300">
                                         <div className="w-20 h-20 mb-4 opacity-50">
                                             <svg viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
@@ -549,7 +549,7 @@ export function CanvasArea({
                                 )}
 
                                 {el.type === 'video-generator' && (
-                                    <div className="w-full h-full bg-blue-50 border-2 border-blue-400 rounded-xl flex flex-col items-center justify-center text-blue-500">
+                                    <div className="w-full h-full bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-400 dark:border-blue-500 rounded-xl flex flex-col items-center justify-center text-blue-500 dark:text-blue-300">
                                         <div className="w-20 h-20 mb-4 opacity-50">
                                             <svg viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
@@ -570,7 +570,7 @@ export function CanvasArea({
 
                                 {selectedIds.includes(el.id) && !isDrawing && (
                                     <>
-                                        <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
+                                        <div className="absolute inset-0 border-2 border-blue-500 dark:border-blue-400 pointer-events-none" />
                                         {selectedIds.length === 1 && (
                                             <>
                                                 {['nw', 'ne', 'sw', 'se', 'w', 'e', 'n', 's'].map((handle) => {
@@ -645,7 +645,7 @@ export function CanvasArea({
 
                 {selectionBox && (
                     <div
-                        className="absolute border border-blue-500 bg-blue-500/10 pointer-events-none z-50"
+                        className="absolute border border-blue-500 dark:border-blue-400 bg-blue-500/10 dark:bg-blue-400/10 pointer-events-none z-50"
                         style={{
                             left: Math.min(selectionBox.startX, selectionBox.currentX),
                             top: Math.min(selectionBox.startY, selectionBox.currentY),
