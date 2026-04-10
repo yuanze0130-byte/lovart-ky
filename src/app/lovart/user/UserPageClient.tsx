@@ -359,7 +359,7 @@ export default function UserPage() {
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
-                                        <span>图片生成默认消耗 <strong className="text-gray-900">5 积分</strong></span>
+                                        <span>图片生成默认消耗 <strong className="text-gray-900">5 积分</strong>（按 t8star 口径计费）</span>
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
