@@ -125,7 +125,7 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
                         {/* Welcome Message */}
                         <div className="flex items-start gap-3">
                             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center flex-shrink-0">
-                                <span className="text-white text-sm font-bold">L</span>
+                                <span className="text-white text-sm font-bold">D</span>
                             </div>
                             <div className="flex-1 space-y-2">
                                 <h3 className="text-base font-semibold text-gray-900">Hi，我是你的AI设计师</h3>

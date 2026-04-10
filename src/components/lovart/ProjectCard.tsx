@@ -66,7 +66,7 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                         </button>
 
                         {menuOpen && (
-                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden">
+                            <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
                                 {onRename && (
                                     <button
                                         type="button"
