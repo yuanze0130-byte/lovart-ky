@@ -1,19 +1,35 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift, Shield, Search, Save } from 'lucide-react';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
 import type { UserCreditsRow, CreditTransactionRow } from '@/lib/supabase';
 
 export default function UserPage() {
-    const { user, signOut } = useAuth();
+    const { user, session, signOut } = useAuth();
     const supabase = useSupabase();
     const [credits, setCredits] = useState<number | null>(null);
     const [transactions, setTransactions] = useState<CreditTransactionRow[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showLoginModal, setShowLoginModal] = useState(false);
+    const [adminIdentifier, setAdminIdentifier] = useState('');
+    const [adminCredits, setAdminCredits] = useState('80');
+    const [adminNote, setAdminNote] = useState('');
+    const [adminLoading, setAdminLoading] = useState(false);
+    const [adminResult, setAdminResult] = useState<string | null>(null);
+    const [adminError, setAdminError] = useState<string | null>(null);
+
+    const adminEmails = useMemo(
+        () => (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '')
+            .split(',')
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean),
+        []
+    );
+
+    const isAdmin = !!user?.email && adminEmails.includes(user.email.toLowerCase());
 
     useEffect(() => {
         async function loadUserCredits() {
@@ -90,6 +106,47 @@ export default function UserPage() {
             hour: '2-digit',
             minute: '2-digit',
         });
+    };
+
+    const handleAdminAdjustCredits = async () => {
+        if (!session?.access_token) {
+            setAdminError('当前登录态无效，请重新登录后再试');
+            return;
+        }
+
+        setAdminLoading(true);
+        setAdminError(null);
+        setAdminResult(null);
+
+        try {
+            const response = await fetch('/api/admin/credits', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({
+                    identifier: adminIdentifier,
+                    credits: Number(adminCredits),
+                    note: adminNote,
+                }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || '调整失败');
+            }
+
+            setAdminResult(
+                `已更新 ${result.targetEmail || result.targetUserId}：${result.beforeCredits} → ${result.credits}（变化 ${result.delta >= 0 ? '+' : ''}${result.delta}）`
+            );
+            setAdminNote('');
+        } catch (error) {
+            setAdminError(error instanceof Error ? error.message : '调整失败');
+        } finally {
+            setAdminLoading(false);
+        }
     };
 
     return (
@@ -200,6 +257,70 @@ export default function UserPage() {
                                 </div>
                             </div>
 
+                            {isAdmin && (
+                                <div className="bg-white rounded-2xl shadow-sm p-8 mb-6 border border-gray-100">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white">
+                                            <Shield size={18} />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-gray-900">管理员调积分</h3>
+                                            <p className="text-sm text-gray-500">按邮箱或用户 ID 直接设置积分余额，并自动记录流水。</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">目标用户（邮箱或 user_id）</label>
+                                            <div className="relative">
+                                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                <input
+                                                    value={adminIdentifier}
+                                                    onChange={(e) => setAdminIdentifier(e.target.value)}
+                                                    placeholder="例如 user@example.com 或 uuid"
+                                                    className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3 text-sm outline-none focus:border-gray-400"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">设置为多少积分</label>
+                                            <input
+                                                value={adminCredits}
+                                                onChange={(e) => setAdminCredits(e.target.value)}
+                                                type="number"
+                                                min="0"
+                                                placeholder="例如 200"
+                                                className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-400"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-4">
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">备注（可选）</label>
+                                        <input
+                                            value={adminNote}
+                                            onChange={(e) => setAdminNote(e.target.value)}
+                                            placeholder="例如：补偿测试积分 / 活动赠送"
+                                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-400"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => void handleAdminAdjustCredits()}
+                                            disabled={adminLoading || !adminIdentifier.trim() || adminCredits === ''}
+                                            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-black text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <Save size={16} />
+                                            {adminLoading ? '保存中...' : '保存积分'}
+                                        </button>
+
+                                        {adminResult && <span className="text-sm text-green-600">{adminResult}</span>}
+                                        {adminError && <span className="text-sm text-red-600">{adminError}</span>}
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="bg-white rounded-2xl shadow-sm p-8 mb-6">
                                 <h3 className="text-lg font-semibold text-gray-900 mb-4">最近积分流水</h3>
                                 {transactions.length === 0 ? (
@@ -238,7 +359,7 @@ export default function UserPage() {
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
-                                        <span>图片生成默认消耗 <strong className="text-gray-900">12 积分</strong></span>
+                                        <span>图片生成默认消耗 <strong className="text-gray-900">5 积分</strong></span>
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
@@ -246,7 +367,7 @@ export default function UserPage() {
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <span className="text-gray-400 mt-1">•</span>
-                                        <span>去背景消耗 2 积分，超分消耗 6 积分</span>
+                                        <span>去背景消耗 2 积分，超分消耗 5 积分</span>
                                     </li>
                                 </ul>
                             </div>

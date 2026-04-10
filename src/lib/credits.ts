@@ -16,7 +16,8 @@ type CreditAction =
   | 'generate_video'
   | 'remove_background'
   | 'upscale'
-  | 'signup_bonus';
+  | 'signup_bonus'
+  | 'manual_adjust';
 
 export async function ensureUserCredits(userId: string): Promise<UserCreditsRow> {
   const supabase = createServerSupabaseClient();
