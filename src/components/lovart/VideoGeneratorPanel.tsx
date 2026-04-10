@@ -10,7 +10,7 @@ interface VideoGeneratorPanelProps {
     elementId: string;
     onGenerate: (videoUrl: string) => Promise<void>;
     style?: React.CSSProperties;
-    canvasElements?: Array<{ id: string; type: string; content?: string; referenceImageId?: string }>;
+    canvasElements?: Array<{ id: string; type: string; content?: string; referenceImageId?: string; prompt?: string }>;
 }
 
 export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElements }: VideoGeneratorPanelProps) {
@@ -33,18 +33,23 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
     const sizes: VideoSize[] = ['720x1280', '1280x720', '1024x1792', '1792x1024'];
     const secondsOptions: VideoSeconds[] = [10, 15];
 
-    // Auto-fill reference image from source
+    // Auto-fill reference image and prompt from source
     useEffect(() => {
-        if (canvasElements) {
-            const currentElement = canvasElements.find(el => el.id === elementId);
-            if (currentElement?.referenceImageId) {
-                const sourceImage = canvasElements.find(el => el.id === currentElement.referenceImageId);
-                if (sourceImage?.content && !referenceImage) {
-                    setReferenceImage(sourceImage.content);
-                }
+        if (!canvasElements) return;
+
+        const currentElement = canvasElements.find(el => el.id === elementId);
+
+        if (currentElement?.referenceImageId) {
+            const sourceImage = canvasElements.find(el => el.id === currentElement.referenceImageId);
+            if (sourceImage?.content && !referenceImage) {
+                setReferenceImage(sourceImage.content);
             }
         }
-    }, [elementId, canvasElements, referenceImage]);
+
+        if (currentElement?.prompt && !prompt) {
+            setPrompt(currentElement.prompt);
+        }
+    }, [elementId, canvasElements, referenceImage, prompt]);
 
     // Poll for video status
     useEffect(() => {

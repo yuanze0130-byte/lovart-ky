@@ -10,10 +10,12 @@ import { CanvasArea, CanvasElement } from '@/components/lovart/CanvasArea';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
+import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
 import { useCanvasElements } from '@/hooks/useCanvasElements';
+import { useProjectAssets, type ProjectAsset, type StoryboardItem, normalizeStoryboardItems } from '@/hooks/useProjectAssets';
 import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { v4 as uuidv4 } from 'uuid';
@@ -32,6 +34,8 @@ function LovartCanvasContent() {
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
     const [showChat, setShowChat] = useState(Boolean(promptFromUrl));
+    const [assetsCollapsed, setAssetsCollapsed] = useState(false);
+    const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
     const historyRef = useRef<CanvasElement[][]>([]);
     const futureRef = useRef<CanvasElement[][]>([]);
     const clipboardRef = useRef<CanvasElement[]>([]);
@@ -63,6 +67,7 @@ function LovartCanvasContent() {
         handleOpenImageGenerator,
         handleOpenVideoGenerator,
         createImageGeneratorElement,
+        createVideoGeneratorElement,
     } = useCanvasElements({
         pan,
         elements,
@@ -91,6 +96,29 @@ function LovartCanvasContent() {
         setElements,
     });
 
+    const projectAssets = useProjectAssets(elements);
+    const storyboardStorageKey = useMemo(() => `lovart:storyboard:${projectId || 'draft'}`, [projectId]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        try {
+            const raw = window.localStorage.getItem(storyboardStorageKey);
+            if (!raw) {
+                setStoryboard([]);
+                return;
+            }
+            const parsed = JSON.parse(raw) as StoryboardItem[];
+            setStoryboard(normalizeStoryboardItems(parsed));
+        } catch {
+            setStoryboard([]);
+        }
+    }, [storyboardStorageKey]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        window.localStorage.setItem(storyboardStorageKey, JSON.stringify(normalizeStoryboardItems(storyboard)));
+    }, [storyboard, storyboardStorageKey]);
+
     useEffect(() => {
         if (isLoading || suppressHistoryRef.current) return;
         historyRef.current.push(JSON.parse(JSON.stringify(elements)));
@@ -107,6 +135,231 @@ function LovartCanvasContent() {
             suppressHistoryRef.current = false;
         }, 0);
     }, []);
+
+    const handleInsertAsset = useCallback((asset: ProjectAsset) => {
+        const width = asset.type === 'video' ? 400 : 300;
+        const height = asset.type === 'video' ? 300 : 200;
+        const x = (window.innerWidth / 2 - pan.x) / scale - width / 2;
+        const y = (window.innerHeight / 2 - 56 - pan.y) / scale - height / 2;
+
+        appendElement({
+            id: uuidv4(),
+            type: asset.type,
+            x,
+            y,
+            width,
+            height,
+            content: asset.url,
+        });
+    }, [appendElement, pan.x, pan.y, scale]);
+
+    const handleLocateAsset = useCallback((asset: ProjectAsset) => {
+        const source = elements.find((element) => element.id === asset.elementId);
+        if (!source) return;
+
+        setSelectedIds([source.id]);
+        setPan({
+            x: window.innerWidth / 2 - ((source.x + (source.width || 300) / 2) * scale),
+            y: window.innerHeight / 2 - 56 - ((source.y + (source.height || 200) / 2) * scale),
+        });
+    }, [elements, scale, setPan]);
+
+    const handleUseAsImageReference = useCallback((asset: ProjectAsset) => {
+        const activeGenerator = elements.find((element) => selectedIds.length === 1 && element.id === selectedIds[0] && element.type === 'image-generator');
+        if (!activeGenerator) return;
+        handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
+    }, [elements, handleElementChange, selectedIds]);
+
+    const handleUseAsVideoReference = useCallback((asset: ProjectAsset) => {
+        const activeGenerator = elements.find((element) => selectedIds.length === 1 && element.id === selectedIds[0] && element.type === 'video-generator');
+        if (!activeGenerator) return;
+        handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
+    }, [elements, handleElementChange, selectedIds]);
+
+    const handleAddToStoryboard = useCallback((asset: ProjectAsset) => {
+        setStoryboard((prev) => {
+            if (prev.some((item) => item.assetId === asset.id)) {
+                return prev;
+            }
+            return normalizeStoryboardItems([
+                ...prev,
+                {
+                    id: uuidv4(),
+                    assetId: asset.id,
+                    elementId: asset.elementId,
+                    title: asset.title,
+                    type: asset.type,
+                    thumbnailUrl: asset.url,
+                    order: prev.length,
+                    sourcePrompt: asset.prompt,
+                    createdAt: new Date().toISOString(),
+                },
+            ]);
+        });
+    }, []);
+
+    const handleMoveStoryboardItem = useCallback((itemId: string, direction: 'up' | 'down') => {
+        setStoryboard((prev) => {
+            const index = prev.findIndex((item) => item.id === itemId);
+            if (index === -1) return prev;
+            const targetIndex = direction === 'up' ? index - 1 : index + 1;
+            if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(index, 1);
+            next.splice(targetIndex, 0, moved);
+            return normalizeStoryboardItems(next);
+        });
+    }, []);
+
+    const handleRemoveStoryboardItem = useCallback((itemId: string) => {
+        setStoryboard((prev) => normalizeStoryboardItems(prev.filter((item) => item.id !== itemId)));
+    }, []);
+
+    const handleRenameStoryboardItem = useCallback((itemId: string, title: string) => {
+        setStoryboard((prev) => prev.map((item) => item.id === itemId ? { ...item, title } : item));
+    }, []);
+
+    const handleUpdateStoryboardBrief = useCallback((itemId: string, brief: string) => {
+        setStoryboard((prev) => prev.map((item) => item.id === itemId ? { ...item, sourcePrompt: brief } : item));
+    }, []);
+
+    const buildStoryboardVideoFlow = useCallback((item: StoryboardItem, options?: { x?: number; y?: number; forceStandalone?: boolean; shotIndex?: number }) => {
+        const source = elements.find((element) => element.id === item.elementId);
+        const width = 400;
+        const height = 300;
+        const spacing = 120;
+
+        const fallbackX = options?.x ?? ((window.innerWidth / 2 - pan.x) / scale - width / 2);
+        const fallbackY = options?.y ?? ((window.innerHeight / 2 - 56 - pan.y) / scale - height / 2);
+
+        const shotLabel = `Shot ${String((options?.shotIndex ?? item.order) + 1).padStart(2, '0')}`;
+        const draftPrompt = [
+            shotLabel,
+            item.title,
+            item.sourcePrompt,
+            item.type === 'image' ? '请基于这张分镜参考图生成一个具有镜头运动与主体动作的视频镜头。' : '请基于这个分镜片段继续生成风格一致、运动自然的视频镜头。',
+        ].filter(Boolean).join('｜');
+
+        if (!source || options?.forceStandalone) {
+            const standaloneId = uuidv4();
+            const standaloneElement: CanvasElement = {
+                ...createVideoGeneratorElement(),
+                id: standaloneId,
+                x: fallbackX,
+                y: fallbackY,
+                width,
+                height,
+                prompt: draftPrompt,
+            };
+            return {
+                sourceId: undefined,
+                generatorId: standaloneId,
+                elementsToAdd: [standaloneElement],
+                selectedId: standaloneId,
+                updateSource: false,
+            };
+        }
+
+        const groupId = uuidv4();
+        const connectorId = uuidv4();
+        const generatorId = uuidv4();
+
+        const generatorElement: CanvasElement = {
+            ...createVideoGeneratorElement(),
+            id: generatorId,
+            x: options?.x ?? (source.x + (source.width || width) + spacing),
+            y: options?.y ?? source.y,
+            width,
+            height,
+            referenceImageId: source.type === 'image' ? source.id : undefined,
+            prompt: draftPrompt,
+            groupId,
+            linkedElements: [source.id, connectorId],
+        };
+
+        const connectorElement: CanvasElement = {
+            id: connectorId,
+            type: 'connector',
+            x: 0,
+            y: 0,
+            connectorFrom: source.id,
+            connectorTo: generatorId,
+            connectorStyle: 'dashed',
+            color: '#6B7280',
+            strokeWidth: 2,
+            groupId,
+        };
+
+        return {
+            sourceId: source.id,
+            generatorId,
+            elementsToAdd: [connectorElement, generatorElement],
+            selectedId: generatorId,
+            updateSource: true,
+            groupId,
+            connectorId,
+        };
+    }, [createVideoGeneratorElement, elements, pan.x, pan.y, scale]);
+
+    const handleCreateVideoFromStoryboard = useCallback((item: StoryboardItem) => {
+        const flow = buildStoryboardVideoFlow(item, { shotIndex: item.order });
+
+        setElements((prev) => {
+            if (!flow.updateSource || !flow.sourceId || !flow.connectorId || !flow.groupId) {
+                return [...prev, ...flow.elementsToAdd];
+            }
+
+            const updatedPrev = prev.map((el) => {
+                if (el.id === flow.sourceId) {
+                    return {
+                        ...el,
+                        groupId: flow.groupId,
+                        linkedElements: [...(el.linkedElements || []), flow.connectorId, flow.generatorId],
+                    };
+                }
+                return el;
+            });
+            return [...updatedPrev, ...flow.elementsToAdd];
+        });
+
+        setSelectedIds([flow.selectedId]);
+        setActiveTool('select');
+    }, [buildStoryboardVideoFlow, setActiveTool, setElements, setSelectedIds]);
+
+    const handleCreateStoryboardFlow = useCallback(() => {
+        if (storyboard.length === 0) return;
+
+        const baseX = (window.innerWidth / 2 - pan.x) / scale - 200;
+        const baseY = (window.innerHeight / 2 - 56 - pan.y) / scale - 150;
+        const verticalGap = 380;
+
+        const flows = storyboard.map((item, index) => buildStoryboardVideoFlow(item, {
+            x: baseX,
+            y: baseY + index * verticalGap,
+            forceStandalone: true,
+            shotIndex: index,
+        }));
+
+        setElements((prev) => [...prev, ...flows.flatMap((flow) => flow.elementsToAdd)]);
+        setSelectedIds(flows.map((flow) => flow.selectedId));
+        setActiveTool('select');
+    }, [buildStoryboardVideoFlow, pan.x, pan.y, scale, setActiveTool, setElements, setSelectedIds, storyboard]);
+
+    const handleLocateStoryboardItem = useCallback((item: StoryboardItem) => {
+        const asset = projectAssets.find((entry) => entry.id === item.assetId);
+        if (asset) {
+            handleLocateAsset(asset);
+            return;
+        }
+
+        const source = elements.find((element) => element.id === item.elementId);
+        if (!source) return;
+        setSelectedIds([source.id]);
+        setPan({
+            x: window.innerWidth / 2 - ((source.x + (source.width || 300) / 2) * scale),
+            y: window.innerHeight / 2 - 56 - ((source.y + (source.height || 200) / 2) * scale),
+        });
+    }, [elements, handleLocateAsset, projectAssets, scale, setPan]);
 
     const duplicateElements = useCallback((source: CanvasElement[]) => {
         const idMap = new Map<string, string>();
@@ -355,6 +608,27 @@ function LovartCanvasContent() {
                     }
                     return null;
                 })()}
+
+                <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? 'right-[420px]' : 'right-4'}`}>
+                    <AssetsPanel
+                        assets={projectAssets}
+                        storyboard={storyboard}
+                        collapsed={assetsCollapsed}
+                        onToggleCollapse={() => setAssetsCollapsed((prev) => !prev)}
+                        onInsertAsset={handleInsertAsset}
+                        onLocateAsset={handleLocateAsset}
+                        onUseAsImageReference={handleUseAsImageReference}
+                        onUseAsVideoReference={handleUseAsVideoReference}
+                        onAddToStoryboard={handleAddToStoryboard}
+                        onLocateStoryboardItem={handleLocateStoryboardItem}
+                        onMoveStoryboardItem={handleMoveStoryboardItem}
+                        onRemoveStoryboardItem={handleRemoveStoryboardItem}
+                        onRenameStoryboardItem={handleRenameStoryboardItem}
+                        onUpdateStoryboardBrief={handleUpdateStoryboardBrief}
+                        onCreateVideoFromStoryboard={handleCreateVideoFromStoryboard}
+                        onCreateStoryboardFlow={handleCreateStoryboardFlow}
+                    />
+                </div>
 
                 <div className="absolute bottom-4 left-4 z-50 flex items-center rounded-2xl border border-gray-200 bg-white/92 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-black/72 dark:shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
                     <button onClick={() => zoomOut()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
