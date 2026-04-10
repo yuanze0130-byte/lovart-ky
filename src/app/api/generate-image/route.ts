@@ -4,6 +4,7 @@ import { requireUser } from '@/lib/require-user';
 import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
+type ModelVariant = 'standard' | 'pro';
 
 interface GeminiInlineDataPart {
   inlineData?: {
@@ -28,6 +29,7 @@ interface GenerateImagePayload {
   referenceImage?: string;
   resolution?: '1K' | '2K' | '4K';
   aspectRatio?: '1:1' | '4:3' | '16:9';
+  modelVariant?: ModelVariant;
 }
 
 function getProvider(): GeminiProvider {
@@ -110,10 +112,22 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 
   content.push({ type: 'text', text: finalPrompt });
 
+  const proxyModel =
+    payload.modelVariant === 'standard'
+      ? process.env.GEMINI_PROXY_STANDARD_MODEL || 'nano-banana'
+      : process.env.GEMINI_PROXY_MODEL || 'gemini-3.1-flash-image-preview';
+
   const response = (await client.chat.completions.create({
-    model: process.env.GEMINI_PROXY_MODEL || 'gemini-3.1-flash-image-preview',
+    model: proxyModel,
     messages: [{ role: 'user', content }],
   })) as unknown as GeminiChatCompletion;
+
+  const baseResult = {
+    requestedAspectRatio: payload.aspectRatio || '1:1',
+    requestedResolution: payload.resolution || '1K',
+    provider: 'proxy' as const,
+    modelVariant: payload.modelVariant || 'pro',
+  };
 
   const parts = response.choices?.[0]?.message?.parts;
   if (parts && Array.isArray(parts)) {
@@ -123,9 +137,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
         return {
           imageData: `data:${mimeType};base64,${part.inlineData.data}`,
           textResponse: '',
-          requestedAspectRatio: payload.aspectRatio || '1:1',
-          requestedResolution: payload.resolution || '1K',
-          provider: 'proxy',
+          ...baseResult,
         };
       }
     }
@@ -139,9 +151,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
       return {
         imageData: base64Match[0],
         textResponse: '',
-        requestedAspectRatio: payload.aspectRatio || '1:1',
-        requestedResolution: payload.resolution || '1K',
-        provider: 'proxy',
+        ...baseResult,
       };
     }
 
@@ -150,9 +160,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
       return {
         imageData: urlMatch[0],
         textResponse: '',
-        requestedAspectRatio: payload.aspectRatio || '1:1',
-        requestedResolution: payload.resolution || '1K',
-        provider: 'proxy',
+        ...baseResult,
       };
     }
 
@@ -161,9 +169,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
       return {
         imageData: `data:image/png;base64,${trimmed}`,
         textResponse: '',
-        requestedAspectRatio: payload.aspectRatio || '1:1',
-        requestedResolution: payload.resolution || '1K',
-        provider: 'proxy',
+        ...baseResult,
       };
     }
 
@@ -248,7 +254,8 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
         textResponse: '',
         requestedAspectRatio: payload.aspectRatio || '1:1',
         requestedResolution: payload.resolution || '1K',
-        provider: 'official',
+        provider: 'official' as const,
+        modelVariant: payload.modelVariant || 'pro',
       };
     }
   }
@@ -291,6 +298,7 @@ export async function POST(request: NextRequest) {
       referenceImage,
       resolution = '1K',
       aspectRatio = '1:1',
+      modelVariant = 'pro',
     } = (await request.json()) as GenerateImagePayload;
 
     if (!prompt || typeof prompt !== 'string') {
@@ -302,6 +310,7 @@ export async function POST(request: NextRequest) {
       referenceImage,
       resolution,
       aspectRatio,
+      modelVariant,
     };
 
     const provider = getProvider();

@@ -5,6 +5,8 @@ import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 
+type BananaVariant = 'standard' | 'pro';
+
 interface UseCanvasGenerationParams {
   pan: CanvasPan;
   elements: CanvasElement[];
@@ -122,7 +124,8 @@ export function useCanvasGeneration({
       prompt: string,
       resolution: '1K' | '2K' | '4K',
       aspectRatio: '1:1' | '4:3' | '16:9',
-      referenceImage?: string
+      referenceImage?: string,
+      modelVariant: BananaVariant = 'pro'
     ) => {
       setIsGenerating(true);
       try {
@@ -136,6 +139,7 @@ export function useCanvasGeneration({
             resolution,
             aspectRatio,
             referenceImage,
+            modelVariant,
             mimeType: referenceImage ? 'image/jpeg' : undefined,
           }),
         });
@@ -160,6 +164,7 @@ export function useCanvasGeneration({
             actualWidth: dimensions.width,
             actualHeight: dimensions.height,
             actualAspectRatio: `${dimensions.width}:${dimensions.height}`,
+            modelVariant: data.modelVariant || modelVariant,
           });
 
           if (generatorElementId) {
