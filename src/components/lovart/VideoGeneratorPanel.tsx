@@ -174,7 +174,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
 
     return (
         <div
-            className="absolute z-50 w-[450px] overflow-hidden rounded-3xl border border-white/10 bg-slate-950/78 shadow-[0_28px_80px_rgba(2,6,23,0.5)] backdrop-blur-2xl"
+            className="absolute z-50 w-[450px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:rounded-3xl dark:border-white/10 dark:bg-black/78 dark:shadow-[0_28px_80px_rgba(0,0,0,0.5)] dark:backdrop-blur-2xl"
             style={style}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -240,7 +240,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
             )}
 
             {/* Footer Controls */}
-            <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/60 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/60 px-4 py-3 dark:border-white/10 dark:bg-gray-900/70">
                 <div className="flex items-center gap-2">
                     {/* Model Indicator */}
                     <button className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors text-xs font-medium text-gray-700">
@@ -281,7 +281,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                                                 <div
                                                     key={el.id}
                                                     onClick={() => handleCanvasImageSelect(el.content!)}
-                                                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-white/8"
+                                                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
                                                 >
                                                     <ImageIcon size={14} />
                                                     <span>图片 {idx + 1}</span>
@@ -327,13 +327,13 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                     <div className="relative">
                         <div
                             onClick={() => setShowSecondsMenu(!showSecondsMenu)}
-                            className="flex items-center gap-1 text-xs text-gray-600 font-medium cursor-pointer hover:bg-gray-100 px-1.5 py-1 rounded-lg transition-colors"
+                            className="flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/8"
                         >
                             <span>{seconds}s</span>
                             <ChevronDown size={12} />
                         </div>
                         {showSecondsMenu && (
-                            <div className="absolute bottom-full mb-1 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-100 dark:border-gray-800 py-1 z-10 min-w-[60px]">
+                            <div className="absolute bottom-full z-10 mb-1 min-w-[60px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg dark:rounded-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
                                 {secondsOptions.map((sec) => (
                                     <div
                                         key={sec}
@@ -357,10 +357,10 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                 <button
                     onClick={() => prompt.trim() && !isGenerating && handleGenerate()}
                     disabled={!prompt.trim() || isGenerating}
-                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg transition-all ${
+                    className={`flex items-center gap-1.5 rounded-xl px-4 py-1.5 transition-all ${
                         prompt.trim() && !isGenerating
-                            ? 'bg-gray-900 text-white shadow-md hover:bg-gray-800'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            ? 'bg-black text-white shadow-md hover:bg-gray-800 dark:bg-gradient-to-r dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500 dark:shadow-[0_12px_30px_rgba(37,99,235,0.35)] dark:hover:brightness-110'
+                            : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-white/8 dark:text-slate-500'
                     }`}
                 >
                     {isGenerating ? (

@@ -55,7 +55,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
 
     return (
         <div className="absolute left-4 top-1/2 z-50 flex -translate-y-1/2 flex-col gap-4">
-            <div className="flex w-14 flex-col items-center gap-2 rounded-[1.25rem] border border-white/10 bg-slate-950/72 p-2 shadow-[0_20px_60px_rgba(2,6,23,0.4)] backdrop-blur-xl">
+            <div className="flex w-14 flex-col items-center gap-2 rounded-[1.25rem] border border-gray-200 bg-white/95 p-2 shadow-[0_12px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-black/72 dark:shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
                 {/* Select / Hand / Mark Tool */}
                 <div
                     className="relative"
@@ -120,7 +120,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     onMouseLeave={() => setShowUploadMenu(false)}
                 >
                     <button
-                        className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${showUploadMenu ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100'
+                        className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${showUploadMenu ? 'bg-blue-50 text-blue-600 dark:bg-sky-400/14 dark:text-sky-200' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/8 dark:hover:text-gray-100'
                             }`}
                         title="Add / Upload"
                     >
@@ -192,7 +192,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     {/* Shape Submenu */}
                     {showShapeMenu && (
                         <div className="absolute left-full top-0 pl-3 z-50">
-                            <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 p-3 min-w-[200px]">
+                            <div className="min-w-[200px] rounded-xl border border-gray-100 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                                 <div className="mb-2 text-xs text-gray-500 font-medium">Shapes</div>
                                 <div className="flex gap-2 mb-4">
                                     <button onClick={() => handleShapeClick('square')} className="p-2 hover:bg-gray-100 rounded-lg transition-colors"><Square size={20} /></button>
@@ -212,8 +212,8 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                 >
                     <button
                         className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${activeTool === 'text' || showTextMenu
-                            ? 'bg-gray-100 text-gray-900'
-                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                            ? 'bg-blue-50 text-blue-600 dark:bg-sky-400/14 dark:text-sky-200'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/8 dark:hover:text-gray-100'
                             }`}
                         title="Text"
                     >
@@ -247,8 +247,8 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                 >
                     <button
                         className={`flex items-center justify-center rounded-xl p-2.5 transition-all ${activeTool === 'draw' || showDrawMenu
-                            ? 'bg-sky-400/14 text-sky-200 shadow-[0_0_0_1px_rgba(56,189,248,0.18)]'
-                            : 'text-slate-400 hover:bg-white/8 hover:text-slate-100'
+                            ? 'bg-blue-50 text-blue-600 shadow-[0_0_0_1px_rgba(59,130,246,0.14)] dark:bg-sky-400/14 dark:text-sky-200 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.18)]'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-slate-100'
                             }`}
                         title="Draw"
                     >

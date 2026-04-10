@@ -270,7 +270,7 @@ export function ContextToolbar({
     if (element.type === 'image' || element.type === 'video') {
         return (
             <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
-                <div className="flex items-center gap-1 rounded-2xl border border-white/10 bg-slate-950/76 p-1.5 shadow-[0_20px_60px_rgba(2,6,23,0.4)] backdrop-blur-xl">
+                <div className="flex items-center gap-1 rounded-2xl border border-gray-200 bg-white/95 p-1.5 shadow-[0_14px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-black/76 dark:shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
                     <div className="flex items-center gap-2 px-2 py-1 text-xs text-gray-600">
                         <span className="font-mono">
                             {Math.round(element.originalWidth || element.width || 0)} × {Math.round(element.originalHeight || element.height || 0)}
@@ -480,7 +480,7 @@ export function ContextToolbar({
                                     ))}
                                 </div>
                             </div>
-                            <p className="text-xs text-gray-400 mt-2 text-center">
+                            <p className="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">
                                 拖动选区可移动，拖四角圆点可缩放裁切框。
                             </p>
                         </div>
@@ -587,7 +587,7 @@ export function ContextToolbar({
                 )}
 
                 {showEditPanel && (
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 p-3 z-50">
+                    <div className="absolute top-full left-1/2 z-50 mt-2 w-80 -translate-x-1/2 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
                                 <Sparkles size={14} className="text-purple-500" />
@@ -602,7 +602,7 @@ export function ContextToolbar({
                         </div>
                         <textarea
                             autoFocus
-                            className="w-full h-24 text-sm border border-gray-200 rounded-lg p-2 resize-none outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-200 transition-all"
+                            className="w-full h-24 resize-none rounded-lg border border-gray-200 p-2 text-sm outline-none transition-all focus:border-purple-400 focus:ring-1 focus:ring-purple-200 dark:border-white/10 dark:bg-black dark:text-gray-100 dark:focus:border-purple-400 dark:focus:ring-purple-500/20"
                             placeholder="输入新的提示词，例如：A cute cat wearing a hat, photorealistic"
                             value={editPrompt}
                             onChange={(e) => setEditPrompt(e.target.value)}

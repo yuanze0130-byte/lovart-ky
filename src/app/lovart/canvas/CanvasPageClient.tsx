@@ -212,22 +212,22 @@ function LovartCanvasContent() {
     }
 
     return (
-        <div className="h-screen w-full relative overflow-hidden bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)]">
-            <header className="absolute top-0 left-0 w-full h-14 flex items-center justify-between px-4 z-50 pointer-events-none">
+        <div className="h-screen w-full relative overflow-hidden bg-white dark:bg-black">
+            <header className="absolute top-0 left-0 z-50 flex h-14 w-full items-center justify-between px-4 pointer-events-none border-b border-transparent bg-transparent dark:border-white/8 dark:bg-black/28 dark:shadow-[0_12px_40px_rgba(0,0,0,0.22)] dark:backdrop-blur-xl">
                 <div className="flex items-center gap-2 pointer-events-auto">
-                    <Link href="/" className="flex items-center gap-1 p-1 hover:bg-gray-100 rounded-lg transition-colors">
-                        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold">D</div>
-                        <ChevronDown size={16} className="text-gray-500" />
+                    <Link href="/" className="flex items-center gap-1 rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-white/8">
+                        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold dark:bg-gradient-to-br dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500">D</div>
+                        <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
                     </Link>
                     <input
                         type="text"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        className="text-sm font-medium text-gray-700 bg-transparent border-none outline-none hover:bg-gray-50 focus:bg-gray-50 rounded px-2 py-1 transition-colors w-40"
+                        className="w-40 rounded px-2 py-1 text-sm font-medium text-gray-700 bg-transparent border-none outline-none transition-colors hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-100 dark:hover:bg-white/8 dark:focus:bg-white/8"
                         placeholder="Untitled"
                         disabled={isLoading}
                     />
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                         {saveStatus === 'saving' && (
                             <>
                                 <Cloud size={14} className="animate-pulse" />
@@ -356,14 +356,14 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                <div className="absolute bottom-4 left-4 z-50 flex items-center rounded-2xl border border-white/10 bg-slate-950/70 p-1.5 shadow-[0_16px_40px_rgba(2,6,23,0.38)] backdrop-blur-xl">
-                    <button onClick={() => zoomOut()} className="rounded-xl p-2 text-slate-300 transition-colors hover:bg-white/8 hover:text-sky-200">
+                <div className="absolute bottom-4 left-4 z-50 flex items-center rounded-2xl border border-gray-200 bg-white/92 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-black/72 dark:shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
+                    <button onClick={() => zoomOut()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
                         <Minus size={16} />
                     </button>
-                    <span className="min-w-[3.4rem] px-2 text-center text-xs font-medium text-slate-200">
+                    <span className="min-w-[3.4rem] px-2 text-center text-xs font-medium text-gray-700 dark:text-gray-200">
                         {Math.round(scale * 100)}%
                     </span>
-                    <button onClick={() => zoomIn()} className="rounded-xl p-2 text-slate-300 transition-colors hover:bg-white/8 hover:text-sky-200">
+                    <button onClick={() => zoomIn()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
                         <Plus size={16} />
                     </button>
                 </div>

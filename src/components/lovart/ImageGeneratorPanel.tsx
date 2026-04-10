@@ -111,7 +111,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
 
     return (
         <div
-            className="absolute z-50 w-[450px] overflow-hidden rounded-3xl border border-white/10 bg-slate-950/78 shadow-[0_28px_80px_rgba(2,6,23,0.5)] backdrop-blur-2xl"
+            className="absolute z-50 w-[450px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:rounded-3xl dark:border-white/10 dark:bg-black/78 dark:shadow-[0_28px_80px_rgba(0,0,0,0.5)] dark:backdrop-blur-2xl"
             style={style}
             onMouseDown={(e) => e.stopPropagation()}
         >
@@ -151,7 +151,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                 </div>
             )}
 
-            <div className="px-4 py-3 bg-gray-50/50 dark:bg-gray-800/60 border-t border-gray-100 dark:border-gray-800 flex items-center justify-between">
+            <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/60 px-4 py-3 dark:border-white/10 dark:bg-gray-900/70">
                 <div className="flex items-center gap-2">
                     <div className="relative">
                         <button
@@ -214,7 +214,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                                                 <div
                                                     key={el.id}
                                                     onClick={() => handleCanvasImageSelect(el.content!)}
-                                                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-slate-200 transition-colors hover:bg-white/8"
+                                                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
                                                 >
                                                     <ImageIcon size={14} />
                                                     <span>图片 {idx + 1}</span>
@@ -236,7 +236,7 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                             <ChevronDown size={12} />
                         </div>
                         {showResolutionMenu && (
-                            <div className="absolute bottom-full mb-1 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[60px]">
+                            <div className="absolute bottom-full z-10 mb-1 min-w-[60px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg dark:rounded-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
                                 {resolutions.map((res) => (
                                     <div
                                         key={res}
@@ -258,13 +258,13 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                     <div className="relative">
                         <div
                             onClick={() => setShowAspectRatioMenu(!showAspectRatioMenu)}
-                            className="flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium text-slate-300 transition-colors hover:bg-white/8"
+                            className="flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/8"
                         >
                             <span>{aspectRatio}</span>
                             <ChevronDown size={12} />
                         </div>
                         {showAspectRatioMenu && (
-                            <div className="absolute bottom-full z-10 mb-1 min-w-[60px] rounded-xl border border-white/10 bg-slate-950/92 py-1 shadow-[0_20px_50px_rgba(2,6,23,0.45)] backdrop-blur-xl">
+                            <div className="absolute bottom-full z-10 mb-1 min-w-[60px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg dark:rounded-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
                                 {aspectRatios.map((ratio) => (
                                     <div
                                         key={ratio}
@@ -272,8 +272,8 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                                             setAspectRatio(ratio);
                                             setShowAspectRatioMenu(false);
                                         }}
-                                        className={`cursor-pointer px-3 py-1 text-xs transition-colors hover:bg-white/8 ${
-                                            aspectRatio === ratio ? 'font-medium text-sky-300' : 'text-slate-200'
+                                        className={`cursor-pointer px-3 py-1 text-xs transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
+                                            aspectRatio === ratio ? 'font-medium text-blue-600 dark:text-sky-300' : 'text-gray-700 dark:text-gray-200'
                                         }`}
                                     >
                                         {ratio}
@@ -289,8 +289,8 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                     disabled={!prompt.trim() || isGenerating}
                     className={`flex items-center gap-1.5 rounded-xl px-4 py-1.5 transition-all ${
                         prompt.trim() && !isGenerating
-                            ? 'bg-gradient-to-r from-sky-400 via-blue-500 to-indigo-500 text-white shadow-[0_12px_30px_rgba(37,99,235,0.35)] hover:brightness-110'
-                            : 'cursor-not-allowed bg-white/8 text-slate-500'
+                            ? 'bg-black text-white shadow-md hover:bg-gray-800 dark:bg-gradient-to-r dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500 dark:shadow-[0_12px_30px_rgba(37,99,235,0.35)] dark:hover:brightness-110'
+                            : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-white/8 dark:text-slate-500'
                     }`}
                 >
                     <Zap size={16} className={isGenerating ? 'animate-pulse' : 'fill-current'} />

@@ -570,7 +570,7 @@ export function CanvasArea({
 
                                 {selectedIds.includes(el.id) && !isDrawing && (
                                     <>
-                                        <div className="absolute inset-0 border-2 border-blue-500 dark:border-blue-400 pointer-events-none" />
+                                        <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none dark:rounded-[inherit] dark:border-sky-400/90 dark:shadow-[0_0_0_1px_rgba(14,165,233,0.18),0_0_28px_rgba(56,189,248,0.24)]" />
                                         {selectedIds.length === 1 && (
                                             <>
                                                 {['nw', 'ne', 'sw', 'se', 'w', 'e', 'n', 's'].map((handle) => {
@@ -645,7 +645,7 @@ export function CanvasArea({
 
                 {selectionBox && (
                     <div
-                        className="absolute z-50 pointer-events-none border border-sky-400/80 bg-sky-400/12 shadow-[0_0_0_1px_rgba(56,189,248,0.14)]"
+                        className="absolute z-50 pointer-events-none border border-blue-500 bg-blue-500/10 dark:border-sky-400/80 dark:bg-sky-400/12 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.14)]"
                         style={{
                             left: Math.min(selectionBox.startX, selectionBox.currentX),
                             top: Math.min(selectionBox.startY, selectionBox.currentY),
