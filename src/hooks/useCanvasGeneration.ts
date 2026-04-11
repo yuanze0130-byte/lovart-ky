@@ -1,11 +1,15 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import type { CanvasElement, GenerationMetadata } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 
 type BananaVariant = 'standard' | 'pro';
+type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance';
+
+type Resolution = '1K' | '2K' | '4K';
+type AspectRatio = '1:1' | '4:3' | '16:9';
 
 interface UseCanvasGenerationParams {
   pan: CanvasPan;
@@ -15,6 +19,46 @@ interface UseCanvasGenerationParams {
   setSelectedIds: Dispatch<SetStateAction<string[]>>;
   setActiveTool: Dispatch<SetStateAction<string>>;
   setIsGenerating: Dispatch<SetStateAction<boolean>>;
+}
+
+function buildGenerationMetadata({
+  prompt,
+  finalPrompt,
+  promptPatch,
+  promptPresetId,
+  promptPresetLabel,
+  promptDebug,
+  editMode,
+  modelVariant,
+  referenceCount,
+  resolution,
+  aspectRatio,
+}: {
+  prompt: string;
+  finalPrompt: string;
+  promptPatch?: string;
+  promptPresetId?: string;
+  promptPresetLabel?: string;
+  promptDebug?: string;
+  editMode: ImageEditMode;
+  modelVariant: BananaVariant;
+  referenceCount: number;
+  resolution: Resolution;
+  aspectRatio: AspectRatio;
+}): GenerationMetadata {
+  return {
+    sourcePrompt: prompt,
+    finalPrompt,
+    promptPatch,
+    promptPresetId,
+    promptPresetLabel,
+    promptDebug,
+    imageEditMode: editMode,
+    modelVariant,
+    referenceCount,
+    resolution,
+    aspectRatio,
+  };
 }
 
 export function useCanvasGeneration({
@@ -55,6 +99,7 @@ export function useCanvasGeneration({
                 storyboardSourceAspectRatio: generatorElement.storyboardSourceAspectRatio || el.storyboardSourceAspectRatio,
                 storyboardSourceVideoSize: generatorElement.storyboardSourceVideoSize || el.storyboardSourceVideoSize,
                 storyboardSourceOrientation: generatorElement.storyboardSourceOrientation || el.storyboardSourceOrientation,
+                storyboardRenderProfile: generatorElement.storyboardRenderProfile || el.storyboardRenderProfile,
                 storyboardDurationSec: generatorElement.storyboardDurationSec || el.storyboardDurationSec,
                 storyboardShotIndex: generatorElement.storyboardShotIndex || el.storyboardShotIndex,
                 storyboardShotCount: generatorElement.storyboardShotCount || el.storyboardShotCount,
@@ -153,25 +198,48 @@ export function useCanvasGeneration({
   const handleGenerateImage = useCallback(
     async (
       prompt: string,
-      resolution: '1K' | '2K' | '4K',
-      aspectRatio: '1:1' | '4:3' | '16:9',
-      referenceImage?: string,
-      modelVariant: BananaVariant = 'pro'
+      resolution: Resolution,
+      aspectRatio: AspectRatio,
+      referenceImages: string[] = [],
+      modelVariant: BananaVariant = 'pro',
+      editMode: ImageEditMode = 'generate',
+      promptPatch?: string,
+      promptPresetId?: string,
+      promptPresetLabel?: string,
+      promptDebug?: string
     ) => {
       setIsGenerating(true);
       try {
+        const finalPrompt = promptPatch ? `${prompt}\n\n[编辑意图]\n${promptPatch}` : prompt;
+        const generationMetadata = buildGenerationMetadata({
+          prompt,
+          finalPrompt,
+          promptPatch,
+          promptPresetId,
+          promptPresetLabel,
+          promptDebug,
+          editMode,
+          modelVariant,
+          referenceCount: referenceImages.length,
+          resolution,
+          aspectRatio,
+        });
+        const primaryReference = referenceImages[0];
+
         const response = await authedFetch('/api/generate-image', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            prompt,
+            prompt: finalPrompt,
             resolution,
             aspectRatio,
-            referenceImage,
+            referenceImage: primaryReference,
+            referenceImages,
             modelVariant,
-            mimeType: referenceImage ? 'image/jpeg' : undefined,
+            editMode,
+            mimeType: primaryReference ? 'image/jpeg' : undefined,
           }),
         });
 
@@ -196,6 +264,8 @@ export function useCanvasGeneration({
             actualHeight: dimensions.height,
             actualAspectRatio: `${dimensions.width}:${dimensions.height}`,
             modelVariant: data.modelVariant || modelVariant,
+            editMode,
+            referenceCount: referenceImages.length,
           });
 
           if (generatorElementId) {
@@ -210,6 +280,14 @@ export function useCanvasGeneration({
                     height: displaySize.height,
                     originalWidth: displaySize.originalWidth,
                     originalHeight: displaySize.originalHeight,
+                    prompt: finalPrompt,
+                    generationMetadata: {
+                      ...generationMetadata,
+                      resolution: data.requestedResolution || resolution,
+                      aspectRatio: data.requestedAspectRatio || aspectRatio,
+                    },
+                    requestedAspectRatio: data.requestedAspectRatio || aspectRatio,
+                    requestedResolution: data.requestedResolution || resolution,
                   };
                 }
                 return el;
@@ -227,6 +305,12 @@ export function useCanvasGeneration({
               originalHeight: displaySize.originalHeight,
               requestedAspectRatio: data.requestedAspectRatio || aspectRatio,
               requestedResolution: data.requestedResolution || resolution,
+              prompt: finalPrompt,
+              generationMetadata: {
+                ...generationMetadata,
+                resolution: data.requestedResolution || resolution,
+                aspectRatio: data.requestedAspectRatio || aspectRatio,
+              },
               content: data.imageData,
             };
             setElements((prev) => [...prev, newElement]);

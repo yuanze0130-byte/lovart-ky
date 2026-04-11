@@ -5,6 +5,20 @@ import { v4 as uuidv4 } from 'uuid';
 
 export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'connector';
 
+export interface GenerationMetadata extends Record<string, Json | undefined> {
+    sourcePrompt?: string;
+    finalPrompt?: string;
+    promptPatch?: string;
+    promptPresetId?: string;
+    promptPresetLabel?: string;
+    promptDebug?: string;
+    imageEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance';
+    modelVariant?: 'standard' | 'pro';
+    referenceCount?: number;
+    resolution?: '1K' | '2K' | '4K';
+    aspectRatio?: '1:1' | '4:3' | '16:9';
+}
+
 export interface CanvasElement extends Record<string, Json | undefined> {
     id: string;
     type: CanvasElementType;
@@ -28,6 +42,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardSourceAspectRatio?: '9:16' | '16:9' | '4:5' | '1:1';
     storyboardSourceVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
     storyboardSourceOrientation?: 'portrait' | 'landscape' | 'square';
+    storyboardRenderProfile?: 'standard' | 'high';
     storyboardDurationSec?: number;
     storyboardShotIndex?: number;
     storyboardShotCount?: number;
@@ -35,6 +50,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardSequenceHint?: string;
     storyboardBoardMode?: string;
     prompt?: string;
+    generationMetadata?: GenerationMetadata;
     color?: string;
     shapeType?: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right';
     fontSize?: number;
@@ -713,6 +729,10 @@ export function CanvasArea({
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{frameDeltaLabel}</div>
                                                         </div>
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Detail rail</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail'}</div>
+                                                        </div>
+                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sequenceHint}</div>
                                                         </div>
@@ -868,6 +888,7 @@ export function CanvasArea({
                                                         <div className="mb-1 flex items-center justify-between gap-1.5">
                                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                                 <span className="rounded-full border border-emerald-300/20 bg-emerald-400/15 px-2 py-1 text-emerald-50">Rendered</span>
+                                                                <span className={`rounded-full border px-2 py-1 ${el.storyboardRenderProfile === 'high' ? 'border-violet-300/20 bg-violet-400/15 text-violet-50' : 'border-sky-300/20 bg-sky-400/15 text-sky-50'}`}>{el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail'}</span>
                                                                 <span className="rounded-full border border-white/12 bg-white/8 px-2 py-1 text-white/85">Review Pass 1</span>
                                                                 <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-white/70">{boardModeLabel} · {boardProgressLabel}</span>
                                                             </div>
