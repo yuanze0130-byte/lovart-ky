@@ -418,6 +418,53 @@ function LovartCanvasContent() {
         }));
     }, [setElements, syncStoryboardNodeFrame]);
 
+    const handleApplyStoryboardBoardPreset = useCallback((preset: 'portrait-reels' | 'landscape-cinematic' | 'poster-stack' | 'square-social') => {
+        const presetMap: Record<'portrait-reels' | 'landscape-cinematic' | 'poster-stack' | 'square-social', { aspectRatio: StoryboardAspectRatio; renderProfile: StoryboardRenderProfile; durationSec: number; layout: StoryboardLayoutMode }> = {
+            'portrait-reels': { aspectRatio: '9:16', renderProfile: 'high', durationSec: 5, layout: 'vertical' },
+            'landscape-cinematic': { aspectRatio: '16:9', renderProfile: 'high', durationSec: 8, layout: 'horizontal' },
+            'poster-stack': { aspectRatio: '4:5', renderProfile: 'standard', durationSec: 6, layout: 'vertical' },
+            'square-social': { aspectRatio: '1:1', renderProfile: 'standard', durationSec: 5, layout: 'vertical' },
+        };
+
+        const selectedPreset = presetMap[preset];
+        const resolvedLayout = selectedPreset.layout;
+        const aspectMeta = getStoryboardAspectMeta(selectedPreset.aspectRatio);
+
+        setStoryboardLayout(resolvedLayout);
+        setStoryboard((prev) => prev.map((item) => {
+            const nextOutputSize = getPreferredStoryboardVideoSize(selectedPreset.aspectRatio, selectedPreset.renderProfile);
+            return {
+                ...item,
+                aspectRatio: selectedPreset.aspectRatio,
+                orientation: aspectMeta.orientation,
+                outputSize: nextOutputSize,
+                renderProfile: getStoryboardRenderProfile(nextOutputSize),
+                durationSec: selectedPreset.durationSec,
+            };
+        }));
+
+        setElements((prev) => prev.map((element) => {
+            if (!element.storyboardItemId) return element;
+            const nextOutputSize = getPreferredStoryboardVideoSize(selectedPreset.aspectRatio, selectedPreset.renderProfile);
+            return {
+                ...syncStoryboardNodeFrame(element, {
+                    aspectRatio: selectedPreset.aspectRatio,
+                    orientation: aspectMeta.orientation,
+                    outputSize: nextOutputSize,
+                    renderProfile: getStoryboardRenderProfile(nextOutputSize),
+                }),
+                storyboardDurationSec: selectedPreset.durationSec,
+                storyboardMeta: `${selectedPreset.aspectRatio} · ${aspectMeta.label} · ${selectedPreset.durationSec}s · ${getStoryboardRenderProfileLabel(getStoryboardRenderProfile(nextOutputSize))}`,
+            };
+        }));
+    }, [setElements, syncStoryboardNodeFrame]);
+
+    const handleAutoStoryboardLayout = useCallback(() => {
+        const landscapeCount = storyboard.filter((item) => getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation === 'landscape').length;
+        const nextLayout: StoryboardLayoutMode = storyboard.length > 1 && landscapeCount >= Math.ceil(storyboard.length / 2) ? 'horizontal' : 'vertical';
+        setStoryboardLayout(nextLayout);
+    }, [storyboard]);
+
     const getStoryboardFrameDeltaLabel = useCallback((item: StoryboardItem) => {
         const currentAspect = item.aspectRatio ?? '9:16';
         const sourceAspect = item.sourceAspectRatio ?? currentAspect;
@@ -687,12 +734,18 @@ function LovartCanvasContent() {
         if (storyboard.length === 0) return;
 
         const nodeSizes = storyboard.map((item) => getStoryboardNodeSize(item.aspectRatio, item.outputSize));
+        const orientationMix = storyboard.reduce((acc, item) => {
+            const orientation = getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation;
+            acc[orientation] += 1;
+            return acc;
+        }, { portrait: 0, landscape: 0, square: 0 });
+        const hasMixedFrames = [orientationMix.portrait, orientationMix.landscape, orientationMix.square].filter((count) => count > 0).length > 1;
         const maxWidth = nodeSizes.reduce((max, size) => Math.max(max, size.width), 320);
         const maxHeight = nodeSizes.reduce((max, size) => Math.max(max, size.height), 320);
-        const horizontalGap = 112;
-        const verticalGap = 84;
-        const boardPaddingX = storyboardLayout === 'horizontal' ? 64 : 48;
-        const boardPaddingY = storyboardLayout === 'horizontal' ? 52 : 40;
+        const horizontalGap = hasMixedFrames ? 128 : 112;
+        const verticalGap = hasMixedFrames ? 96 : 84;
+        const boardPaddingX = storyboardLayout === 'horizontal' ? (hasMixedFrames ? 84 : 64) : (hasMixedFrames ? 64 : 48);
+        const boardPaddingY = storyboardLayout === 'horizontal' ? (hasMixedFrames ? 64 : 52) : (hasMixedFrames ? 52 : 40);
         const boardMetrics = storyboardLayout === 'horizontal'
             ? {
                 width: nodeSizes.reduce((sum, size, index) => {
@@ -715,12 +768,27 @@ function LovartCanvasContent() {
         let cursorY = baseY;
         const flows = storyboard.map((item, index) => {
             const nodeSize = nodeSizes[index];
+            const itemOrientation = getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation;
+            const laneOffsetX = storyboardLayout === 'horizontal' && hasMixedFrames
+                ? itemOrientation === 'landscape'
+                    ? 0
+                    : itemOrientation === 'square'
+                        ? 12
+                        : 20
+                : 0;
+            const laneOffsetY = storyboardLayout === 'vertical' && hasMixedFrames
+                ? itemOrientation === 'portrait'
+                    ? 0
+                    : itemOrientation === 'square'
+                        ? 12
+                        : 18
+                : 0;
             const x = storyboardLayout === 'horizontal'
-                ? cursorX
-                : baseX + (maxWidth - nodeSize.width) / 2;
+                ? cursorX + laneOffsetX
+                : baseX + (maxWidth - nodeSize.width) / 2 + laneOffsetX;
             const y = storyboardLayout === 'horizontal'
-                ? baseY + (maxHeight - nodeSize.height)
-                : cursorY;
+                ? baseY + (maxHeight - nodeSize.height) + laneOffsetY
+                : cursorY + laneOffsetY;
 
             if (storyboardLayout === 'horizontal') {
                 const adaptiveGap = nodeSize.width >= 380 ? horizontalGap + 16 : nodeSize.width <= 280 ? horizontalGap - 10 : horizontalGap;
@@ -1038,6 +1106,8 @@ function LovartCanvasContent() {
                         onResetStoryboardAspectRatioFromAsset={handleResetStoryboardAspectRatioFromAsset}
                         onUpdateAllStoryboardDurations={handleUpdateAllStoryboardDurations}
                         onUpdateAllStoryboardRenderProfiles={handleUpdateAllStoryboardRenderProfiles}
+                        onApplyStoryboardBoardPreset={handleApplyStoryboardBoardPreset}
+                        onAutoStoryboardLayout={handleAutoStoryboardLayout}
                         onUpdateAllStoryboardAspectRatios={(aspectRatio) => {
                             const aspectMeta = getStoryboardAspectMeta(aspectRatio);
                             setStoryboard((prev) => prev.map((item) => {
