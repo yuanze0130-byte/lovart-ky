@@ -28,15 +28,44 @@ export function useCanvasGeneration({
 }: UseCanvasGenerationParams) {
   const handleGenerateVideo = useCallback(
     async (videoUrl: string) => {
-      const generatorElementId = selectedIds.find(
-        (id) => elements.find((el) => el.id === id)?.type === 'video-generator'
-      );
+      const generatorElement = selectedIds
+        .map((id) => elements.find((el) => el.id === id))
+        .find((el) => el?.type === 'video-generator');
 
-      if (generatorElementId) {
+      if (generatorElement) {
         setElements((prev) =>
           prev.map((el) => {
-            if (el.id === generatorElementId) {
-              return { ...el, type: 'video', content: videoUrl };
+            if (el.id === generatorElement.id) {
+              return {
+                ...el,
+                type: 'video',
+                content: videoUrl,
+                width: el.width || generatorElement.width || 400,
+                height: el.height || generatorElement.height || 300,
+                originalWidth: el.originalWidth || generatorElement.originalWidth || el.width || generatorElement.width || 400,
+                originalHeight: el.originalHeight || generatorElement.originalHeight || el.height || generatorElement.height || 300,
+                storyboardItemId: generatorElement.storyboardItemId || el.storyboardItemId,
+                storyboardShotLabel: generatorElement.storyboardShotLabel || el.storyboardShotLabel,
+                storyboardTitle: generatorElement.storyboardTitle || el.storyboardTitle,
+                storyboardMeta: generatorElement.storyboardMeta || el.storyboardMeta,
+                storyboardBrief: generatorElement.storyboardBrief || el.storyboardBrief,
+                storyboardAspectRatio: generatorElement.storyboardAspectRatio || el.storyboardAspectRatio,
+                storyboardVideoSize: generatorElement.storyboardVideoSize || el.storyboardVideoSize,
+                storyboardOrientation: generatorElement.storyboardOrientation || el.storyboardOrientation,
+                storyboardSourceAspectRatio: generatorElement.storyboardSourceAspectRatio || el.storyboardSourceAspectRatio,
+                storyboardSourceVideoSize: generatorElement.storyboardSourceVideoSize || el.storyboardSourceVideoSize,
+                storyboardSourceOrientation: generatorElement.storyboardSourceOrientation || el.storyboardSourceOrientation,
+                storyboardDurationSec: generatorElement.storyboardDurationSec || el.storyboardDurationSec,
+                storyboardSequenceState: generatorElement.storyboardSequenceState || el.storyboardSequenceState,
+                storyboardSequenceHint: generatorElement.storyboardSequenceHint || el.storyboardSequenceHint,
+                storyboardBoardMode: generatorElement.storyboardBoardMode || el.storyboardBoardMode,
+                requestedAspectRatio: generatorElement.storyboardAspectRatio === '1:1'
+                  ? '1:1'
+                  : generatorElement.storyboardAspectRatio === '16:9'
+                    ? '16:9'
+                    : '4:3',
+                prompt: generatorElement.prompt || el.prompt,
+              };
             }
             return el;
           })

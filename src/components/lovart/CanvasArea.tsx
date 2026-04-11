@@ -17,6 +17,22 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     originalHeight?: number;
     requestedAspectRatio?: '1:1' | '4:3' | '16:9';
     requestedResolution?: '1K' | '2K' | '4K';
+    storyboardItemId?: string;
+    storyboardShotLabel?: string;
+    storyboardTitle?: string;
+    storyboardMeta?: string;
+    storyboardBrief?: string;
+    storyboardAspectRatio?: '9:16' | '16:9' | '4:5' | '1:1';
+    storyboardVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
+    storyboardOrientation?: 'portrait' | 'landscape' | 'square';
+    storyboardSourceAspectRatio?: '9:16' | '16:9' | '4:5' | '1:1';
+    storyboardSourceVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
+    storyboardSourceOrientation?: 'portrait' | 'landscape' | 'square';
+    storyboardDurationSec?: number;
+    storyboardSequenceState?: 'single' | 'first' | 'middle' | 'last';
+    storyboardSequenceHint?: string;
+    storyboardBoardMode?: string;
+    prompt?: string;
     color?: string;
     shapeType?: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right';
     fontSize?: number;
@@ -548,17 +564,144 @@ export function CanvasArea({
                                     </div>
                                 )}
 
-                                {el.type === 'video-generator' && (
-                                    <div className="w-full h-full bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-400 dark:border-blue-500 rounded-xl flex flex-col items-center justify-center text-blue-500 dark:text-blue-300">
-                                        <div className="w-20 h-20 mb-4 opacity-50">
-                                            <svg viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
-                                            </svg>
+                                {el.type === 'video-generator' && (() => {
+                                    const promptText = typeof el.prompt === 'string' ? el.prompt : '';
+                                    const promptParts = promptText.split('｜').filter(Boolean);
+                                    const shotLabel = (typeof el.storyboardShotLabel === 'string' && el.storyboardShotLabel) || promptParts[0] || 'Shot';
+                                    const shotTitle = (typeof el.storyboardTitle === 'string' && el.storyboardTitle) || promptParts[1] || 'Video Generator';
+                                    const shotMeta = (typeof el.storyboardMeta === 'string' && el.storyboardMeta) || promptParts[2] || `${Math.round(el.width || 0)} x ${Math.round(el.height || 0)}`;
+                                    const sizeMeta = (typeof el.storyboardVideoSize === 'string' && el.storyboardVideoSize)
+                                        || (typeof el.content === 'string' && /^\d+x\d+$/.test(el.content) ? el.content : undefined);
+                                    const aspectLabel = (typeof el.storyboardAspectRatio === 'string' && el.storyboardAspectRatio)
+                                        || shotMeta.match(/(9:16|16:9|4:5|1:1)/)?.[1];
+                                    const orientationLabel = el.storyboardOrientation === 'landscape'
+                                        ? 'Landscape'
+                                        : el.storyboardOrientation === 'square'
+                                            ? 'Square'
+                                            : el.storyboardOrientation === 'portrait'
+                                                ? 'Portrait'
+                                                : shotMeta.includes('Landscape') || shotMeta.includes('横版')
+                                                    ? 'Landscape'
+                                                    : shotMeta.includes('Square') || shotMeta.includes('方形')
+                                                        ? 'Square'
+                                                        : 'Portrait';
+                                    const boardBrief = (typeof el.storyboardBrief === 'string' && el.storyboardBrief)
+                                        || promptParts[3]
+                                        || 'Ready for motion, camera move and pacing direction.';
+                                    const durationLabel = typeof el.storyboardDurationSec === 'number' ? `${el.storyboardDurationSec}s` : undefined;
+                                    const sequenceHint = typeof el.storyboardSequenceHint === 'string' && el.storyboardSequenceHint
+                                        ? el.storyboardSequenceHint
+                                        : 'Next →';
+                                    const sequenceState = typeof el.storyboardSequenceState === 'string' && el.storyboardSequenceState
+                                        ? el.storyboardSequenceState
+                                        : 'middle';
+                                    const frameToneClass = el.storyboardOrientation === 'landscape'
+                                        ? 'from-violet-500/12 via-fuchsia-500/10 to-transparent dark:from-violet-400/18 dark:via-fuchsia-400/12 dark:to-transparent'
+                                        : el.storyboardOrientation === 'square'
+                                            ? 'from-emerald-500/12 via-teal-500/10 to-transparent dark:from-emerald-400/18 dark:via-teal-400/12 dark:to-transparent'
+                                            : 'from-sky-500/12 via-blue-500/10 to-transparent dark:from-sky-400/18 dark:via-blue-400/12 dark:to-transparent';
+                                    const sequenceBarClass = sequenceState === 'single'
+                                        ? 'w-8 opacity-40'
+                                        : sequenceState === 'first'
+                                            ? 'w-16 opacity-95'
+                                            : sequenceState === 'last'
+                                                ? 'w-6 opacity-80'
+                                                : 'w-12 opacity-75';
+                                    const compactPortrait = el.storyboardOrientation === 'portrait' && (el.width || 0) <= 280;
+                                    const compactVertical = (el.height || 0) >= 420;
+                                    const boardModeLabel = typeof el.storyboardBoardMode === 'string' && el.storyboardBoardMode
+                                        ? el.storyboardBoardMode
+                                        : sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow';
+
+                                    return (
+                                        <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.92))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.18),rgba(15,23,42,0.94)_68%)] dark:text-sky-50">
+                                            <div className={`absolute inset-x-0 top-0 h-24 bg-gradient-to-br ${frameToneClass}`} />
+                                            <div className="relative flex items-center justify-between border-b border-blue-200/80 px-4 py-3 dark:border-white/10">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white dark:bg-sky-400/20 dark:text-sky-100">
+                                                        {shotLabel}
+                                                    </div>
+                                                    <div className={`h-2 rounded-full bg-blue-600/15 dark:bg-sky-400/14 ${sequenceBarClass}`} />
+                                                </div>
+                                                <div className="text-[11px] uppercase tracking-[0.14em] text-blue-600/80 dark:text-sky-200/70">
+                                                    {boardModeLabel === 'Shot Queue'
+                                                        ? sequenceState === 'first'
+                                                            ? 'Queue Head'
+                                                            : sequenceState === 'last'
+                                                                ? 'Queue End'
+                                                                : sequenceState === 'single'
+                                                                    ? 'Single Frame'
+                                                                    : 'Shot Queue'
+                                                        : sequenceState === 'first'
+                                                            ? 'Strip Start'
+                                                            : sequenceState === 'last'
+                                                                ? 'Strip End'
+                                                                : sequenceState === 'single'
+                                                                    ? 'Single Frame'
+                                                                    : 'Production Board'}
+                                                </div>
+                                            </div>
+                                            <div className="relative flex h-[calc(100%-56px)] flex-col justify-between p-4">
+                                                <div className="pointer-events-none absolute inset-3 rounded-[22px] border border-dashed border-blue-200/70 dark:border-white/10" />
+                                                <div>
+                                                    <div className="mb-3 flex items-start justify-between gap-3">
+                                                        <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-blue-200/80 bg-white/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-blue-600 shadow-sm dark:border-white/10 dark:bg-white/6 dark:text-sky-100/75">
+                                                            <span>{boardModeLabel}</span>
+                                                            {sizeMeta && <span className="opacity-70">· {sizeMeta}</span>}
+                                                        </div>
+                                                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-blue-600/10 text-blue-600 dark:bg-sky-400/12 dark:text-sky-200">
+                                                            <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8">
+                                                                <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z" />
+                                                            </svg>
+                                                        </div>
+                                                        <div className="flex max-w-[58%] flex-wrap items-center justify-end gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-700/80 dark:text-sky-100/75">
+                                                            {aspectLabel && !compactPortrait && (
+                                                                <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{aspectLabel}</span>
+                                                            )}
+                                                            <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
+                                                            {durationLabel && (
+                                                                <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{durationLabel}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <div className="line-clamp-2 pr-20 text-base font-semibold leading-snug">{shotTitle}</div>
+                                                    <div className="mt-1 text-xs text-blue-700/80 dark:text-sky-200/70">{shotMeta}</div>
+                                                    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/80 dark:text-sky-100/75">
+                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{sequenceState === 'single' ? 'Single Shot' : sequenceState === 'first' ? 'Shot Strip Start' : sequenceState === 'last' ? 'Shot Strip End' : 'Shot Strip'}</span>
+                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardModeLabel}</span>
+                                                        {!compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{orientationLabel}</span>}
+                                                        {aspectLabel && !compactVertical && (
+                                                            <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{aspectLabel}</span>
+                                                        )}
+                                                        {durationLabel && (
+                                                            <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{durationLabel}</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <div className="rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
+                                                        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">Shot Note</div>
+                                                        <div className={compactPortrait ? 'line-clamp-4' : 'line-clamp-5'}>{boardBrief}</div>
+                                                    </div>
+                                                    <div className="grid grid-cols-3 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
+                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || 'Auto'} · {orientationLabel}</div>
+                                                        </div>
+                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Render</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sizeMeta || 'Ready'}</div>
+                                                        </div>
+                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sequenceHint}</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="text-sm font-medium">Video Generator</div>
-                                        <div className="text-xs opacity-70">{Math.round(el.width || 0)} x {Math.round(el.height || 0)}</div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 {!selectedIds.includes(el.id) && !isDrawing && (() => {
                                     const isLinked = selectedIds.some((selectedId) => {
@@ -593,11 +736,144 @@ export function CanvasArea({
 
                                 {el.type === 'image' && el.content && <img src={el.content} alt="Upload" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />}
 
-                                {el.type === 'video' && el.content && (
-                                    <div className="relative w-full h-full rounded-lg overflow-hidden">
-                                        <video src={el.content} className="w-full h-full object-cover select-none" controls loop playsInline onClick={(e) => e.stopPropagation()} />
-                                    </div>
-                                )}
+                                {el.type === 'video' && el.content && (() => {
+                                    const hasStoryboardMeta = Boolean(el.storyboardShotLabel || el.storyboardTitle || el.storyboardAspectRatio || el.storyboardVideoSize);
+
+                                    if (!hasStoryboardMeta) {
+                                        return (
+                                            <div className="relative w-full h-full rounded-lg overflow-hidden">
+                                                <video src={el.content} className="w-full h-full object-cover select-none" controls loop playsInline onClick={(e) => e.stopPropagation()} />
+                                            </div>
+                                        );
+                                    }
+
+                                    const promptText = typeof el.prompt === 'string' ? el.prompt : '';
+                                    const promptParts = promptText.split('｜').filter(Boolean);
+                                    const shotLabel = (typeof el.storyboardShotLabel === 'string' && el.storyboardShotLabel) || promptParts[0] || 'Shot';
+                                    const shotTitle = (typeof el.storyboardTitle === 'string' && el.storyboardTitle) || promptParts[1] || 'Rendered Shot';
+                                    const shotMeta = (typeof el.storyboardMeta === 'string' && el.storyboardMeta) || promptParts[2] || `${Math.round(el.width || 0)} x ${Math.round(el.height || 0)}`;
+                                    const sizeMeta = (typeof el.storyboardVideoSize === 'string' && el.storyboardVideoSize) || undefined;
+                                    const aspectLabel = (typeof el.storyboardAspectRatio === 'string' && el.storyboardAspectRatio) || shotMeta.match(/(9:16|16:9|4:5|1:1)/)?.[1];
+                                    const orientationLabel = el.storyboardOrientation === 'landscape'
+                                        ? 'Landscape'
+                                        : el.storyboardOrientation === 'square'
+                                            ? 'Square'
+                                            : 'Portrait';
+                                    const boardBrief = (typeof el.storyboardBrief === 'string' && el.storyboardBrief)
+                                        || promptParts[3]
+                                        || 'Rendered from storyboard direction.';
+                                    const durationLabel = typeof el.storyboardDurationSec === 'number' ? `${el.storyboardDurationSec}s` : undefined;
+                                    const sequenceHint = typeof el.storyboardSequenceHint === 'string' && el.storyboardSequenceHint
+                                        ? el.storyboardSequenceHint
+                                        : 'Ready';
+                                    const sequenceState = typeof el.storyboardSequenceState === 'string' && el.storyboardSequenceState
+                                        ? el.storyboardSequenceState
+                                        : 'single';
+                                    const boardModeLabel = (typeof el.storyboardBoardMode === 'string' && el.storyboardBoardMode)
+                                        || (sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow');
+                                    const frameToneClass = el.storyboardOrientation === 'landscape'
+                                        ? 'from-violet-500/16 via-fuchsia-500/12 to-transparent dark:from-violet-400/24 dark:via-fuchsia-400/16 dark:to-transparent'
+                                        : el.storyboardOrientation === 'square'
+                                            ? 'from-emerald-500/16 via-teal-500/12 to-transparent dark:from-emerald-400/24 dark:via-teal-400/16 dark:to-transparent'
+                                            : 'from-sky-500/16 via-blue-500/12 to-transparent dark:from-sky-400/24 dark:via-blue-400/16 dark:to-transparent';
+                                    const sequenceBarClass = sequenceState === 'single'
+                                        ? 'w-8 opacity-45'
+                                        : sequenceState === 'first'
+                                            ? 'w-16 opacity-95'
+                                            : sequenceState === 'last'
+                                                ? 'w-6 opacity-80'
+                                                : 'w-12 opacity-75';
+                                    const compactPortrait = el.storyboardOrientation === 'portrait' && (el.width || 0) <= 280;
+                                    const compactVertical = (el.height || 0) >= 420;
+
+                                    return (
+                                        <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(239,246,255,0.96))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),rgba(15,23,42,0.96)_68%)] dark:text-sky-50">
+                                            <div className={`absolute inset-x-0 top-0 h-24 bg-gradient-to-br ${frameToneClass}`} />
+                                            <div className="relative flex items-center justify-between border-b border-blue-200/80 px-4 py-3 dark:border-white/10">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="rounded-full bg-blue-600 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white dark:bg-sky-400/20 dark:text-sky-100">{shotLabel}</div>
+                                                    <div className={`h-2 rounded-full bg-blue-600/15 dark:bg-sky-400/14 ${sequenceBarClass}`} />
+                                                </div>
+                                                <div className="text-[11px] uppercase tracking-[0.14em] text-blue-600/80 dark:text-sky-200/70">
+                                                    {boardModeLabel === 'Shot Queue'
+                                                        ? sequenceState === 'first'
+                                                            ? 'Queue Head'
+                                                            : sequenceState === 'last'
+                                                                ? 'Queue End'
+                                                                : sequenceState === 'single'
+                                                                    ? 'Single Frame'
+                                                                    : 'Rendered Queue'
+                                                        : sequenceState === 'first'
+                                                            ? 'Strip Start'
+                                                            : sequenceState === 'last'
+                                                                ? 'Strip End'
+                                                                : sequenceState === 'single'
+                                                                    ? 'Single Frame'
+                                                                    : 'Rendered Flow'}
+                                                </div>
+                                            </div>
+                                            <div className="relative flex h-[calc(100%-56px)] flex-col p-4">
+                                                <div className="pointer-events-none absolute inset-3 rounded-[22px] border border-dashed border-blue-200/70 dark:border-white/10" />
+                                                <div className="mb-3 flex items-start justify-between gap-3">
+                                                    <div className="absolute right-4 top-4 flex items-center gap-1.5 rounded-full border border-blue-200/80 bg-white/80 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-blue-600 shadow-sm dark:border-white/10 dark:bg-white/6 dark:text-sky-100/75">
+                                                        <span>{boardModeLabel}</span>
+                                                        {sizeMeta && <span className="opacity-70">· {sizeMeta}</span>}
+                                                    </div>
+                                                    <div>
+                                                        <div className="line-clamp-2 pr-20 text-base font-semibold leading-snug">{shotTitle}</div>
+                                                        <div className="mt-1 text-xs text-blue-700/80 dark:text-sky-200/70">{shotMeta}</div>
+                                                    </div>
+                                                    <div className="flex max-w-[58%] flex-wrap items-center justify-end gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-700/80 dark:text-sky-100/75">
+                                                        {aspectLabel && !compactPortrait && <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{aspectLabel}</span>}
+                                                        <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
+                                                        {durationLabel && <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{durationLabel}</span>}
+                                                    </div>
+                                                </div>
+                                                <div className="relative flex-1 overflow-hidden rounded-2xl border border-blue-200/80 bg-black/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:border-white/10">
+                                                    <video src={el.content} className="h-full w-full object-cover select-none" controls loop playsInline onClick={(e) => e.stopPropagation()} />
+                                                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-3 text-white">
+                                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
+                                                                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/15 px-2 py-1 text-emerald-50">Rendered</span>
+                                                                <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{boardModeLabel}</span>
+                                                            </div>
+                                                            <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em]">Ready</span>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
+                                                            <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{sequenceHint}</span>
+                                                            {sizeMeta && <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{sizeMeta}</span>}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/80 dark:text-sky-100/75">
+                                                    <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{sequenceState === 'single' ? 'Single Shot' : sequenceState === 'first' ? 'Shot Strip Start' : sequenceState === 'last' ? 'Shot Strip End' : 'Shot Strip'}</span>
+                                                    <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardModeLabel}</span>
+                                                    {!compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{orientationLabel}</span>}
+                                                    {aspectLabel && !compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{aspectLabel}</span>}
+                                                    {durationLabel && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{durationLabel}</span>}
+                                                </div>
+                                                <div className="mt-3 grid grid-cols-3 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
+                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || 'Auto'} · {orientationLabel}</div>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Render</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sizeMeta || 'Rendered'}</div>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sequenceHint}</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
+                                                    <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">Shot Note</div>
+                                                    <div className={compactPortrait ? 'line-clamp-4' : 'line-clamp-5'}>{boardBrief}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
 
                                 {el.type === 'text' && (editingTextId === el.id ? (
                                     <textarea

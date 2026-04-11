@@ -1,19 +1,40 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2, RectangleHorizontal, RectangleVertical, Square } from 'lucide-react';
+import type { CanvasElement } from '@/components/lovart/CanvasArea';
 
-type VideoSize = '720x1280' | '1280x720' | '1024x1792' | '1792x1024';
+type VideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
+type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1';
+type StoryboardOrientation = 'portrait' | 'landscape' | 'square';
+const STORYBOARD_SIZE_PRIORITY: VideoSize[] = ['720x1280', '1280x720', '1024x1280', '1024x1024'];
 type VideoSeconds = 10 | 15;
+
+const ASPECT_PRESET_TO_SIZE: Record<StoryboardAspectRatio, VideoSize> = {
+    '9:16': '720x1280',
+    '16:9': '1280x720',
+    '4:5': '1024x1280',
+    '1:1': '1024x1024',
+};
+
+const STORYBOARD_NODE_DIMENSIONS_BY_SIZE: Record<VideoSize, { width: number; height: number }> = {
+    '720x1280': { width: 260, height: 462 },
+    '1280x720': { width: 420, height: 236 },
+    '1024x1280': { width: 300, height: 375 },
+    '1024x1024': { width: 320, height: 320 },
+    '1024x1792': { width: 284, height: 500 },
+    '1792x1024': { width: 460, height: 262 },
+};
 
 interface VideoGeneratorPanelProps {
     elementId: string;
     onGenerate: (videoUrl: string) => Promise<void>;
+    onConfigChange?: (elementId: string, updates: Partial<CanvasElement>) => void;
     style?: React.CSSProperties;
-    canvasElements?: Array<{ id: string; type: string; content?: string; referenceImageId?: string; prompt?: string }>;
+    canvasElements?: CanvasElement[];
 }
 
-export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElements }: VideoGeneratorPanelProps) {
+export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, style, canvasElements }: VideoGeneratorPanelProps) {
     const [prompt, setPrompt] = useState('');
     const [size, setSize] = useState<VideoSize>('720x1280');
     const [seconds, setSeconds] = useState<VideoSeconds>(10);
@@ -26,18 +47,48 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
     const [showSizeMenu, setShowSizeMenu] = useState(false);
     const [showSecondsMenu, setShowSecondsMenu] = useState(false);
     const [showReferenceMenu, setShowReferenceMenu] = useState(false);
+    const [showAdvancedBoardSettings, setShowAdvancedBoardSettings] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    const sizes: VideoSize[] = ['720x1280', '1280x720', '1024x1792', '1792x1024'];
+    const sizes: VideoSize[] = ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024'];
     const secondsOptions: VideoSeconds[] = [10, 15];
+
+    const getSizeMeta = (value: VideoSize) => {
+        const [width, height] = value.split('x').map(Number);
+        const orientation: StoryboardOrientation = width === height ? 'square' : width > height ? 'landscape' : 'portrait';
+        const aspectRatio: StoryboardAspectRatio = width === height
+            ? '1:1'
+            : width > height
+              ? '16:9'
+              : width === 1024 && height === 1280
+                ? '4:5'
+                : '9:16';
+        return { orientation, aspectRatio };
+    };
+
+    const getNodeDimensions = (videoSize: VideoSize, aspectRatio: StoryboardAspectRatio) => {
+        return STORYBOARD_NODE_DIMENSIONS_BY_SIZE[videoSize] || STORYBOARD_NODE_DIMENSIONS_BY_SIZE[ASPECT_PRESET_TO_SIZE[aspectRatio]];
+    };
+
+    const currentElement = canvasElements?.find(el => el.id === elementId);
+    const currentSizeMeta = getSizeMeta(size);
+    const OrientationIcon = currentSizeMeta.orientation === 'landscape'
+        ? RectangleHorizontal
+        : currentSizeMeta.orientation === 'square'
+            ? Square
+            : RectangleVertical;
+    const aspectPresetCards = useMemo(() => ([
+        { value: '9:16' as const, label: 'Portrait', size: ASPECT_PRESET_TO_SIZE['9:16'] },
+        { value: '16:9' as const, label: 'Landscape', size: ASPECT_PRESET_TO_SIZE['16:9'] },
+        { value: '4:5' as const, label: 'Tall', size: ASPECT_PRESET_TO_SIZE['4:5'] },
+        { value: '1:1' as const, label: 'Square', size: ASPECT_PRESET_TO_SIZE['1:1'] },
+    ]), []);
 
     // Auto-fill reference image and prompt from source
     useEffect(() => {
         if (!canvasElements) return;
-
-        const currentElement = canvasElements.find(el => el.id === elementId);
 
         if (currentElement?.referenceImageId) {
             const sourceImage = canvasElements.find(el => el.id === currentElement.referenceImageId);
@@ -49,7 +100,22 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
         if (currentElement?.prompt && !prompt) {
             setPrompt(currentElement.prompt);
         }
-    }, [elementId, canvasElements, referenceImage, prompt]);
+
+        if (currentElement?.storyboardVideoSize) {
+            setSize(currentElement.storyboardVideoSize);
+        } else if (currentElement?.content && sizes.includes(currentElement.content as VideoSize)) {
+            setSize(currentElement.content as VideoSize);
+        } else if (currentElement?.prompt) {
+            const inferredSize = STORYBOARD_SIZE_PRIORITY.find((candidate) => currentElement.prompt?.includes(candidate));
+            if (inferredSize) {
+                setSize(inferredSize);
+            }
+        }
+
+        if (typeof currentElement?.storyboardDurationSec === 'number') {
+            setSeconds(currentElement.storyboardDurationSec >= 15 ? 15 : 10);
+        }
+    }, [elementId, canvasElements, referenceImage, prompt, sizes]);
 
     // Poll for video status
     useEffect(() => {
@@ -177,6 +243,29 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
 
     const imageElements = getImageElements();
 
+    useEffect(() => {
+        if (!onConfigChange) return;
+        const orientationLabel = currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1);
+        const meta = `${currentSizeMeta.aspectRatio} · ${orientationLabel} · ${seconds}s`;
+        const nodeDimensions = getNodeDimensions(size, currentSizeMeta.aspectRatio);
+        onConfigChange(elementId, {
+            prompt,
+            width: nodeDimensions.width,
+            height: nodeDimensions.height,
+            originalWidth: nodeDimensions.width,
+            originalHeight: nodeDimensions.height,
+            storyboardVideoSize: size,
+            storyboardDurationSec: seconds,
+            content: size,
+            storyboardMeta: meta,
+            storyboardAspectRatio: currentSizeMeta.aspectRatio,
+            storyboardOrientation: currentSizeMeta.orientation,
+            storyboardSourceAspectRatio: currentElement?.storyboardSourceAspectRatio || currentSizeMeta.aspectRatio,
+            storyboardSourceVideoSize: currentElement?.storyboardSourceVideoSize || size,
+            storyboardSourceOrientation: currentElement?.storyboardSourceOrientation || currentSizeMeta.orientation,
+        });
+    }, [currentSizeMeta.aspectRatio, currentSizeMeta.orientation, elementId, getNodeDimensions, onConfigChange, prompt, seconds, size]);
+
     return (
         <div
             className="absolute z-50 w-[450px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:rounded-3xl dark:border-white/10 dark:bg-black/78 dark:shadow-[0_28px_80px_rgba(0,0,0,0.5)] dark:backdrop-blur-2xl"
@@ -193,14 +282,126 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
             />
 
             <div className="p-4">
-                <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="描述你想要生成的视频..."
-                    className="h-24 w-full resize-none bg-transparent text-lg text-slate-100 outline-none placeholder:text-slate-500"
-                    disabled={isGenerating}
-                />
+                {currentElement && (
+                    <div className="mb-3 space-y-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-3 dark:border-white/10 dark:bg-white/5">
+                        <div>
+                            <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{currentElement.storyboardBoardMode || 'Board Editor'}</div>
+                            <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                {currentElement.storyboardShotLabel && (
+                                    <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentElement.storyboardShotLabel}</span>
+                                )}
+                                {currentElement.storyboardTitle && (
+                                    <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentElement.storyboardTitle}</span>
+                                )}
+                                <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.aspectRatio}</span>
+                                <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)}</span>
+                                <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{seconds}s</span>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Frame</div>
+                                <div className="mt-1 flex items-center gap-1.5 font-medium text-gray-800 dark:text-gray-100">
+                                    <OrientationIcon size={13} />
+                                    <span>{currentSizeMeta.aspectRatio} · {currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)}</span>
+                                </div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Output</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{size}</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Sequence</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement.storyboardSequenceHint || 'Single'}</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Board fit</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement.storyboardBoardMode || 'Board Editor'}</div>
+                            </div>
+                        </div>
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+                                <span>Aspect Preset</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdvancedBoardSettings((prev) => !prev)}
+                                    className="rounded-full border border-gray-200 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-gray-500 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-sky-400/20 dark:hover:bg-white/8 dark:hover:text-sky-100"
+                                >
+                                    {showAdvancedBoardSettings ? 'Hide advanced' : 'Storyboard aware output'}
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {aspectPresetCards.map((preset) => {
+                                    const presetMeta = getSizeMeta(preset.size);
+                                    const PresetIcon = presetMeta.orientation === 'landscape'
+                                        ? RectangleHorizontal
+                                        : presetMeta.orientation === 'square'
+                                            ? Square
+                                            : RectangleVertical;
+                                    const active = size === preset.size;
+                                    return (
+                                        <button
+                                            key={preset.value}
+                                            type="button"
+                                            onClick={() => setSize(preset.size)}
+                                            className={`rounded-2xl border px-3 py-2 text-left transition-colors ${
+                                                active
+                                                    ? 'border-blue-300 bg-blue-50 text-blue-700 dark:border-sky-400/30 dark:bg-sky-400/12 dark:text-sky-100'
+                                                    : 'border-gray-200 bg-white text-gray-600 hover:border-blue-200 hover:bg-blue-50/60 hover:text-blue-600 dark:border-white/10 dark:bg-white/6 dark:text-gray-200 dark:hover:border-sky-400/20 dark:hover:bg-white/10'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                    <PresetIcon size={14} />
+                                                    <span className="text-xs font-semibold">{preset.value}</span>
+                                                </div>
+                                                <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] uppercase tracking-wide dark:bg-white/8">{preset.label}</span>
+                                            </div>
+                                            <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{preset.size}</div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {showAdvancedBoardSettings && (
+                                <div className="grid grid-cols-2 gap-2 rounded-2xl border border-gray-200 bg-white/70 p-3 text-[11px] text-gray-500 dark:border-white/10 dark:bg-white/6 dark:text-gray-400">
+                                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                        <div className="uppercase tracking-wide text-gray-400">Source frame</div>
+                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement?.storyboardSourceAspectRatio || currentElement?.storyboardAspectRatio || currentSizeMeta.aspectRatio}</div>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                        <div className="uppercase tracking-wide text-gray-400">Current frame</div>
+                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentSizeMeta.aspectRatio}</div>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                        <div className="uppercase tracking-wide text-gray-400">Source render</div>
+                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement?.storyboardSourceVideoSize || currentElement?.storyboardVideoSize || size}</div>
+                                    </div>
+                                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                        <div className="uppercase tracking-wide text-gray-400">Node size</div>
+                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{getNodeDimensions(size, currentSizeMeta.aspectRatio).width} × {getNodeDimensions(size, currentSizeMeta.aspectRatio).height}</div>
+                                    </div>
+                                    <div className="col-span-2 rounded-xl border border-dashed border-gray-200 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/4">
+                                        <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
+                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">
+                                            {(currentElement?.storyboardSourceAspectRatio || currentElement?.storyboardAspectRatio || currentSizeMeta.aspectRatio)} → {currentSizeMeta.aspectRatio}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div>
+                            <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Shot Note</div>
+                            <textarea
+                                value={prompt}
+                                onChange={(e) => setPrompt(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="描述你想要生成的视频..."
+                                className="h-24 w-full resize-none bg-transparent text-base text-gray-900 outline-none placeholder:text-gray-400 dark:text-slate-100 dark:placeholder:text-slate-500"
+                                disabled={isGenerating}
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Reference Image Preview */}
@@ -306,7 +507,17 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                             className="flex items-center gap-1 text-xs text-gray-600 font-medium cursor-pointer hover:bg-gray-100 px-1.5 py-1 rounded-lg transition-colors"
                         >
                             <span>{size}</span>
+                            <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
+                                {getSizeMeta(size).orientation[0].toUpperCase() + getSizeMeta(size).orientation.slice(1)}
+                            </span>
+                            <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
+                                {getSizeMeta(size).aspectRatio}
+                            </span>
                             <ChevronDown size={12} />
+                        </div>
+                         <div className="mt-1 flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+                            <span className="rounded-full bg-gray-100 px-1.5 py-0.5 dark:bg-white/8">Storyboard aware</span>
+                            <span>{currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)} / {currentSizeMeta.aspectRatio}</span>
                         </div>
                         {showSizeMenu && (
                             <div className="absolute bottom-full mb-1 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[100px]">
@@ -317,11 +528,12 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                                             setSize(s);
                                             setShowSizeMenu(false);
                                         }}
-                                        className={`px-3 py-1 text-xs cursor-pointer hover:bg-gray-50 ${
+                                        className={`flex items-center justify-between gap-3 px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 ${
                                             size === s ? 'text-black font-medium bg-gray-50' : 'text-gray-700'
                                         }`}
                                     >
-                                        {s}
+                                        <span>{s}</span>
+                                        <span className="text-[10px] text-gray-500">{getSizeMeta(s).orientation[0].toUpperCase() + getSizeMeta(s).orientation.slice(1)} · {getSizeMeta(s).aspectRatio}</span>
                                     </div>
                                 ))}
                             </div>
@@ -346,8 +558,8 @@ export function VideoGeneratorPanel({ elementId, onGenerate, style, canvasElemen
                                             setSeconds(sec);
                                             setShowSecondsMenu(false);
                                         }}
-                                        className={`px-3 py-1 text-xs cursor-pointer hover:bg-gray-50 ${
-                                            seconds === sec ? 'text-black font-medium bg-gray-50' : 'text-gray-700'
+                                        className={`px-3 py-1 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-white/8 ${
+                                            seconds === sec ? 'bg-gray-50 text-black font-medium dark:bg-white/8 dark:text-white' : 'text-gray-700 dark:text-gray-200'
                                         }`}
                                     >
                                         {sec}s
