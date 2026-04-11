@@ -56,6 +56,8 @@ export function useCanvasGeneration({
                 storyboardSourceVideoSize: generatorElement.storyboardSourceVideoSize || el.storyboardSourceVideoSize,
                 storyboardSourceOrientation: generatorElement.storyboardSourceOrientation || el.storyboardSourceOrientation,
                 storyboardDurationSec: generatorElement.storyboardDurationSec || el.storyboardDurationSec,
+                storyboardShotIndex: generatorElement.storyboardShotIndex || el.storyboardShotIndex,
+                storyboardShotCount: generatorElement.storyboardShotCount || el.storyboardShotCount,
                 storyboardSequenceState: generatorElement.storyboardSequenceState || el.storyboardSequenceState,
                 storyboardSequenceHint: generatorElement.storyboardSequenceHint || el.storyboardSequenceHint,
                 storyboardBoardMode: generatorElement.storyboardBoardMode || el.storyboardBoardMode,

@@ -74,6 +74,12 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
     const currentElement = canvasElements?.find(el => el.id === elementId);
     const currentSizeMeta = getSizeMeta(size);
+    const shotProgressLabel = currentElement?.storyboardShotIndex && currentElement?.storyboardShotCount
+        ? `${String(currentElement.storyboardShotIndex).padStart(2, '0')} / ${String(currentElement.storyboardShotCount).padStart(2, '0')}`
+        : currentElement?.storyboardShotIndex
+            ? `Shot ${String(currentElement.storyboardShotIndex).padStart(2, '0')}`
+            : 'Single Shot';
+    const frameDeltaLabel = `${currentElement?.storyboardSourceAspectRatio || currentElement?.storyboardAspectRatio || currentSizeMeta.aspectRatio} → ${currentSizeMeta.aspectRatio}`;
     const OrientationIcon = currentSizeMeta.orientation === 'landscape'
         ? RectangleHorizontal
         : currentSizeMeta.orientation === 'square'
@@ -293,6 +299,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                 {currentElement.storyboardTitle && (
                                     <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentElement.storyboardTitle}</span>
                                 )}
+                                <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{shotProgressLabel}</span>
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.aspectRatio}</span>
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)}</span>
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{seconds}s</span>
@@ -315,8 +322,16 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement.storyboardSequenceHint || 'Single'}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Shot progress</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{shotProgressLabel}</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
                                 <div className="uppercase tracking-wide text-gray-400">Board fit</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement.storyboardBoardMode || 'Board Editor'}</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{frameDeltaLabel}</div>
                             </div>
                         </div>
                         <div className="space-y-2">
@@ -382,9 +397,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                     </div>
                                     <div className="col-span-2 rounded-xl border border-dashed border-gray-200 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/4">
                                         <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
-                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">
-                                            {(currentElement?.storyboardSourceAspectRatio || currentElement?.storyboardAspectRatio || currentSizeMeta.aspectRatio)} → {currentSizeMeta.aspectRatio}
-                                        </div>
+                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{frameDeltaLabel}</div>
                                     </div>
                                 </div>
                             )}

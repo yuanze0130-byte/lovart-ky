@@ -29,6 +29,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardSourceVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
     storyboardSourceOrientation?: 'portrait' | 'landscape' | 'square';
     storyboardDurationSec?: number;
+    storyboardShotIndex?: number;
+    storyboardShotCount?: number;
     storyboardSequenceState?: 'single' | 'first' | 'middle' | 'last';
     storyboardSequenceHint?: string;
     storyboardBoardMode?: string;
@@ -595,6 +597,19 @@ export function CanvasArea({
                                     const sequenceState = typeof el.storyboardSequenceState === 'string' && el.storyboardSequenceState
                                         ? el.storyboardSequenceState
                                         : 'middle';
+                                    const shotIndex = typeof el.storyboardShotIndex === 'number' ? el.storyboardShotIndex : undefined;
+                                    const shotCount = typeof el.storyboardShotCount === 'number' ? el.storyboardShotCount : undefined;
+                                    const sourceAspectLabel = typeof el.storyboardSourceAspectRatio === 'string' ? el.storyboardSourceAspectRatio : undefined;
+                                    const frameDeltaLabel = sourceAspectLabel && aspectLabel
+                                        ? sourceAspectLabel === aspectLabel
+                                            ? 'Source frame locked'
+                                            : `${sourceAspectLabel} → ${aspectLabel}`
+                                        : aspectLabel || 'Auto frame';
+                                    const boardProgressLabel = shotIndex && shotCount
+                                        ? `${String(shotIndex).padStart(2, '0')} / ${String(shotCount).padStart(2, '0')}`
+                                        : shotIndex
+                                            ? `Shot ${String(shotIndex).padStart(2, '0')}`
+                                            : 'Draft';
                                     const frameToneClass = el.storyboardOrientation === 'landscape'
                                         ? 'from-violet-500/12 via-fuchsia-500/10 to-transparent dark:from-violet-400/18 dark:via-fuchsia-400/12 dark:to-transparent'
                                         : el.storyboardOrientation === 'square'
@@ -669,6 +684,7 @@ export function CanvasArea({
                                                     <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/80 dark:text-sky-100/75">
                                                         <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{sequenceState === 'single' ? 'Single Shot' : sequenceState === 'first' ? 'Shot Strip Start' : sequenceState === 'last' ? 'Shot Strip End' : 'Shot Strip'}</span>
                                                         <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardModeLabel}</span>
+                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardProgressLabel}</span>
                                                         {!compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{orientationLabel}</span>}
                                                         {aspectLabel && !compactVertical && (
                                                             <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{aspectLabel}</span>
@@ -683,7 +699,7 @@ export function CanvasArea({
                                                         <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">Shot Note</div>
                                                         <div className={compactPortrait ? 'line-clamp-4' : 'line-clamp-5'}>{boardBrief}</div>
                                                     </div>
-                                                    <div className="grid grid-cols-3 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
+                                                    <div className="grid grid-cols-2 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || 'Auto'} · {orientationLabel}</div>
@@ -691,6 +707,10 @@ export function CanvasArea({
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Render</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sizeMeta || 'Ready'}</div>
+                                                        </div>
+                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame delta</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{frameDeltaLabel}</div>
                                                         </div>
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>
@@ -769,6 +789,19 @@ export function CanvasArea({
                                     const sequenceState = typeof el.storyboardSequenceState === 'string' && el.storyboardSequenceState
                                         ? el.storyboardSequenceState
                                         : 'single';
+                                    const shotIndex = typeof el.storyboardShotIndex === 'number' ? el.storyboardShotIndex : undefined;
+                                    const shotCount = typeof el.storyboardShotCount === 'number' ? el.storyboardShotCount : undefined;
+                                    const sourceAspectLabel = typeof el.storyboardSourceAspectRatio === 'string' ? el.storyboardSourceAspectRatio : undefined;
+                                    const frameDeltaLabel = sourceAspectLabel && aspectLabel
+                                        ? sourceAspectLabel === aspectLabel
+                                            ? 'Source frame locked'
+                                            : `${sourceAspectLabel} → ${aspectLabel}`
+                                        : aspectLabel || 'Auto frame';
+                                    const boardProgressLabel = shotIndex && shotCount
+                                        ? `${String(shotIndex).padStart(2, '0')} / ${String(shotCount).padStart(2, '0')}`
+                                        : shotIndex
+                                            ? `Shot ${String(shotIndex).padStart(2, '0')}`
+                                            : 'Rendered';
                                     const boardModeLabel = (typeof el.storyboardBoardMode === 'string' && el.storyboardBoardMode)
                                         || (sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow');
                                     const frameToneClass = el.storyboardOrientation === 'landscape'
@@ -831,28 +864,31 @@ export function CanvasArea({
                                                 </div>
                                                 <div className="relative flex-1 overflow-hidden rounded-2xl border border-blue-200/80 bg-black/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:border-white/10">
                                                     <video src={el.content} className="h-full w-full object-cover select-none" controls loop playsInline onClick={(e) => e.stopPropagation()} />
-                                                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent p-3 text-white">
-                                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                                    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/68 via-black/18 to-transparent p-2.5 text-white">
+                                                        <div className="mb-1 flex items-center justify-between gap-1.5">
                                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                                 <span className="rounded-full border border-emerald-300/20 bg-emerald-400/15 px-2 py-1 text-emerald-50">Rendered</span>
-                                                                <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{boardModeLabel}</span>
+                                                                <span className="rounded-full border border-white/12 bg-white/8 px-2 py-1 text-white/85">Review Pass 1</span>
+                                                                <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-white/70">{boardModeLabel} · {boardProgressLabel}</span>
                                                             </div>
-                                                            <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em]">Ready</span>
+                                                            <span className="rounded-full border border-white/10 bg-white/6 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white/75">Review Ready</span>
                                                         </div>
                                                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                             <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{sequenceHint}</span>
-                                                            {sizeMeta && <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{sizeMeta}</span>}
+                                                            <span className="rounded-full border border-white/12 bg-white/8 px-2 py-1 text-white/82">{frameDeltaLabel}</span>
+                                                            {sizeMeta && <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-white/75">{sizeMeta}</span>}
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/80 dark:text-sky-100/75">
                                                     <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{sequenceState === 'single' ? 'Single Shot' : sequenceState === 'first' ? 'Shot Strip Start' : sequenceState === 'last' ? 'Shot Strip End' : 'Shot Strip'}</span>
                                                     <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardModeLabel}</span>
+                                                    <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardProgressLabel}</span>
                                                     {!compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{orientationLabel}</span>}
                                                     {aspectLabel && !compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{aspectLabel}</span>}
                                                     {durationLabel && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{durationLabel}</span>}
                                                 </div>
-                                                <div className="mt-3 grid grid-cols-3 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
+                                                <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
                                                     <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                         <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame</div>
                                                         <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || 'Auto'} · {orientationLabel}</div>
@@ -860,6 +896,10 @@ export function CanvasArea({
                                                     <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                         <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Render</div>
                                                         <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sizeMeta || 'Rendered'}</div>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Delta</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{frameDeltaLabel}</div>
                                                     </div>
                                                     <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                         <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>

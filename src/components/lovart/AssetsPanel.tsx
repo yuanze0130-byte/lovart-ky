@@ -377,6 +377,12 @@ export function AssetsPanel({
                 </button>
               </div>
             )}
+            {storyboard.length > 0 && (
+              <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                <span>Shot Cards</span>
+                <span>{storyboard.length} items</span>
+              </div>
+            )}
             {storyboard.length > 0 ? storyboard.map((item, index) => {
               const aspectMeta = getStoryboardAspectMeta(item.aspectRatio ?? '9:16');
               const OrientationIcon = aspectMeta.orientation === 'landscape'
@@ -411,19 +417,21 @@ export function AssetsPanel({
                     </div>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                        {isExpanded ? 'Shot Card — Expanded' : 'Shot Card — Compact'}
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                          {isExpanded ? 'Shot Card — Expanded' : 'Shot Card — Compact'}
+                        </div>
+                        <div className="mt-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                          <span>Shot {String(index + 1).padStart(2, '0')}</span>
+                          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-white/10 dark:text-gray-300">
+                            {item.type === 'image' ? 'Image Source' : 'Video Source'}
+                          </span>
+                        </div>
                       </div>
                       <div className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
                         {isExpanded ? '收起细节' : '展开细节'}
                       </div>
-                    </div>
-                    <div className="mb-1 flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                      <span>Shot {String(index + 1).padStart(2, '0')}</span>
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-white/10 dark:text-gray-300">
-                        {item.type === 'image' ? 'Image Source' : 'Video Source'}
-                      </span>
                     </div>
                     <input
                       value={item.title}
@@ -432,6 +440,10 @@ export function AssetsPanel({
                       className="w-full rounded-md bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400 focus:bg-gray-50 dark:text-gray-100 dark:focus:bg-white/8"
                       placeholder={`Shot ${String(index + 1).padStart(2, '0')}`}
                     />
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                      <span className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 dark:border-white/10 dark:bg-white/8">{storyboardLayout === 'horizontal' ? 'Storyboard Flow' : 'Shot Queue'}</span>
+                      <span className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 dark:border-white/10 dark:bg-white/8">{isExpanded ? 'Detailed View' : 'Quick View'}</span>
+                    </div>
                     <div className="mt-1 flex items-center gap-2">
                       <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Duration</span>
                       <input
@@ -447,14 +459,23 @@ export function AssetsPanel({
                     </div>
                     {isExpanded ? (
                     <div className="mt-2 space-y-2">
-                      <div className="grid grid-cols-4 gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Shot Meta</div>
+                      <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-500 dark:text-gray-400">
                         <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
                           <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Shot</div>
-                          <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{String(index + 1).padStart(2, '0')}</div>
+                          <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{String(index + 1).padStart(2, '0')} / {String(storyboard.length).padStart(2, '0')}</div>
                         </div>
                         <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
                           <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Frame</div>
                           <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.aspectRatio ?? '9:16'}</div>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Source</div>
+                          <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'}</div>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Delta</div>
+                          <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{(item.sourceAspectRatio ?? item.aspectRatio ?? '9:16') === (item.aspectRatio ?? '9:16') ? 'Locked' : `${item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'} → ${item.aspectRatio ?? '9:16'}`}</div>
                         </div>
                         <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
                           <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Canvas</div>
@@ -490,12 +511,13 @@ export function AssetsPanel({
                           <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-white/8 dark:text-gray-300">{aspectMeta.orientation}</span>
                         </div>
                         <div className="mt-1">
-                          当前镜头会按 <span className="font-medium text-gray-800 dark:text-gray-100">{item.aspectRatio ?? '9:16'}</span> / <span className="font-medium text-gray-800 dark:text-gray-100">{item.outputSize ?? aspectMeta.videoSize}</span> 落成视频节点，保留这个镜头自己的画幅感知。
+                          当前镜头按 <span className="font-medium text-gray-800 dark:text-gray-100">{item.aspectRatio ?? '9:16'}</span> / <span className="font-medium text-gray-800 dark:text-gray-100">{item.outputSize ?? aspectMeta.videoSize}</span> 落成视频节点，并保留画幅感知。
                         </div>
                         <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
                           <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Source {item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'}</span>
-                          <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Current {item.aspectRatio ?? '9:16'}</span>
-                          <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{(item.sourceAspectRatio ?? item.aspectRatio ?? '9:16') === (item.aspectRatio ?? '9:16') ? 'No crop delta' : 'Frame remapped'}</span>
+                          <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Frame {item.aspectRatio ?? '9:16'}</span>
+                          <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{(item.sourceAspectRatio ?? item.aspectRatio ?? '9:16') === (item.aspectRatio ?? '9:16') ? 'Locked' : 'Remapped'}</span>
+                          <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{String(index + 1).padStart(2, '0')} / {String(storyboard.length).padStart(2, '0')}</span>
                         </div>
                       </div>
                       <select
@@ -511,11 +533,11 @@ export function AssetsPanel({
                       </select>
                       <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                         <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Orientation</div>
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Frame preset</div>
                           <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.label}</div>
                         </div>
                         <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Output</div>
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Render output</div>
                           <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.outputSize ?? aspectMeta.videoSize}</div>
                         </div>
                       </div>
@@ -535,66 +557,73 @@ export function AssetsPanel({
                       />
                     </div>
                   ) : (
-                    <div className="mt-2 space-y-2 text-[11px] text-gray-500 dark:text-gray-400">
+                    <div className="mt-1.5 space-y-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Shot Meta</div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-600 dark:border-white/10 dark:bg-white/8 dark:text-gray-200">{item.aspectRatio ?? '9:16'}</span>
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-medium text-blue-700 dark:border-sky-400/20 dark:bg-sky-400/12 dark:text-sky-100">{item.aspectRatio ?? '9:16'}</span>
                         <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-600 dark:border-white/10 dark:bg-white/8 dark:text-gray-200">{item.outputSize ?? aspectMeta.videoSize}</span>
                         <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-600 dark:border-white/10 dark:bg-white/8 dark:text-gray-200">{storyboard.length === 1 ? 'Single' : index === 0 ? (storyboardLayout === 'horizontal' ? 'Start →' : 'Head ↓') : index === storyboard.length - 1 ? 'End' : (storyboardLayout === 'horizontal' ? 'Next →' : 'Queue ↓')}</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                        <span className="rounded-2xl border border-gray-200 bg-white/85 px-3 py-2 dark:border-white/10 dark:bg-white/8">Source {item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'}</span>
-                        <span className="rounded-2xl border border-gray-200 bg-white/85 px-3 py-2 dark:border-white/10 dark:bg-white/8">Current {item.aspectRatio ?? '9:16'}</span>
+                      <div className="flex flex-wrap items-center gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                        <span className="rounded-full border border-gray-200/80 bg-white/70 px-2.5 py-1 text-gray-500 dark:border-white/10 dark:bg-white/6 dark:text-gray-400">{(item.sourceAspectRatio ?? item.aspectRatio ?? '9:16') === (item.aspectRatio ?? '9:16') ? 'Locked' : `${item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'} → ${item.aspectRatio ?? '9:16'}`}</span>
+                        <span className="rounded-full border border-dashed border-gray-300 bg-transparent px-2.5 py-1 text-gray-400 dark:border-white/15 dark:text-gray-500">{String(index + 1).padStart(2, '0')} / {String(storyboard.length).padStart(2, '0')}</span>
                       </div>
-                      <div className="rounded-2xl border border-gray-200/80 bg-white/70 px-3 py-2 text-[11px] leading-5 text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
+                      <div className="rounded-xl border border-gray-200/80 bg-white/70 px-3 py-2 text-[11px] leading-5 text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
                         <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
                           <span>Shot Note</span>
-                          <span>{(item.sourceAspectRatio ?? item.aspectRatio ?? '9:16') === (item.aspectRatio ?? '9:16') ? 'Follow source' : 'Frame remapped'}</span>
+                          <span>{(item.sourceAspectRatio ?? item.aspectRatio ?? '9:16') === (item.aspectRatio ?? '9:16') ? 'Follow' : 'Remapped'}</span>
                         </div>
-                        <div className="line-clamp-2">{item.sourcePrompt || `按 ${item.aspectRatio ?? '9:16'} / ${item.outputSize ?? aspectMeta.videoSize} 作为当前镜头的默认输出规格。`}</div>
+                        <div className="line-clamp-2">{item.sourcePrompt || `${item.aspectRatio ?? '9:16'} / ${item.outputSize ?? aspectMeta.videoSize} 默认输出。`}</div>
                       </div>
                     </div>
                   )}
                   </div>
                 </button>
-                <div className="grid grid-cols-2 gap-2 border-t border-gray-100 p-3 dark:border-white/10">
-                  <button
-                    onClick={() => onCreateVideoFromStoryboard(item)}
-                    className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-600 transition-colors hover:bg-blue-100 dark:bg-sky-400/14 dark:text-sky-200 dark:hover:bg-sky-400/22"
-                    title={`按 ${item.aspectRatio ?? '9:16'} / ${item.outputSize ?? aspectMeta.videoSize} 创建视频节点`}
-                  >
-                    <Sparkles size={14} />
-                    生成对应视频节点
-                  </button>
-                  <button
-                    onClick={() => onLocateStoryboardItem(item)}
-                    className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
-                  >
-                    <LocateFixed size={14} />
-                    定位原始镜头
-                  </button>
-                  <button
-                    onClick={() => onMoveStoryboardItem(item.id, 'up')}
-                    disabled={index === 0}
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
-                  >
-                    <ArrowUp size={14} />
-                    上移
-                  </button>
-                  <button
-                    onClick={() => onMoveStoryboardItem(item.id, 'down')}
-                    disabled={index === storyboard.length - 1}
-                    className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
-                  >
-                    <ArrowDown size={14} />
-                    下移
-                  </button>
-                  <button
-                    onClick={() => onRemoveStoryboardItem(item.id)}
-                    className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-red-200 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/20 dark:text-red-300 dark:hover:bg-red-500/10"
-                  >
-                    <X size={14} />
-                    移除
-                  </button>
+                <div className="border-t border-gray-100 p-3 dark:border-white/10">
+                  <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                    <span>Shot Actions</span>
+                    <span>{storyboardLayout === 'horizontal' ? 'Flow Footer' : 'Queue Footer'}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => onCreateVideoFromStoryboard(item)}
+                      className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-600 transition-colors hover:bg-blue-100 dark:bg-sky-400/14 dark:text-sky-200 dark:hover:bg-sky-400/22"
+                      title={`按 ${item.aspectRatio ?? '9:16'} / ${item.outputSize ?? aspectMeta.videoSize} 创建视频节点`}
+                    >
+                      <Sparkles size={14} />
+                      生成对应视频节点
+                    </button>
+                    <button
+                      onClick={() => onLocateStoryboardItem(item)}
+                      className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
+                    >
+                      <LocateFixed size={14} />
+                      定位原始镜头
+                    </button>
+                    <button
+                      onClick={() => onMoveStoryboardItem(item.id, 'up')}
+                      disabled={index === 0}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
+                    >
+                      <ArrowUp size={14} />
+                      上移
+                    </button>
+                    <button
+                      onClick={() => onMoveStoryboardItem(item.id, 'down')}
+                      disabled={index === storyboard.length - 1}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
+                    >
+                      <ArrowDown size={14} />
+                      下移
+                    </button>
+                    <button
+                      onClick={() => onRemoveStoryboardItem(item.id)}
+                      className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-red-200 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:border-red-500/20 dark:text-red-300 dark:hover:bg-red-500/10"
+                    >
+                      <X size={14} />
+                      移除
+                    </button>
+                  </div>
                 </div>
               </div>
               );

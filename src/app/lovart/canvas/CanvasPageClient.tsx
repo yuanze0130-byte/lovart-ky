@@ -348,7 +348,9 @@ function LovartCanvasContent() {
         const fallbackX = options?.x ?? ((window.innerWidth / 2 - pan.x) / scale - width / 2);
         const fallbackY = options?.y ?? ((window.innerHeight / 2 - 56 - pan.y) / scale - height / 2);
 
-        const shotLabel = `Shot ${String((options?.shotIndex ?? item.order) + 1).padStart(2, '0')}`;
+        const shotIndex = (options?.shotIndex ?? item.order) + 1;
+        const shotCount = storyboard.length;
+        const shotLabel = `Shot ${String(shotIndex).padStart(2, '0')}`;
         const durationLabel = `${item.durationSec ?? 5}s`;
         const sequenceState = options?.sequenceState ?? 'single';
         const layoutMode = options?.layoutMode ?? storyboardLayout;
@@ -395,6 +397,8 @@ function LovartCanvasContent() {
                 storyboardSourceVideoSize: item.sourceOutputSize ?? resolvedOutputSize,
                 storyboardSourceOrientation: item.sourceOrientation ?? resolvedOrientation,
                 storyboardDurationSec: item.durationSec ?? 5,
+                storyboardShotIndex: shotIndex,
+                storyboardShotCount: shotCount,
                 storyboardSequenceState: sequenceState,
                 storyboardSequenceHint: sequenceHint,
                 storyboardBoardMode: boardMode,
@@ -437,6 +441,8 @@ function LovartCanvasContent() {
             storyboardSourceVideoSize: item.sourceOutputSize ?? resolvedOutputSize,
             storyboardSourceOrientation: item.sourceOrientation ?? resolvedOrientation,
             storyboardDurationSec: item.durationSec ?? 5,
+            storyboardShotIndex: shotIndex,
+            storyboardShotCount: shotCount,
             storyboardSequenceState: sequenceState,
             storyboardSequenceHint: sequenceHint,
             storyboardBoardMode: boardMode,
