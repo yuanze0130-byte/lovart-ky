@@ -5,6 +5,7 @@ import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = 'standard' | 'pro';
+type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 
 interface GeminiInlineDataPart {
   inlineData?: {
@@ -27,9 +28,11 @@ interface GeminiChatCompletion {
 interface GenerateImagePayload {
   prompt: string;
   referenceImage?: string;
+  referenceImages?: string[];
   resolution?: '1K' | '2K' | '4K';
   aspectRatio?: '1:1' | '4:3' | '16:9';
   modelVariant?: ModelVariant;
+  editMode?: ImageEditMode;
 }
 
 function getProvider(): GeminiProvider {
@@ -53,6 +56,17 @@ function buildPrompt(prompt: string, resolution: string, aspectRatio: string) {
 function normalizeReferenceImage(referenceImage?: string) {
   if (!referenceImage) return undefined;
   return referenceImage.replace(/^data:image\/\w+;base64,/, '');
+}
+
+function normalizeReferenceImages(referenceImages?: string[], referenceImage?: string) {
+  const normalized = (referenceImages || [])
+    .map((image) => normalizeReferenceImage(image))
+    .filter(Boolean) as string[];
+
+  if (normalized.length > 0) return normalized.slice(0, 4);
+
+  const single = normalizeReferenceImage(referenceImage);
+  return single ? [single] : [];
 }
 
 async function maybeTranslatePromptWithProxy(prompt: string) {
@@ -102,13 +116,13 @@ async function generateViaProxy(payload: GenerateImagePayload) {
     | { type: 'image_url'; image_url: { url: string } }
   > = [];
 
-  const base64Data = normalizeReferenceImage(payload.referenceImage);
-  if (base64Data) {
+  const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
+  references.forEach((base64Data) => {
     content.push({
       type: 'image_url',
       image_url: { url: `data:image/jpeg;base64,${base64Data}` },
     });
-  }
+  });
 
   content.push({ type: 'text', text: finalPrompt });
 
@@ -127,6 +141,8 @@ async function generateViaProxy(payload: GenerateImagePayload) {
     requestedResolution: payload.resolution || '1K',
     provider: 'proxy' as const,
     modelVariant: payload.modelVariant || 'pro',
+    editMode: payload.editMode || 'generate',
+    referenceCount: references.length,
   };
 
   const parts = response.choices?.[0]?.message?.parts;
@@ -194,16 +210,16 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
   );
 
   const parts: Array<Record<string, unknown>> = [];
-  const base64Data = normalizeReferenceImage(payload.referenceImage);
+  const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
 
-  if (base64Data) {
+  references.forEach((base64Data) => {
     parts.push({
       inlineData: {
         mimeType: 'image/jpeg',
         data: base64Data,
       },
     });
-  }
+  });
 
   parts.push({ text: finalPrompt });
 
@@ -256,6 +272,8 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
         requestedResolution: payload.resolution || '1K',
         provider: 'official' as const,
         modelVariant: payload.modelVariant || 'pro',
+        editMode: payload.editMode || 'generate',
+        referenceCount: references.length,
       };
     }
   }
@@ -296,9 +314,11 @@ export async function POST(request: NextRequest) {
     const {
       prompt,
       referenceImage,
+      referenceImages,
       resolution = '1K',
       aspectRatio = '1:1',
       modelVariant = 'pro',
+      editMode = 'generate',
     } = (await request.json()) as GenerateImagePayload;
 
     if (!prompt || typeof prompt !== 'string') {
@@ -308,9 +328,11 @@ export async function POST(request: NextRequest) {
     const payload: GenerateImagePayload = {
       prompt,
       referenceImage,
+      referenceImages,
       resolution,
       aspectRatio,
       modelVariant,
+      editMode,
     };
 
     const provider = getProvider();

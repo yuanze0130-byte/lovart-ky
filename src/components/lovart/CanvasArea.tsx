@@ -12,7 +12,7 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     promptPresetId?: string;
     promptPresetLabel?: string;
     promptDebug?: string;
-    imageEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance';
+    imageEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
     modelVariant?: 'standard' | 'pro';
     referenceCount?: number;
     resolution?: '1K' | '2K' | '4K';
@@ -58,6 +58,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     points?: { x: number; y: number }[];
     strokeWidth?: number;
     referenceImageId?: string;
+    initialEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
+    initialPrompt?: string;
     groupId?: string;
     linkedElements?: string[];
     connectorFrom?: string;
@@ -83,6 +85,7 @@ interface CanvasAreaProps {
     onDragStart?: () => void;
     onDragEnd?: () => void;
     onGenerateFromImage?: (element: CanvasElement) => void;
+    onOpenImageEditMode?: (element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => void;
     onConnectFlow?: (element: CanvasElement) => void;
     onRemoveBackground?: (element: CanvasElement) => Promise<void>;
     onUpscale?: (element: CanvasElement, scale?: number) => Promise<void>;
@@ -109,6 +112,7 @@ export function CanvasArea({
     onDragStart,
     onDragEnd,
     onGenerateFromImage,
+    onOpenImageEditMode,
     onConnectFlow,
     onRemoveBackground,
     onUpscale,
@@ -476,6 +480,7 @@ export function CanvasArea({
                         onUpdate={onElementChange}
                         onDelete={onDelete}
                         onGenerateFromImage={onGenerateFromImage}
+                        onOpenImageEditMode={onOpenImageEditMode}
                         onConnectFlow={onConnectFlow}
                         onDuplicate={handleDuplicate}
                         onRemoveBackground={onRemoveBackground}
@@ -643,6 +648,8 @@ export function CanvasArea({
                                     const boardModeLabel = typeof el.storyboardBoardMode === 'string' && el.storyboardBoardMode
                                         ? el.storyboardBoardMode
                                         : sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow';
+                                    const detailRailLabel = el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail';
+                                    const outputRailLabel = sizeMeta ? `${sizeMeta} render` : 'Storyboard render';
 
                                     return (
                                         <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.92))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.18),rgba(15,23,42,0.94)_68%)] dark:text-sky-50">
@@ -721,8 +728,8 @@ export function CanvasArea({
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || 'Auto'} · {orientationLabel}</div>
                                                         </div>
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Render</div>
-                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sizeMeta || 'Ready'}</div>
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Output</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{outputRailLabel}</div>
                                                         </div>
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame delta</div>
@@ -730,7 +737,7 @@ export function CanvasArea({
                                                         </div>
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Detail rail</div>
-                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail'}</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{detailRailLabel}</div>
                                                         </div>
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>

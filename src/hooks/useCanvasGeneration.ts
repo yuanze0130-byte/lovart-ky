@@ -6,7 +6,7 @@ import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 
 type BananaVariant = 'standard' | 'pro';
-type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance';
+type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';

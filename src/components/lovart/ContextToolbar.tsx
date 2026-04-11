@@ -1,12 +1,14 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles, Loader2 } from 'lucide-react';
+import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, ScanSearch } from 'lucide-react';
 import { CanvasElement } from './CanvasArea';
+import { authedFetch } from '@/lib/authed-fetch';
 
 interface ContextToolbarProps {
     element: CanvasElement;
     onUpdate: (id: string, updates: Partial<CanvasElement>) => void;
     onDelete: (id: string) => void;
     onGenerateFromImage?: (element: CanvasElement) => void;
+    onOpenImageEditMode?: (element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => void;
     onConnectFlow?: (element: CanvasElement) => void;
     onDuplicate?: (element: CanvasElement) => void;
     onRemoveBackground?: (element: CanvasElement) => Promise<void>;
@@ -51,6 +53,7 @@ export function ContextToolbar({
     onUpdate,
     onDelete,
     onGenerateFromImage,
+    onOpenImageEditMode,
     onConnectFlow,
     onDuplicate,
     onRemoveBackground,
@@ -58,12 +61,23 @@ export function ContextToolbar({
     onCrop,
 }: ContextToolbarProps) {
     const [showEditPanel, setShowEditPanel] = useState(false);
+    const [showReversePromptPanel, setShowReversePromptPanel] = useState(false);
     const [showUpscalePanel, setShowUpscalePanel] = useState(false);
     const [showCropPanel, setShowCropPanel] = useState(false);
     const [selectedUpscale, setSelectedUpscale] = useState<2 | 4>(2);
     const [editPrompt, setEditPrompt] = useState('');
+    const [reversePromptResult, setReversePromptResult] = useState<null | {
+        concisePrompt: string;
+        detailedPrompt: string;
+        negativePrompt?: string;
+        styleTags?: string[];
+        lightingTags?: string[];
+        cameraTags?: string[];
+        notes?: string;
+    }>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isRemovingBg, setIsRemovingBg] = useState(false);
+    const [isReversingPrompt, setIsReversingPrompt] = useState(false);
     const [isUpscaling, setIsUpscaling] = useState(false);
     const [isCropping, setIsCropping] = useState(false);
     const [cropX, setCropX] = useState(0);
@@ -149,6 +163,33 @@ export function ContextToolbar({
             alert(error instanceof Error ? error.message : '去背景失败');
         } finally {
             setIsRemovingBg(false);
+        }
+    };
+
+    const handleReversePrompt = async () => {
+        if (element.type !== 'image' || !element.content) return;
+
+        try {
+            setIsReversingPrompt(true);
+            setShowReversePromptPanel(true);
+            const response = await authedFetch('/api/reverse-prompt', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ imageData: element.content }),
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.details || data.error || '反推提示词失败');
+            }
+            setReversePromptResult(data);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : '反推提示词失败');
+            setShowReversePromptPanel(false);
+        } finally {
+            setIsReversingPrompt(false);
         }
     };
 
@@ -344,6 +385,33 @@ export function ContextToolbar({
                     >
                         <Shirt size={18} />
                     </button>
+
+                    {onOpenImageEditMode && element.type === 'image' && (
+                        <>
+                            <button
+                                onClick={() => onOpenImageEditMode(element, 'relight', element.prompt || '保留主体，仅重打光，增强光影氛围与层次。')}
+                                className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50"
+                                title="重打光"
+                            >
+                                <Lightbulb size={18} />
+                            </button>
+                            <button
+                                onClick={() => onOpenImageEditMode(element, 'angle', element.prompt || '保留主体身份与材质，仅调整视角与透视关系。')}
+                                className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50"
+                                title="调整角度"
+                            >
+                                <RotateCcw size={18} />
+                            </button>
+                            <button
+                                onClick={handleReversePrompt}
+                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'text-purple-500' : 'text-gray-700 hover:bg-gray-50'}`}
+                                title="反推提示词"
+                                disabled={isReversingPrompt}
+                            >
+                                {isReversingPrompt ? <Loader2 size={18} className="animate-spin" /> : <ScanSearch size={18} />}
+                            </button>
+                        </>
+                    )}
 
                     {onGenerateFromImage && (
                         <button
@@ -583,6 +651,70 @@ export function ContextToolbar({
                         >
                             {isUpscaling ? '超分处理中...' : `开始 ${selectedUpscale}x 超分`}
                         </button>
+                    </div>
+                )}
+
+                {showReversePromptPanel && (
+                    <div className="absolute top-full left-1/2 z-50 mt-2 w-[28rem] -translate-x-1/2 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
+                        <div className="mb-3 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
+                                <ScanSearch size={14} className="text-purple-500" />
+                                反推提示词
+                            </span>
+                            <button
+                                onClick={() => setShowReversePromptPanel(false)}
+                                className="rounded p-0.5 text-gray-400 hover:bg-gray-100"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+
+                        {reversePromptResult ? (
+                            <div className="space-y-3 text-sm">
+                                <div>
+                                    <div className="mb-1 text-[11px] font-medium text-gray-500">简洁 Prompt</div>
+                                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-gray-800">{reversePromptResult.concisePrompt}</div>
+                                </div>
+                                <div>
+                                    <div className="mb-1 text-[11px] font-medium text-gray-500">详细 Prompt</div>
+                                    <div className="whitespace-pre-line rounded-lg border border-gray-200 bg-gray-50 p-2 text-gray-800">{reversePromptResult.detailedPrompt}</div>
+                                </div>
+                                {reversePromptResult.negativePrompt && (
+                                    <div>
+                                        <div className="mb-1 text-[11px] font-medium text-gray-500">Negative Prompt</div>
+                                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-2 text-gray-800">{reversePromptResult.negativePrompt}</div>
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
+                                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-2"><div className="mb-1 font-medium text-gray-500">风格标签</div><div>{reversePromptResult.styleTags?.join('，') || '—'}</div></div>
+                                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-2"><div className="mb-1 font-medium text-gray-500">光照标签</div><div>{reversePromptResult.lightingTags?.join('，') || '—'}</div></div>
+                                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-2"><div className="mb-1 font-medium text-gray-500">镜头标签</div><div>{reversePromptResult.cameraTags?.join('，') || '—'}</div></div>
+                                </div>
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    <button
+                                        onClick={() => navigator.clipboard.writeText(reversePromptResult.detailedPrompt)}
+                                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-700 transition-colors hover:bg-gray-200"
+                                    >
+                                        复制详细 Prompt
+                                    </button>
+                                    {onOpenImageEditMode && (
+                                        <button
+                                            onClick={() => {
+                                                onOpenImageEditMode(element, 'generate', reversePromptResult.detailedPrompt);
+                                                setShowReversePromptPanel(false);
+                                            }}
+                                            className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-purple-700"
+                                        >
+                                            用它继续编辑
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="py-8 text-center text-sm text-gray-500">
+                                {isReversingPrompt ? '正在分析图片并反推提示词…' : '暂无结果'}
+                            </div>
+                        )}
                     </div>
                 )}
 

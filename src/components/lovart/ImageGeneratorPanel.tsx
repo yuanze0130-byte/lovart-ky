@@ -1,16 +1,19 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Sparkles, ChevronDown, Zap, Image as ImageIcon, Upload, X, Lightbulb, Palette, ScanSearch, Wand2 } from 'lucide-react';
+import { Sparkles, ChevronDown, Zap, Image as ImageIcon, Upload, X, Lightbulb, Palette, ScanSearch, Wand2, RotateCcw } from 'lucide-react';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
 type BananaVariant = 'standard' | 'pro';
-type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance';
+type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type RelightDirection = 'front' | 'side-left' | 'side-right' | 'back' | 'top' | 'bottom';
 type RelightIntensity = 'soft' | 'medium' | 'strong';
 type RelightMood = 'natural' | 'cinematic' | 'dramatic' | 'dreamy' | 'neon';
 type RelightQuality = 'soft-light' | 'hard-light' | 'rim-light' | 'volumetric';
+type AngleDirection = 'front' | 'left-45' | 'right-45' | 'left-side' | 'right-side' | 'back' | 'top-down' | 'low-angle';
+type AngleStrength = 'subtle' | 'balanced' | 'strong';
+type AngleScene = 'portrait' | 'fashion' | 'product' | 'general';
 type RestyleStrength = 'subtle' | 'balanced' | 'bold';
 type SubjectPreservation = 'strict' | 'balanced' | 'free';
 type BackgroundReplacementStrength = 'gentle' | 'balanced' | 'full';
@@ -58,6 +61,30 @@ const RELIGHT_QUALITY_OPTIONS: Array<PromptPresetOption<RelightQuality>> = [
     { value: 'volumetric', label: '体积光', prompt: '加入可见光束、空气透视或体积光效果。' },
 ];
 
+const ANGLE_DIRECTION_OPTIONS: Array<PromptPresetOption<AngleDirection>> = [
+    { value: 'front', label: '正面', prompt: '将主体调整为正面视角，尽量保持自然比例与正向受视面信息。' },
+    { value: 'left-45', label: '左前 45°', prompt: '将主体调整到左前方 45 度视角，保留立体结构与透视关系。' },
+    { value: 'right-45', label: '右前 45°', prompt: '将主体调整到右前方 45 度视角，保留立体结构与透视关系。' },
+    { value: 'left-side', label: '左侧面', prompt: '将主体调整为左侧面视角，强调侧向轮廓与结构线。' },
+    { value: 'right-side', label: '右侧面', prompt: '将主体调整为右侧面视角，强调侧向轮廓与结构线。' },
+    { value: 'back', label: '背面', prompt: '将主体调整为背面视角，同时保持服装、发型或产品背部结构合理。' },
+    { value: 'top-down', label: '俯视', prompt: '将镜头视角调整为俯视，重建透视关系并保持主体识别。' },
+    { value: 'low-angle', label: '仰视', prompt: '将镜头视角调整为仰视，增强纵深与立体感。' },
+];
+
+const ANGLE_STRENGTH_OPTIONS: Array<PromptPresetOption<AngleStrength>> = [
+    { value: 'subtle', label: '轻微', prompt: '仅做轻量视角修正，尽量保持原始构图和主体朝向特征。' },
+    { value: 'balanced', label: '平衡', prompt: '明显改变视角，同时尽量保持主体身份、材质和关键结构。' },
+    { value: 'strong', label: '强烈', prompt: '大胆改变视角与透视关系，让目标机位效果更明确。' },
+];
+
+const ANGLE_SCENE_OPTIONS: Array<PromptPresetOption<AngleScene>> = [
+    { value: 'portrait', label: '人像', prompt: '优先保持人物身份、五官识别和肢体自然。' },
+    { value: 'fashion', label: '服饰', prompt: '优先保持穿搭款式、版型、面料和服装层次关系。' },
+    { value: 'product', label: '产品', prompt: '优先保持产品结构、边缘、材质与品牌识别特征。' },
+    { value: 'general', label: '通用', prompt: '优先保持主体主要识别特征和画面可读性。' },
+];
+
 const RESTYLE_STRENGTH_OPTIONS: Array<PromptPresetOption<RestyleStrength>> = [
     { value: 'subtle', label: '轻微', prompt: '仅做轻量风格迁移，保留原始视觉语言的大部分特征。' },
     { value: 'balanced', label: '平衡', prompt: '明显切换风格语言，同时兼顾主体辨识度与原图信息。' },
@@ -86,6 +113,12 @@ const RELIGHT_PRESETS: PromptControlPreset[] = [
     { id: 'portrait-studio', label: '人像棚拍', description: '正面柔光，强调自然与皮肤质感' },
     { id: 'cinematic-rim', label: '电影逆光', description: '逆光 + 轮廓光，强调戏剧层次' },
     { id: 'neon-night', label: '霓虹夜景', description: '侧光 + 霓虹氛围，适合都市感画面' },
+];
+
+const ANGLE_PRESETS: PromptControlPreset[] = [
+    { id: 'portrait-left-45', label: '人像左前 45°', description: '适合人像和上半身拍摄，兼顾自然与立体感' },
+    { id: 'fashion-side', label: '服饰侧面展示', description: '强调穿搭轮廓、侧面版型和层次' },
+    { id: 'product-hero', label: '产品英雄角度', description: '适合商品图，强化三维结构和展示感' },
 ];
 
 const RESTYLE_PRESETS: PromptControlPreset[] = [
@@ -122,6 +155,31 @@ function buildRelightPromptPatch({
         `[光线强度] ${intensityPrompt}`,
         `[氛围风格] ${moodPrompt}`,
         `[光质类型] ${qualityPrompt}`,
+    ].join('\n');
+}
+
+function buildAnglePromptPatch({
+    direction,
+    strength,
+    preservation,
+    scene,
+}: {
+    direction: AngleDirection;
+    strength: AngleStrength;
+    preservation: SubjectPreservation;
+    scene: AngleScene;
+}) {
+    const directionPrompt = ANGLE_DIRECTION_OPTIONS.find((option) => option.value === direction)?.prompt || '';
+    const strengthPrompt = ANGLE_STRENGTH_OPTIONS.find((option) => option.value === strength)?.prompt || '';
+    const preservationPrompt = SUBJECT_PRESERVATION_OPTIONS.find((option) => option.value === preservation)?.prompt || '';
+    const scenePrompt = ANGLE_SCENE_OPTIONS.find((option) => option.value === scene)?.prompt || '';
+
+    return [
+        '尽量保留主体身份、款式、材质和关键构图锚点，重点调整相机视角、朝向、透视关系与可见结构，让结果像从目标角度重新拍摄。',
+        `[目标视角] ${directionPrompt}`,
+        `[改动强度] ${strengthPrompt}`,
+        `[主体保留] ${preservationPrompt}`,
+        `[场景优先级] ${scenePrompt}`,
     ].join('\n');
 }
 
@@ -213,10 +271,20 @@ function buildPromptPatch(
             preservation: SubjectPreservation;
             depth: BackgroundDepth;
         };
+        angle: {
+            direction: AngleDirection;
+            strength: AngleStrength;
+            preservation: SubjectPreservation;
+            scene: AngleScene;
+        };
     }
 ) {
     if (editMode === 'relight') {
         return buildRelightPromptPatch(settings.relight);
+    }
+
+    if (editMode === 'angle') {
+        return buildAnglePromptPatch(settings.angle);
     }
 
     if (editMode === 'restyle') {
@@ -237,6 +305,12 @@ function getActivePresetId(editMode: ImageEditMode, settings: {
         mood: RelightMood;
         quality: RelightQuality;
     };
+    angle: {
+        direction: AngleDirection;
+        strength: AngleStrength;
+        preservation: SubjectPreservation;
+        scene: AngleScene;
+    };
     restyle: {
         strength: RestyleStrength;
         preservation: SubjectPreservation;
@@ -256,6 +330,18 @@ function getActivePresetId(editMode: ImageEditMode, settings: {
         }
         if (settings.relight.direction === 'side-right' && settings.relight.intensity === 'medium' && settings.relight.mood === 'neon' && settings.relight.quality === 'hard-light') {
             return 'neon-night';
+        }
+    }
+
+    if (editMode === 'angle') {
+        if (settings.angle.direction === 'left-45' && settings.angle.strength === 'balanced' && settings.angle.preservation === 'balanced' && settings.angle.scene === 'portrait') {
+            return 'portrait-left-45';
+        }
+        if (settings.angle.direction === 'left-side' && settings.angle.strength === 'balanced' && settings.angle.preservation === 'strict' && settings.angle.scene === 'fashion') {
+            return 'fashion-side';
+        }
+        if (settings.angle.direction === 'right-45' && settings.angle.strength === 'balanced' && settings.angle.preservation === 'strict' && settings.angle.scene === 'product') {
+            return 'product-hero';
         }
     }
 
@@ -288,6 +374,8 @@ function getActivePresetId(editMode: ImageEditMode, settings: {
 
 interface ImageGeneratorPanelProps {
     elementId: string;
+    initialMode?: ImageEditMode;
+    initialPrompt?: string;
     onGenerate: (
         prompt: string,
         resolution: Resolution,
@@ -327,6 +415,13 @@ const EDIT_MODE_OPTIONS: Array<{
         patch: '保留主体、构图和关键形态，重点调整光线方向、受光面、阴影层次和整体氛围，让画面像重新布光后的版本。',
     },
     {
+        value: 'angle',
+        label: '调整角度',
+        hint: '保留主体，重建视角和透视关系',
+        icon: RotateCcw,
+        patch: '尽量保留主体身份、款式、材质和关键构图锚点，重点调整相机视角、朝向、透视关系与可见结构，让结果像从目标角度重新拍摄。',
+    },
+    {
         value: 'restyle',
         label: '改风格',
         hint: '保持主体，切换风格语言',
@@ -349,17 +444,21 @@ const EDIT_MODE_OPTIONS: Array<{
     },
 ];
 
-export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style, canvasElements }: ImageGeneratorPanelProps) {
-    const [prompt, setPrompt] = useState('');
+export function ImageGeneratorPanel({ elementId, initialMode, initialPrompt, onGenerate, isGenerating, style, canvasElements }: ImageGeneratorPanelProps) {
+    const [prompt, setPrompt] = useState(initialPrompt || '');
     const [resolution, setResolution] = useState<Resolution>('1K');
     const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
     const [modelVariant, setModelVariant] = useState<BananaVariant>('pro');
-    const [editMode, setEditMode] = useState<ImageEditMode>('generate');
+    const [editMode, setEditMode] = useState<ImageEditMode>(initialMode || 'generate');
     const [referenceImages, setReferenceImages] = useState<Array<File | string>>([]);
     const [relightDirection, setRelightDirection] = useState<RelightDirection>('side-left');
     const [relightIntensity, setRelightIntensity] = useState<RelightIntensity>('medium');
     const [relightMood, setRelightMood] = useState<RelightMood>('cinematic');
     const [relightQuality, setRelightQuality] = useState<RelightQuality>('soft-light');
+    const [angleDirection, setAngleDirection] = useState<AngleDirection>('left-45');
+    const [angleStrength, setAngleStrength] = useState<AngleStrength>('balanced');
+    const [anglePreservation, setAnglePreservation] = useState<SubjectPreservation>('balanced');
+    const [angleScene, setAngleScene] = useState<AngleScene>('general');
     const [restyleStrength, setRestyleStrength] = useState<RestyleStrength>('balanced');
     const [restylePreservation, setRestylePreservation] = useState<SubjectPreservation>('balanced');
     const [backgroundReplacementStrength, setBackgroundReplacementStrength] = useState<BackgroundReplacementStrength>('balanced');
@@ -385,6 +484,18 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
         }
     }, [elementId, canvasElements, referenceImages.length]);
 
+    React.useEffect(() => {
+        if (initialMode) {
+            setEditMode(initialMode);
+        }
+    }, [initialMode, elementId]);
+
+    React.useEffect(() => {
+        if (typeof initialPrompt === 'string') {
+            setPrompt(initialPrompt);
+        }
+    }, [initialPrompt, elementId]);
+
     const resolutions: Resolution[] = ['1K', '2K', '4K'];
     const aspectRatios: AspectRatio[] = ['1:1', '4:3', '16:9'];
     const modelOptions: Array<{ value: BananaVariant; label: string }> = [
@@ -406,6 +517,12 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
             mood: relightMood,
             quality: relightQuality,
         },
+        angle: {
+            direction: angleDirection,
+            strength: angleStrength,
+            preservation: anglePreservation,
+            scene: angleScene,
+        },
         restyle: {
             strength: restyleStrength,
             preservation: restylePreservation,
@@ -421,11 +538,13 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
     const activePromptPatch = buildPromptPatch(editMode, controlSettings);
     const activePresets = editMode === 'relight'
         ? RELIGHT_PRESETS
-        : editMode === 'restyle'
-            ? RESTYLE_PRESETS
-            : editMode === 'background'
-                ? BACKGROUND_PRESETS
-                : [];
+        : editMode === 'angle'
+            ? ANGLE_PRESETS
+            : editMode === 'restyle'
+                ? RESTYLE_PRESETS
+                : editMode === 'background'
+                    ? BACKGROUND_PRESETS
+                    : [];
     const activePreset = activePresets.find((preset) => preset.id === activePresetId) || null;
     const composedPrompt = activePromptPatch ? `${trimmedPrompt}\n\n[编辑意图]\n${activePromptPatch}` : trimmedPrompt;
     const promptDebug = JSON.stringify({
@@ -514,6 +633,30 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                 setRelightIntensity('medium');
                 setRelightMood('neon');
                 setRelightQuality('hard-light');
+            }
+            return;
+        }
+
+        if (editMode === 'angle') {
+            if (presetId === 'portrait-left-45') {
+                setAngleDirection('left-45');
+                setAngleStrength('balanced');
+                setAnglePreservation('balanced');
+                setAngleScene('portrait');
+                return;
+            }
+            if (presetId === 'fashion-side') {
+                setAngleDirection('left-side');
+                setAngleStrength('balanced');
+                setAnglePreservation('strict');
+                setAngleScene('fashion');
+                return;
+            }
+            if (presetId === 'product-hero') {
+                setAngleDirection('right-45');
+                setAngleStrength('balanced');
+                setAnglePreservation('strict');
+                setAngleScene('product');
             }
             return;
         }
@@ -756,6 +899,46 @@ export function ImageGeneratorPanel({ elementId, onGenerate, isGenerating, style
                                 options: RELIGHT_QUALITY_OPTIONS,
                                 activeValue: relightQuality,
                                 onSelect: setRelightQuality,
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {editMode === 'angle' && (
+                <div className="border-t border-gray-100 px-4 py-4 dark:border-white/10">
+                    <div className="mb-3 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Angle Controls</div>
+                    <div className="space-y-4">
+                        <div>
+                            <div className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">目标视角</div>
+                            {renderSegmentedOptions({
+                                options: ANGLE_DIRECTION_OPTIONS,
+                                activeValue: angleDirection,
+                                onSelect: setAngleDirection,
+                            })}
+                        </div>
+                        <div>
+                            <div className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">改动强度</div>
+                            {renderSegmentedOptions({
+                                options: ANGLE_STRENGTH_OPTIONS,
+                                activeValue: angleStrength,
+                                onSelect: setAngleStrength,
+                            })}
+                        </div>
+                        <div>
+                            <div className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">主体保留</div>
+                            {renderSegmentedOptions({
+                                options: SUBJECT_PRESERVATION_OPTIONS,
+                                activeValue: anglePreservation,
+                                onSelect: setAnglePreservation,
+                            })}
+                        </div>
+                        <div>
+                            <div className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-300">场景类型</div>
+                            {renderSegmentedOptions({
+                                options: ANGLE_SCENE_OPTIONS,
+                                activeValue: angleScene,
+                                onSelect: setAngleScene,
                             })}
                         </div>
                     </div>
