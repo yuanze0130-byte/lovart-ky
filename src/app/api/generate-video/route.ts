@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
 import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
 
+type VideoModelMode = 'standard' | 'fast';
+
+const DEFAULT_VIDEO_MODEL = 'sora-2';
+const VIDEO_MODELS: Record<VideoModelMode, string> = {
+  standard: process.env.VIDEO_MODEL_STANDARD || process.env.VIDEO_MODEL || 'doubao-seedance-2-0-260128',
+  fast: process.env.VIDEO_MODEL_FAST || 'doubao-seedance-2-0-fast-260128',
+};
+
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
@@ -23,7 +31,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { prompt, seconds, size, referenceImage } = await request.json();
+    const { prompt, seconds, size, referenceImage, modelMode } = (await request.json()) as {
+      prompt?: string;
+      seconds?: number;
+      size?: string;
+      referenceImage?: string;
+      modelMode?: VideoModelMode;
+    };
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
@@ -36,8 +50,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'VIDEO_API_KEY not configured' }, { status: 500 });
     }
 
+    const selectedMode: VideoModelMode = modelMode === 'fast' ? 'fast' : 'standard';
+    const resolvedModel = VIDEO_MODELS[selectedMode] || process.env.VIDEO_MODEL || DEFAULT_VIDEO_MODEL;
+
     const form = new FormData();
-    form.append('model', 'sora-2');
+    form.append('model', resolvedModel);
     form.append('prompt', prompt);
 
     if (seconds) form.append('seconds', seconds.toString());
@@ -66,7 +83,7 @@ export async function POST(request: NextRequest) {
     const data = (await response.json()) as { id?: string; status?: string; error?: string };
     if (!response.ok) throw new Error(data.error || 'Failed to start video generation');
 
-    return NextResponse.json({ taskId: data.id, status: data.status });
+    return NextResponse.json({ taskId: data.id, status: data.status, model: resolvedModel, modelMode: selectedMode });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(

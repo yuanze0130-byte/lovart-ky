@@ -10,6 +10,12 @@ type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1';
 type StoryboardOrientation = 'portrait' | 'landscape' | 'square';
 const STORYBOARD_SIZE_PRIORITY: VideoSize[] = ['720x1280', '1024x1792', '1280x720', '1792x1024', '1024x1280', '1024x1024'];
 type VideoSeconds = 10 | 15;
+type VideoModelMode = 'standard' | 'fast';
+
+const VIDEO_MODEL_MODE_OPTIONS: Array<{ value: VideoModelMode; label: string; hint: string }> = [
+    { value: 'standard', label: 'Seedance 2.0', hint: '更稳，适合最终出片' },
+    { value: 'fast', label: 'Seedance 2.0 Fast', hint: '更快，适合快速迭代' },
+];
 
 const ASPECT_PRESET_TO_SIZE: Record<StoryboardAspectRatio, VideoSize> = {
     '9:16': '720x1280',
@@ -31,6 +37,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const [size, setSize] = useState<VideoSize>('720x1280');
     const [seconds, setSeconds] = useState<VideoSeconds>(10);
     const [referenceImage, setReferenceImage] = useState<File | string | null>(null);
+    const [videoModelMode, setVideoModelMode] = useState<VideoModelMode>('standard');
     const [taskId, setTaskId] = useState<string | null>(null);
     const [progress, setProgress] = useState(0);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -39,6 +46,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const [showSizeMenu, setShowSizeMenu] = useState(false);
     const [showSecondsMenu, setShowSecondsMenu] = useState(false);
     const [showReferenceMenu, setShowReferenceMenu] = useState(false);
+    const [showModelMenu, setShowModelMenu] = useState(false);
     const [showAdvancedBoardSettings, setShowAdvancedBoardSettings] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +89,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const renderProfile = getStoryboardRenderProfile(size);
     const boardFitSize = getPreferredStoryboardVideoSize(currentSizeMeta.aspectRatio, renderProfile);
     const isBoardFitSize = size === boardFitSize;
+    const selectedVideoModelOption = VIDEO_MODEL_MODE_OPTIONS.find((option) => option.value === videoModelMode) || VIDEO_MODEL_MODE_OPTIONS[0];
     const OrientationIcon = currentSizeMeta.orientation === 'landscape'
         ? RectangleHorizontal
         : currentSizeMeta.orientation === 'square'
@@ -122,6 +131,10 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
         if (typeof currentElement.storyboardDurationSec === 'number') {
             setSeconds(currentElement.storyboardDurationSec >= 15 ? 15 : 10);
+        }
+
+        if (currentElement.videoModelMode === 'fast' || currentElement.videoModelMode === 'standard') {
+            setVideoModelMode(currentElement.videoModelMode);
         }
     }, [
         canvasElements,
@@ -218,6 +231,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                     prompt,
                     seconds,
                     size,
+                    modelMode: videoModelMode,
                     referenceImage: referenceImageBase64,
                 }),
             });
@@ -263,6 +277,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         const nodeDimensions = getNodeDimensions(size, currentSizeMeta.aspectRatio);
         onConfigChange(elementId, {
             prompt,
+            videoModelMode,
             width: nodeDimensions.width,
             height: nodeDimensions.height,
             originalWidth: nodeDimensions.width,
@@ -291,6 +306,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         renderProfile,
         seconds,
         size,
+        videoModelMode,
     ]);
 
     return (
@@ -547,13 +563,43 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             {/* Footer Controls */}
             <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/60 px-4 py-3 dark:border-white/10 dark:bg-gray-900/70">
                 <div className="flex items-center gap-2">
-                    {/* Model Indicator */}
-                    <button className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors text-xs font-medium text-gray-700">
-                        <div className="w-3.5 h-3.5 rounded-full bg-black flex items-center justify-center">
-                            <Video size={8} className="text-white" />
-                        </div>
-                        <span>Sora 2</span>
-                    </button>
+                    {/* Model Selector */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowModelMenu(!showModelMenu)}
+                            className="flex items-center gap-1.5 px-2 py-1 hover:bg-gray-100 rounded-lg transition-colors text-xs font-medium text-gray-700"
+                        >
+                            <div className="w-3.5 h-3.5 rounded-full bg-black flex items-center justify-center">
+                                <Video size={8} className="text-white" />
+                            </div>
+                            <span>{selectedVideoModelOption.label}</span>
+                            <ChevronDown size={12} />
+                        </button>
+                        {showModelMenu && (
+                            <div className="absolute bottom-full mb-1 left-0 min-w-[220px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-10 dark:border-white/10 dark:bg-gray-950/96">
+                                {VIDEO_MODEL_MODE_OPTIONS.map((option) => (
+                                    <div
+                                        key={option.value}
+                                        onClick={() => {
+                                            setVideoModelMode(option.value);
+                                            setShowModelMenu(false);
+                                        }}
+                                        className={`px-3 py-2 text-xs cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
+                                            videoModelMode === option.value ? 'text-black font-medium bg-gray-50 dark:bg-white/8 dark:text-white' : 'text-gray-700 dark:text-gray-200'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span>{option.label}</span>
+                                            {videoModelMode === option.value && (
+                                                <span className="rounded-full bg-black px-1.5 py-0.5 text-[10px] text-white dark:bg-white dark:text-black">当前</span>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{option.hint}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
 
                     {/* Reference Image Button */}
                     <div className="relative">

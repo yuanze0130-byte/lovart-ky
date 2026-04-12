@@ -23,6 +23,7 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
 export interface CanvasElement extends Record<string, Json | undefined> {
     id: string;
     type: CanvasElementType;
+    videoModelMode?: 'standard' | 'fast';
     x: number;
     y: number;
     content?: string;

@@ -106,6 +106,7 @@ export function useCanvasGeneration({
                 storyboardSequenceState: generatorElement.storyboardSequenceState || el.storyboardSequenceState,
                 storyboardSequenceHint: generatorElement.storyboardSequenceHint || el.storyboardSequenceHint,
                 storyboardBoardMode: generatorElement.storyboardBoardMode || el.storyboardBoardMode,
+                videoModelMode: generatorElement.videoModelMode || el.videoModelMode,
                 requestedAspectRatio: generatorElement.storyboardAspectRatio === '1:1'
                   ? '1:1'
                   : generatorElement.storyboardAspectRatio === '16:9'
