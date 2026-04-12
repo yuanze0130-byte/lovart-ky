@@ -12,6 +12,18 @@ type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhanc
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
 
+function isResolution(value: unknown): value is Resolution {
+  return value === '1K' || value === '2K' || value === '4K';
+}
+
+function isAspectRatio(value: unknown): value is AspectRatio {
+  return value === '1:1' || value === '4:3' || value === '16:9';
+}
+
+function isBananaVariant(value: unknown): value is BananaVariant {
+  return value === 'standard' || value === 'pro';
+}
+
 function updateProjectThumbnail(projectId: string | undefined, thumbnail: string) {
   if (!projectId || !thumbnail) return;
 
@@ -75,6 +87,22 @@ function buildGenerationMetadata({
     resolution,
     aspectRatio,
   };
+}
+
+async function readResponsePayload(response: Response): Promise<Record<string, unknown>> {
+  const rawText = await response.text();
+
+  if (!rawText) return {};
+
+  try {
+    return JSON.parse(rawText) as Record<string, unknown>;
+  } catch {
+    return {
+      error: rawText,
+      details: rawText,
+      rawText,
+    };
+  }
 }
 
 export function useCanvasGeneration({
@@ -268,27 +296,45 @@ export function useCanvasGeneration({
           }),
         });
 
-        const data = await response.json();
+        const data = await readResponsePayload(response);
 
         if (!response.ok) {
-          throw new Error(data.details || data.error || '生成失败');
+          throw new Error(
+            typeof data.details === 'string'
+              ? data.details
+              : typeof data.error === 'string'
+                ? data.error
+                : '生成失败'
+          );
         }
 
         const generatorElementId = selectedIds.find(
           (id) => elements.find((el) => el.id === id)?.type === 'image-generator'
         );
 
-        if (data.imageData) {
-          const dimensions = await getImageDimensions(data.imageData);
+        const imageData = typeof data.imageData === 'string' ? data.imageData : undefined;
+        const textResponse = typeof data.textResponse === 'string' ? data.textResponse : undefined;
+        const requestedAspectRatio = isAspectRatio(data.requestedAspectRatio)
+          ? data.requestedAspectRatio
+          : aspectRatio;
+        const requestedResolution = isResolution(data.requestedResolution)
+          ? data.requestedResolution
+          : resolution;
+        const returnedModelVariant = isBananaVariant(data.modelVariant)
+          ? data.modelVariant
+          : modelVariant;
+
+        if (imageData) {
+          const dimensions = await getImageDimensions(imageData);
           const displaySize = getSmartDisplaySize(dimensions);
 
           console.log('[generate-image] result', {
-            requestedAspectRatio: data.requestedAspectRatio || aspectRatio,
-            requestedResolution: data.requestedResolution || resolution,
+            requestedAspectRatio,
+            requestedResolution,
             actualWidth: dimensions.width,
             actualHeight: dimensions.height,
             actualAspectRatio: `${dimensions.width}:${dimensions.height}`,
-            modelVariant: data.modelVariant || modelVariant,
+            modelVariant: returnedModelVariant,
             editMode,
             referenceCount: referenceImages.length,
           });
@@ -297,11 +343,11 @@ export function useCanvasGeneration({
             setElements((prev) =>
               prev.map((el) => {
                 if (el.id === generatorElementId) {
-                  updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, data.imageData);
+                  updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, imageData);
                   return {
                     ...el,
                     type: 'image',
-                    content: data.imageData,
+                    content: imageData,
                     width: displaySize.width,
                     height: displaySize.height,
                     originalWidth: displaySize.originalWidth,
@@ -309,11 +355,12 @@ export function useCanvasGeneration({
                     prompt: finalPrompt,
                     generationMetadata: {
                       ...generationMetadata,
-                      resolution: data.requestedResolution || resolution,
-                      aspectRatio: data.requestedAspectRatio || aspectRatio,
+                      resolution: requestedResolution,
+                      aspectRatio: requestedAspectRatio,
+                      modelVariant: returnedModelVariant,
                     },
-                    requestedAspectRatio: data.requestedAspectRatio || aspectRatio,
-                    requestedResolution: data.requestedResolution || resolution,
+                    requestedAspectRatio,
+                    requestedResolution,
                   };
                 }
                 return el;
@@ -329,26 +376,27 @@ export function useCanvasGeneration({
               height: displaySize.height,
               originalWidth: displaySize.originalWidth,
               originalHeight: displaySize.originalHeight,
-              requestedAspectRatio: data.requestedAspectRatio || aspectRatio,
-              requestedResolution: data.requestedResolution || resolution,
+              requestedAspectRatio,
+              requestedResolution,
               prompt: finalPrompt,
               generationMetadata: {
                 ...generationMetadata,
-                resolution: data.requestedResolution || resolution,
-                aspectRatio: data.requestedAspectRatio || aspectRatio,
+                resolution: requestedResolution,
+                aspectRatio: requestedAspectRatio,
+                modelVariant: returnedModelVariant,
               },
-              content: data.imageData,
+              content: imageData,
             };
             setElements((prev) => [...prev, newElement]);
             setSelectedIds([newElement.id]);
           }
-        } else if (data.textResponse) {
+        } else if (textResponse) {
           const newElement: CanvasElement = {
             id: uuidv4(),
             type: 'text',
             x: 300 - pan.x,
             y: 300 - pan.y,
-            content: data.textResponse,
+            content: textResponse,
           };
           setElements((prev) => [...prev, newElement]);
           setSelectedIds([newElement.id]);
@@ -375,13 +423,19 @@ export function useCanvasGeneration({
           body: JSON.stringify({ prompt }),
         });
 
-        const data = await response.json();
+        const data = await readResponsePayload(response);
 
         if (!response.ok) {
-          throw new Error(data.details || data.error || '生成失败');
+          throw new Error(
+            typeof data.details === 'string'
+              ? data.details
+              : typeof data.error === 'string'
+                ? data.error
+                : '生成失败'
+          );
         }
 
-        return data.suggestion || '未收到回复';
+        return typeof data.suggestion === 'string' ? data.suggestion : '未收到回复';
       } catch (error) {
         console.error('Chat generation failed:', error);
         throw error;
