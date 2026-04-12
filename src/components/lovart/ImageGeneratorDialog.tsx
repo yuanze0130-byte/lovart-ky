@@ -12,6 +12,76 @@ interface ImageGeneratorDialogProps {
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
 
+type GenerateImageResponse = {
+    imageData?: string;
+    error?: string;
+    details?: string;
+};
+
+async function fileToDataUrl(file: File): Promise<string> {
+    return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+async function downscaleReferenceImage(file: File): Promise<string> {
+    const dataUrl = await fileToDataUrl(file);
+
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = dataUrl;
+    });
+
+    const maxSide = 1600;
+    const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+        throw new Error('无法处理参考图像');
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+    const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+    return compressedDataUrl.split(',')[1] || '';
+}
+
+async function parseGenerateResponse(response: Response): Promise<GenerateImageResponse> {
+    const rawText = await response.text();
+
+    if (!rawText) {
+        return {};
+    }
+
+    try {
+        return JSON.parse(rawText) as GenerateImageResponse;
+    } catch {
+        const normalized = rawText.trim();
+
+        if (/request entity too large/i.test(normalized)) {
+            return {
+                error: '参考图过大',
+                details: '上传的参考图片体积过大，已被服务器拒绝。请换一张更小的图片再试。',
+            };
+        }
+
+        return {
+            error: '生成失败',
+            details: normalized.slice(0, 300),
+        };
+    }
+}
+
 export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: ImageGeneratorDialogProps) {
     const [prompt, setPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
@@ -45,19 +115,9 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
         setPreviewImage(null);
 
         try {
-            let referenceDataBase64 = null;
-            if (referenceImage) {
-                referenceDataBase64 = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = () => resolve(reader.result as string);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(referenceImage);
-                });
-                // Extract the base64 part
-                if (referenceDataBase64 && referenceDataBase64.includes(',')) {
-                    referenceDataBase64 = referenceDataBase64.split(',')[1];
-                }
-            }
+            const referenceDataBase64 = referenceImage
+                ? await downscaleReferenceImage(referenceImage)
+                : null;
 
             const response = await fetch('/api/generate-image', {
                 method: 'POST',
@@ -73,10 +133,14 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
                 }),
             });
 
-            const data = await response.json();
+            const data = await parseGenerateResponse(response);
 
             if (!response.ok) {
                 throw new Error(data.details || data.error || '生成失败');
+            }
+
+            if (!data.imageData) {
+                throw new Error('接口未返回图片数据');
             }
 
             setPreviewImage(data.imageData);
