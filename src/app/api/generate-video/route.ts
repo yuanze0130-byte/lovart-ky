@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
       form.append('input_reference', blob, 'reference.jpg');
     }
 
-    const response = await fetch(`${baseUrl}/videos`, {
+    const response = await fetch(`${baseUrl}/v2/videos/generations`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}` },
       body: form,

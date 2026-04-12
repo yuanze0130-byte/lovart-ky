@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'VIDEO_API_KEY not configured' }, { status: 500 });
     }
 
-    const response = await fetch(`${baseUrl}/videos/${taskId}`, {
+    const response = await fetch(`${baseUrl}/v2/videos/generations/${taskId}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}` },
     });
