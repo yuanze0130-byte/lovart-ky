@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { GoogleGenAI, Modality } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
 import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
@@ -6,6 +7,8 @@ import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = 'standard' | 'pro';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
+type SupportedAspectRatio = '1:1' | '4:3' | '16:9' | '9:16';
+type SupportedResolution = '1K' | '2K' | '4K';
 
 interface GeminiInlineDataPart {
   inlineData?: {
@@ -29,8 +32,8 @@ interface GenerateImagePayload {
   prompt: string;
   referenceImage?: string;
   referenceImages?: string[];
-  resolution?: '1K' | '2K' | '4K';
-  aspectRatio?: '1:1' | '4:3' | '16:9';
+  resolution?: SupportedResolution;
+  aspectRatio?: SupportedAspectRatio;
   modelVariant?: ModelVariant;
   editMode?: ImageEditMode;
 }
@@ -41,7 +44,7 @@ function getProvider(): GeminiProvider {
   return 'proxy';
 }
 
-function buildPrompt(prompt: string, resolution: string, aspectRatio: string) {
+function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRatio: SupportedAspectRatio) {
   const aspectRatioInstruction = `Generate the image in ${aspectRatio} aspect ratio.`;
   const resolutionInstruction =
     resolution === '4K'
@@ -203,14 +206,15 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
     throw new Error('GOOGLE_GEMINI_API_KEY not configured');
   }
 
+  const ai = new GoogleGenAI({ apiKey });
   const finalPrompt = buildPrompt(
     payload.prompt,
     payload.resolution || '1K',
     payload.aspectRatio || '1:1'
   );
 
-  const parts: Array<Record<string, unknown>> = [];
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
+  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
 
   references.forEach((base64Data) => {
     parts.push({
@@ -223,68 +227,52 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 
   parts.push({ text: finalPrompt });
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+  const response = await ai.models.generateContent({
+    model,
+    contents: [
+      {
+        role: 'user',
+        parts,
       },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts,
-          },
-        ],
-      }),
-    }
-  );
+    ],
+    config: {
+      responseModalities: [Modality.IMAGE],
+      imageConfig: {
+        aspectRatio: payload.aspectRatio || '1:1',
+        imageSize: payload.resolution || '1K',
+      },
+    },
+  });
 
-  const rawText = await response.text();
-  let json: Record<string, unknown> = {};
+  const baseResult = {
+    requestedAspectRatio: payload.aspectRatio || '1:1',
+    requestedResolution: payload.resolution || '1K',
+    provider: 'official' as const,
+    modelVariant: payload.modelVariant || 'pro',
+    editMode: payload.editMode || 'generate',
+    referenceCount: references.length,
+  };
 
-  try {
-    json = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {};
-  } catch {
-    throw new Error(rawText || 'Google Gemini returned non-JSON response');
-  }
+  const candidates = response.candidates || [];
+  for (const candidate of candidates) {
+    const candidateContent = candidate.content;
+    const responseParts = candidateContent?.parts || [];
 
-  if (!response.ok) {
-    const errorMessage =
-      (json.error as { message?: string } | undefined)?.message ||
-      rawText ||
-      'Google Gemini request failed';
-    throw new Error(errorMessage);
-  }
-
-  const candidates = json.candidates as Array<Record<string, unknown>> | undefined;
-  const content = candidates?.[0]?.content as { parts?: Array<Record<string, unknown>> } | undefined;
-  const responseParts = content?.parts || [];
-
-  for (const part of responseParts) {
-    const inlineData = part.inlineData as { data?: string; mimeType?: string } | undefined;
-    if (inlineData?.data) {
-      return {
-        imageData: `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`,
-        textResponse: '',
-        requestedAspectRatio: payload.aspectRatio || '1:1',
-        requestedResolution: payload.resolution || '1K',
-        provider: 'official' as const,
-        modelVariant: payload.modelVariant || 'pro',
-        editMode: payload.editMode || 'generate',
-        referenceCount: references.length,
-      };
+    for (const part of responseParts) {
+      const inlineData = part.inlineData;
+      if (inlineData?.data) {
+        return {
+          imageData: `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`,
+          textResponse: '',
+          ...baseResult,
+        };
+      }
     }
   }
 
-  const text = responseParts
-    .map((part) => (typeof part.text === 'string' ? part.text : ''))
-    .join('\n')
-    .trim();
-
-  if (text) {
-    throw new Error(`Google Gemini 返回了文字而非图片: ${text.slice(0, 300)}`);
+  const responseText = typeof response.text === 'string' ? response.text.trim() : '';
+  if (responseText) {
+    throw new Error(`Google Gemini 返回了文字而非图片: ${responseText.slice(0, 300)}`);
   }
 
   throw new Error('No image data in official Gemini response');

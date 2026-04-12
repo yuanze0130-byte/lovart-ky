@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2, RectangleHorizontal, RectangleVertical, Square, RotateCcw } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getStoryboardNodeDimensions, getStoryboardRenderProfile, getStoryboardVideoSizeOptions, formatStoryboardMeta, getStoryboardFrameDeltaLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, getPreferredStoryboardVideoSize, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel } from '@/hooks/useProjectAssets';
@@ -44,7 +44,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    const sizes: VideoSize[] = ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024'];
+    const sizes = useMemo<VideoSize[]>(() => ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024'], []);
     const secondsOptions: VideoSeconds[] = [10, 15];
 
     const getSizeMeta = (value: VideoSize) => {
@@ -60,9 +60,9 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         return { orientation, aspectRatio };
     };
 
-    const getNodeDimensions = (videoSize: VideoSize, aspectRatio: StoryboardAspectRatio) => {
+    const getNodeDimensions = useCallback((videoSize: VideoSize, aspectRatio: StoryboardAspectRatio) => {
         return getStoryboardNodeDimensions(videoSize, aspectRatio);
-    };
+    }, []);
 
     const currentElement = canvasElements?.find(el => el.id === elementId);
     const currentSizeMeta = getSizeMeta(size);
@@ -95,34 +95,41 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
     // Auto-fill reference image and prompt from source
     useEffect(() => {
-        if (!canvasElements) return;
+        if (!canvasElements || !currentElement) return;
 
-        if (currentElement?.referenceImageId) {
+        if (currentElement.referenceImageId) {
             const sourceImage = canvasElements.find(el => el.id === currentElement.referenceImageId);
             if (sourceImage?.content && !referenceImage) {
                 setReferenceImage(sourceImage.content);
             }
         }
 
-        if (currentElement?.prompt && !prompt) {
+        if (currentElement.prompt && !prompt) {
             setPrompt(currentElement.prompt);
         }
 
-        if (currentElement?.storyboardVideoSize) {
+        if (currentElement.storyboardVideoSize) {
             setSize(currentElement.storyboardVideoSize);
-        } else if (currentElement?.content && sizes.includes(currentElement.content as VideoSize)) {
+        } else if (currentElement.content && sizes.includes(currentElement.content as VideoSize)) {
             setSize(currentElement.content as VideoSize);
-        } else if (currentElement?.prompt) {
-            const inferredSize = STORYBOARD_SIZE_PRIORITY.find((candidate) => currentElement.prompt?.includes(candidate));
+        } else if (currentElement.prompt) {
+            const promptText = currentElement.prompt;
+            const inferredSize = STORYBOARD_SIZE_PRIORITY.find((candidate) => promptText.includes(candidate));
             if (inferredSize) {
                 setSize(inferredSize);
             }
         }
 
-        if (typeof currentElement?.storyboardDurationSec === 'number') {
+        if (typeof currentElement.storyboardDurationSec === 'number') {
             setSeconds(currentElement.storyboardDurationSec >= 15 ? 15 : 10);
         }
-    }, [elementId, canvasElements, referenceImage, prompt, sizes]);
+    }, [
+        canvasElements,
+        currentElement,
+        prompt,
+        referenceImage,
+        sizes,
+    ]);
 
     // Poll for video status
     useEffect(() => {
@@ -271,7 +278,20 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             storyboardSourceOrientation: currentElement?.storyboardSourceOrientation || currentSizeMeta.orientation,
             storyboardRenderProfile: renderProfile,
         });
-    }, [currentSizeMeta.aspectRatio, currentSizeMeta.orientation, elementId, getNodeDimensions, onConfigChange, prompt, seconds, size]);
+    }, [
+        currentElement?.storyboardSourceAspectRatio,
+        currentElement?.storyboardSourceOrientation,
+        currentElement?.storyboardSourceVideoSize,
+        currentSizeMeta.aspectRatio,
+        currentSizeMeta.orientation,
+        elementId,
+        getNodeDimensions,
+        onConfigChange,
+        prompt,
+        renderProfile,
+        seconds,
+        size,
+    ]);
 
     return (
         <div

@@ -205,6 +205,7 @@ export default function LovartDashboard() {
                 .from('projects')
                 .insert({
                     id: newProjectId,
+                    user_id: user.id,
                     title: projectTitle,
                 })
                 .select()
@@ -251,10 +252,10 @@ export default function LovartDashboard() {
                 <div className="flex-1 overflow-y-auto">
                     {/* Top Bar */}
                     <div className="flex items-center justify-between px-8 py-4">
-                        <div className="flex items-center gap-3">
+                        <Link href="/" className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-gray-100">
                             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
                             <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
-                        </div>
+                        </Link>
 
                         <div className="flex items-center gap-2">
                             <ThemeToggle />
