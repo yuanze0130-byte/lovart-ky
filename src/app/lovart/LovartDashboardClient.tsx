@@ -359,7 +359,7 @@ export default function LovartDashboard() {
                         {/* Hero Section */}
                         <div className="max-w-3xl mx-auto text-center mb-16">
                             <div className="flex items-center justify-center gap-3 mb-4">
-                                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">L</div>
+                                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">D</div>
                                 <h1 className="text-4xl font-bold text-gray-900">Doodleverse让设计更简单</h1>
                             </div>
                             <p className="text-gray-500 mb-8">输入想法即可生成，帮你完成一切</p>
