@@ -30,6 +30,20 @@ const ASPECT_PRESET_TO_SIZE: Record<StoryboardAspectRatio, VideoSize> = {
     '2:3': '768x1152',
 };
 
+const FAST_MODEL_SIZE_OPTIONS: Partial<Record<StoryboardAspectRatio, VideoSize[]>> = {
+    '16:9': ['1280x720'],
+    '9:16': ['720x1280'],
+    '1:1': ['1024x1024'],
+};
+
+const FAST_MODEL_DEFAULT_SIZE_BY_ASPECT: Partial<Record<StoryboardAspectRatio, VideoSize>> = {
+    '16:9': '1280x720',
+    '9:16': '720x1280',
+    '1:1': '1024x1024',
+};
+
+const FAST_MODEL_ALLOWED_ASPECTS: StoryboardAspectRatio[] = ['1:1', '16:9', '9:16'];
+
 interface VideoGeneratorPanelProps {
     elementId: string;
     onGenerate: (videoUrl: string) => Promise<void>;
@@ -103,7 +117,9 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const frameAdaptationLabel = getStoryboardFrameAdaptationLabel(sourceAspectRatio, currentSizeMeta.aspectRatio);
     const frameAdaptationTone = getStoryboardFrameAdaptationTone(sourceAspectRatio, currentSizeMeta.aspectRatio);
     const renderProfile = getStoryboardRenderProfile(size);
-    const boardFitSize = getPreferredStoryboardVideoSize(currentSizeMeta.aspectRatio, renderProfile);
+    const boardFitSize = videoModelMode === 'fast'
+        ? (FAST_MODEL_DEFAULT_SIZE_BY_ASPECT[currentSizeMeta.aspectRatio] || FAST_MODEL_DEFAULT_SIZE_BY_ASPECT['9:16'] || '720x1280')
+        : getPreferredStoryboardVideoSize(currentSizeMeta.aspectRatio, renderProfile);
     const isBoardFitSize = size === boardFitSize;
     const selectedVideoModelOption = VIDEO_MODEL_MODE_OPTIONS.find((option) => option.value === videoModelMode) || VIDEO_MODEL_MODE_OPTIONS[0];
     const OrientationIcon = currentSizeMeta.orientation === 'landscape'
@@ -164,6 +180,21 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         referenceImage,
         sizes,
     ]);
+
+    useEffect(() => {
+        if (videoModelMode !== 'fast') return;
+
+        const allowedSizes = (FAST_MODEL_SIZE_OPTIONS[currentSizeMeta.aspectRatio] || []) as VideoSize[];
+        if (allowedSizes.length > 0 && !allowedSizes.includes(size)) {
+            setSize(allowedSizes[0]);
+            return;
+        }
+
+        if (allowedSizes.length === 0) {
+            const fallbackSize = FAST_MODEL_DEFAULT_SIZE_BY_ASPECT['9:16'] || '720x1280';
+            setSize(fallbackSize);
+        }
+    }, [currentSizeMeta.aspectRatio, size, videoModelMode]);
 
     // Poll for video status
     useEffect(() => {
@@ -615,7 +646,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                                 <span className="rounded-full bg-black px-1.5 py-0.5 text-[10px] text-white dark:bg-white dark:text-black">当前</span>
                                             )}
                                         </div>
-                                        <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{option.hint}</div>
+                                        <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{option.value === 'fast' ? '更快，且仅支持 480p / 720p 兼容输出' : option.hint}</div>
                                     </div>
                                 ))}
                             </div>
@@ -683,6 +714,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                         </div>
                          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
                             <span className="rounded-full bg-gray-100 px-1.5 py-0.5 dark:bg-white/8">Storyboard aware</span>
+                            {videoModelMode === 'fast' && <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-amber-700 dark:bg-amber-400/12 dark:text-amber-100">Fast 仅 480p / 720p</span>}
                             <span>{currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)} / {currentSizeMeta.aspectRatio}</span>
                         </div>
                         {showSizeMenu && (
