@@ -33,8 +33,20 @@ export async function GET(request: NextRequest) {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
 
-    const data = (await response.json()) as VideoStatusResponse;
-    if (!response.ok) throw new Error(data.error || 'Failed to get video status');
+    const rawText = await response.text();
+    let data: VideoStatusResponse = {};
+
+    try {
+      data = rawText ? (JSON.parse(rawText) as VideoStatusResponse) : {};
+    } catch {
+      data = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Upstream video status API error (${response.status} ${response.statusText}): ${data.error || rawText || 'Failed to get video status'}`
+      );
+    }
 
     return NextResponse.json({
       id: data.id,

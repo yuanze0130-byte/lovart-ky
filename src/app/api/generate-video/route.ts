@@ -80,8 +80,20 @@ export async function POST(request: NextRequest) {
       body: form,
     });
 
-    const data = (await response.json()) as { id?: string; status?: string; error?: string };
-    if (!response.ok) throw new Error(data.error || 'Failed to start video generation');
+    const rawText = await response.text();
+    let data: { id?: string; status?: string; error?: string; message?: string } = {};
+
+    try {
+      data = rawText ? (JSON.parse(rawText) as { id?: string; status?: string; error?: string; message?: string }) : {};
+    } catch {
+      data = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        `Upstream video API error (${response.status} ${response.statusText}): ${data.error || data.message || rawText || 'Failed to start video generation'}`
+      );
+    }
 
     return NextResponse.json({ taskId: data.id, status: data.status, model: resolvedModel, modelMode: selectedMode });
   } catch (error: unknown) {
