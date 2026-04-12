@@ -1,3 +1,5 @@
+import { randomUUID } from 'crypto';
+import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
 import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
@@ -47,6 +49,51 @@ function inferRatioFromSize(size?: string): SupportedVideoRatio {
   }
 }
 
+function decodeReferenceImage(referenceImage: string) {
+  const matched = referenceImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
+  const mimeType = matched?.[1] || 'image/jpeg';
+  const base64Data = matched?.[2] || referenceImage;
+  const buffer = Buffer.from(base64Data, 'base64');
+  const extension = mimeType.split('/')[1] || 'jpg';
+  return { mimeType, buffer, extension };
+}
+
+async function uploadReferenceImage(userId: string, referenceImage: string) {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const bucket = process.env.VIDEO_REFERENCE_BUCKET || 'video-references';
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Supabase storage is not configured for video reference upload');
+  }
+
+  const { mimeType, buffer, extension } = decodeReferenceImage(referenceImage);
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  const path = `${userId}/${randomUUID()}.${extension}`;
+
+  const uploadResult = await supabase.storage
+    .from(bucket)
+    .upload(path, buffer, {
+      contentType: mimeType,
+      upsert: false,
+      cacheControl: '3600',
+    });
+
+  if (uploadResult.error) {
+    throw new Error(`Failed to upload reference image: ${uploadResult.error.message}`);
+  }
+
+  const signedUrlResult = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, 60 * 60);
+
+  if (signedUrlResult.error || !signedUrlResult.data?.signedUrl) {
+    throw new Error(`Failed to create signed URL for reference image: ${signedUrlResult.error?.message || 'unknown error'}`);
+  }
+
+  return signedUrlResult.data.signedUrl;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
@@ -68,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { prompt, seconds, size, referenceImage, modelMode } = (await request.json()) as {
+    const { prompt, size, referenceImage, modelMode } = (await request.json()) as {
       prompt?: string;
       seconds?: number;
       size?: string;
@@ -81,7 +128,7 @@ export async function POST(request: NextRequest) {
     }
 
     const apiKey = process.env.VIDEO_API_KEY;
-    const baseUrl = process.env.VIDEO_API_BASE_URL || 'https://www.clockapi.fun/v1';
+    const baseUrl = process.env.VIDEO_API_BASE_URL || 'https://ai.t8star.cn';
 
     if (!apiKey) {
       return NextResponse.json({ error: 'VIDEO_API_KEY not configured' }, { status: 500 });
@@ -89,50 +136,57 @@ export async function POST(request: NextRequest) {
 
     const selectedMode: VideoModelMode = modelMode === 'fast' ? 'fast' : 'standard';
     const resolvedModel = VIDEO_MODELS[selectedMode] || process.env.VIDEO_MODEL || DEFAULT_VIDEO_MODEL;
+    const ratio = inferRatioFromSize(size);
+    const promptWithRatio = prompt.includes('--ratio') ? prompt : `${prompt} --ratio ${ratio}`;
 
-    const form = new FormData();
-    form.append('model', resolvedModel);
-    form.append('prompt', prompt);
-
-    if (seconds) form.append('seconds', seconds.toString());
-    if (size) form.append('size', size);
+    const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
+      { type: 'text', text: promptWithRatio },
+    ];
 
     if (referenceImage) {
-      const base64Data = referenceImage.includes('base64,')
-        ? referenceImage.split('base64,')[1]
-        : referenceImage;
-      const byteCharacters = atob(base64Data);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: 'image/jpeg' });
-      form.append('input_reference', blob, 'reference.jpg');
+      const referenceUrl = await uploadReferenceImage(user.id, referenceImage);
+      content.push({
+        type: 'image_url',
+        image_url: { url: referenceUrl },
+      });
     }
 
-    const response = await fetch(`${baseUrl}/v2/videos/generations`, {
+    const payload = {
+      model: resolvedModel,
+      content,
+    };
+
+    const response = await fetch(`${baseUrl}/seedance/v3/contents/generations/tasks`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
     });
 
     const rawText = await response.text();
-    let data: { id?: string; status?: string; error?: string; message?: string } = {};
+    let data: { id?: string; status?: string; error?: unknown; message?: unknown } = {};
 
     try {
-      data = rawText ? (JSON.parse(rawText) as { id?: string; status?: string; error?: string; message?: string }) : {};
+      data = rawText ? (JSON.parse(rawText) as { id?: string; status?: string; error?: unknown; message?: unknown }) : {};
     } catch {
       data = {};
     }
 
     if (!response.ok) {
       throw new Error(
-        `Upstream video API error (${response.status} ${response.statusText}): ${data.error || data.message || rawText || 'Failed to start video generation'}`
+        `Upstream video API error (${response.status} ${response.statusText}): ${stringifyErrorPayload(data.error || data.message || rawText || 'Failed to start video generation')}`
       );
     }
 
-    return NextResponse.json({ taskId: data.id, status: data.status, model: resolvedModel, modelMode: selectedMode });
+    return NextResponse.json({
+      taskId: data.id,
+      status: data.status,
+      model: resolvedModel,
+      modelMode: selectedMode,
+      ratio,
+    });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
