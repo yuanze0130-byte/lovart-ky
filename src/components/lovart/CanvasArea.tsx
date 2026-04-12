@@ -933,10 +933,10 @@ export function CanvasArea({
                                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                                 <span className="rounded-full border border-emerald-300/20 bg-emerald-400/15 px-2 py-1 text-emerald-50">Rendered</span>
                                                                 <span className={`rounded-full border px-2 py-1 ${el.storyboardRenderProfile === 'high' ? 'border-violet-300/20 bg-violet-400/15 text-violet-50' : 'border-sky-300/20 bg-sky-400/15 text-sky-50'}`}>{el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail'}</span>
-                                                                <span className="rounded-full border border-white/12 bg-white/8 px-2 py-1 text-white/85">Review Pass 1</span>
+                                                                <span className="rounded-full border border-white/12 bg-white/8 px-2 py-1 text-white/85">Review Rail · Pass 1</span>
                                                                 <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-white/70">{boardModeLabel} · {boardProgressLabel}</span>
                                                             </div>
-                                                            <span className="rounded-full border border-white/10 bg-white/6 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white/75">Review Ready</span>
+                                                            <span className="rounded-full border border-white/10 bg-white/6 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white/75">Review Rail · Ready</span>
                                                         </div>
                                                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                             <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{sequenceHint}</span>
@@ -977,7 +977,7 @@ export function CanvasArea({
                                                     </div>
                                                     <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                         <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Review</div>
-                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">Review Ready</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">Review Rail Ready</div>
                                                     </div>
                                                 </div>
                                                 <div className="mt-3 rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
@@ -1010,6 +1010,22 @@ export function CanvasArea({
                                     const subtitle = parts[parts.length - 1] || '';
                                     const chips = parts.slice(1, Math.max(1, parts.length - 1));
                                     const toneAligned = typeof el.borderColor === 'string' && el.borderColor.toLowerCase() === '#86efac';
+                                    const groupedChips = {
+                                        lanes: chips.filter((chip) => /lane|portrait|landscape|square/i.test(chip)),
+                                        frame: chips.filter((chip) => /frame|adaptive|layout|recommend|locked/i.test(chip)),
+                                        render: chips.filter((chip) => /detail|render|\d+s/i.test(chip)),
+                                        coverage: chips.filter((chip) => /coverage|drift|board/i.test(chip)),
+                                    };
+                                    const renderChipGroup = (label: string, values: string[]) => values.length > 0 ? (
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{label}</span>
+                                            {values.slice(0, 4).map((chip, index) => (
+                                                <span key={`${label}-${chip}-${index}`} className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600 dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
+                                                    {chip}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    ) : null;
                                     return (
                                         <div className="h-full w-full overflow-hidden rounded-[26px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-4 shadow-[0_24px_60px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.14),rgba(15,23,42,0.94)_72%)]">
                                             <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-r from-sky-500/10 via-blue-500/6 to-transparent dark:from-sky-400/14 dark:via-blue-400/10 dark:to-transparent" />
@@ -1019,16 +1035,18 @@ export function CanvasArea({
                                                         <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Storyboard board</div>
                                                         <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{title}</div>
                                                     </div>
-                                                    <div className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${toneAligned ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/14 dark:text-emerald-100' : 'bg-amber-100 text-amber-700 dark:bg-amber-400/14 dark:text-amber-100'}`}>
-                                                        {toneAligned ? 'Layout aligned' : 'Layout drift'}
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-white/10 dark:bg-white/6 dark:text-slate-200">Review rail · pass 1</div>
+                                                        <div className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${toneAligned ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/14 dark:text-emerald-100' : 'bg-amber-100 text-amber-700 dark:bg-amber-400/14 dark:text-amber-100'}`}>
+                                                            {toneAligned ? 'Layout aligned' : 'Layout drift'}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <div className="mt-3 flex flex-wrap gap-2">
-                                                    {chips.slice(0, 8).map((chip, index) => (
-                                                        <span key={`${chip}-${index}`} className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600 dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
-                                                            {chip}
-                                                        </span>
-                                                    ))}
+                                                <div className="mt-3 space-y-2">
+                                                    {renderChipGroup('Lanes', groupedChips.lanes)}
+                                                    {renderChipGroup('Frame', groupedChips.frame)}
+                                                    {renderChipGroup('Render', groupedChips.render)}
+                                                    {renderChipGroup('Coverage', groupedChips.coverage)}
                                                 </div>
                                                 {subtitle && subtitle !== title && (
                                                     <div className="mt-3 text-xs text-slate-500 dark:text-slate-300/80">{subtitle}</div>
