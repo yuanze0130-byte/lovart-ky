@@ -43,8 +43,14 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                         unoptimized={imageUrl.startsWith('data:')}
                     />
                 ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-300">
-                        <div className="w-12 h-12 rounded-full border-2 border-gray-200" />
+                    <div className="w-full h-full bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center text-gray-300">
+                        <div className="flex flex-col items-center gap-3 text-center">
+                            <div className="w-14 h-14 rounded-full bg-black text-white flex items-center justify-center text-xl font-bold shadow-sm">D</div>
+                            <div>
+                                <div className="text-sm font-medium text-gray-500">暂无封面</div>
+                                <div className="text-xs text-gray-400 mt-1 truncate max-w-[180px]">{title}</div>
+                            </div>
+                        </div>
                     </div>
                 )}
 

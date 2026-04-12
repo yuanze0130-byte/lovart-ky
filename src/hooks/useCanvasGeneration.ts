@@ -1,5 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { createClient } from '@supabase/supabase-js';
 import type { CanvasElement, GenerationMetadata } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
@@ -10,6 +11,21 @@ type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhanc
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
+
+function updateProjectThumbnail(projectId: string | undefined, thumbnail: string) {
+  if (!projectId || !thumbnail) return;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) return;
+
+  const supabase = createClient(supabaseUrl, serviceRoleKey);
+  void supabase
+    .from('projects')
+    .update({ thumbnail })
+    .eq('id', projectId)
+    .or('thumbnail.is.null,thumbnail.eq.""');
+}
 
 interface UseCanvasGenerationParams {
   pan: CanvasPan;
@@ -80,6 +96,14 @@ export function useCanvasGeneration({
         setElements((prev) =>
           prev.map((el) => {
             if (el.id === generatorElement.id) {
+              updateProjectThumbnail(
+                typeof el.projectId === 'string'
+                  ? el.projectId
+                  : typeof generatorElement.projectId === 'string'
+                    ? generatorElement.projectId
+                    : undefined,
+                videoUrl
+              );
               return {
                 ...el,
                 type: 'video',
@@ -273,6 +297,7 @@ export function useCanvasGeneration({
             setElements((prev) =>
               prev.map((el) => {
                 if (el.id === generatorElementId) {
+                  updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, data.imageData);
                   return {
                     ...el,
                     type: 'image',

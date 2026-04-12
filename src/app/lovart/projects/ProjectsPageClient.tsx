@@ -12,6 +12,13 @@ import Link from 'next/link';
 
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
 
+type CanvasElementThumbnailRow = {
+    project_id: string;
+    type: string;
+    content: string | null;
+    updated_at?: string | null;
+};
+
 export default function ProjectsPage() {
     const { user, signOut } = useAuth();
     const supabase = useSupabase();
@@ -35,11 +42,35 @@ export default function ProjectsPage() {
 
                 if (projectsResult.error) throw projectsResult.error;
                 const projectRows = (projectsResult.data || []) as ProjectRow[];
+
+                const missingThumbnailProjectIds = projectRows
+                    .filter((project) => !project.thumbnail)
+                    .map((project) => project.id);
+
+                let derivedThumbnailMap = new Map<string, string>();
+
+                if (missingThumbnailProjectIds.length > 0) {
+                    const { data: canvasRows, error: canvasError } = await supabase
+                        .from('canvas_elements')
+                        .select('project_id,type,content,updated_at')
+                        .in('project_id', missingThumbnailProjectIds)
+                        .in('type', ['image', 'video'])
+                        .not('content', 'is', null)
+                        .order('updated_at', { ascending: false });
+
+                    if (!canvasError) {
+                        for (const row of ((canvasRows || []) as unknown as CanvasElementThumbnailRow[])) {
+                            if (!row.project_id || !row.content || derivedThumbnailMap.has(row.project_id)) continue;
+                            derivedThumbnailMap.set(row.project_id, row.content);
+                        }
+                    }
+                }
+
                 setProjects(
                     projectRows.map((project) => ({
                         id: project.id,
                         title: project.title,
-                        thumbnail: project.thumbnail,
+                        thumbnail: project.thumbnail || derivedThumbnailMap.get(project.id) || null,
                         updated_at: project.updated_at,
                     }))
                 );
