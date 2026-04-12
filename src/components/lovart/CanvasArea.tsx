@@ -49,7 +49,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardSequenceState?: 'single' | 'first' | 'middle' | 'last';
     storyboardSequenceHint?: string;
     storyboardBoardMode?: string;
-    storyboardElementRole?: 'board-header' | 'board-surface' | 'board-lane';
+    storyboardElementRole?: 'board-header' | 'board-surface' | 'board-lane' | 'board-lane-label';
     storyboardLaneOrientation?: 'portrait' | 'landscape' | 'square';
     prompt?: string;
     generationMetadata?: GenerationMetadata;
@@ -998,6 +998,10 @@ export function CanvasArea({
                                         onMouseDown={(e) => e.stopPropagation()}
                                         onKeyDown={(e) => e.stopPropagation()}
                                     />
+                                ) : el.storyboardElementRole === 'board-lane-label' ? (
+                                    <div className={`inline-flex h-full items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-sm ${el.storyboardLaneOrientation === 'landscape' ? 'border-violet-200 bg-violet-50/90 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-100' : el.storyboardLaneOrientation === 'square' ? 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-100' : 'border-sky-200 bg-sky-50/90 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100'}`}>
+                                        {el.content || 'LANE'}
+                                    </div>
                                 ) : el.storyboardElementRole === 'board-header' ? (() => {
                                     const parts = (el.content || '').split('｜').filter(Boolean);
                                     const title = parts[0] || 'Production Board';

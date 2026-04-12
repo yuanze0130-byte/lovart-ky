@@ -886,23 +886,26 @@ function LovartCanvasContent() {
             borderColor: recommendedLayout === storyboardLayout ? '#86efac' : '#fcd34d',
         };
 
+        const laneCount = Math.max(1, Object.keys(orientationLaneMap).length);
         const laneElements: CanvasElement[] = hasMixedFrames
             ? (Object.entries(orientationLaneMap) as Array<["portrait" | "landscape" | "square", number | undefined]>)
                 .filter(([, laneIndex]) => typeof laneIndex === 'number')
                 .flatMap(([orientation, laneIndex]) => {
                     const lane = laneIndex ?? 0;
+                    const horizontalLaneHeight = Math.max(140, (boardMetrics.height + boardPaddingY * 2 - 48 - (laneCount - 1) * 16) / laneCount);
+                    const verticalLaneWidth = Math.max(220, (boardMetrics.width + boardPaddingX * 2 - 48 - (laneCount - 1) * 18) / laneCount);
                     const laneX = storyboardLayout === 'horizontal'
-                        ? boardBaseX + 18 + lane * 22
-                        : boardBaseX + 16;
+                        ? boardBaseX + 18
+                        : boardBaseX + 20 + lane * (verticalLaneWidth + 18);
                     const laneY = storyboardLayout === 'horizontal'
-                        ? boardBaseY + 22
-                        : boardBaseY + 18 + lane * 18;
+                        ? boardBaseY + 24 + lane * (horizontalLaneHeight + 16)
+                        : boardBaseY + 22;
                     const laneWidth = storyboardLayout === 'horizontal'
                         ? boardMetrics.width + boardPaddingX * 2 - 36
-                        : boardMetrics.width + boardPaddingX * 2 - 32;
+                        : verticalLaneWidth;
                     const laneHeight = storyboardLayout === 'horizontal'
-                        ? boardMetrics.height + boardPaddingY * 2 - 36
-                        : boardMetrics.height + boardPaddingY * 2 - 24;
+                        ? horizontalLaneHeight
+                        : boardMetrics.height + boardPaddingY * 2 - 44;
                     return [
                         {
                             id: uuidv4(),
@@ -919,6 +922,8 @@ function LovartCanvasContent() {
                         {
                             id: uuidv4(),
                             type: 'text',
+                            storyboardElementRole: 'board-lane-label',
+                            storyboardLaneOrientation: orientation,
                             x: laneX + 12,
                             y: laneY + 10,
                             width: 180,
@@ -937,17 +942,23 @@ function LovartCanvasContent() {
             const nodeSize = nodeSizes[index];
             const itemOrientation = getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation;
             const laneIndex = orientationLaneMap[itemOrientation] ?? 0;
-            const laneOffsetX = storyboardLayout === 'horizontal' && hasMixedFrames
-                ? laneIndex * 16 + (itemOrientation === 'portrait' ? 20 : itemOrientation === 'square' ? 10 : 0)
+            const laneTrackOffsetX = hasMixedFrames && storyboardLayout !== 'horizontal'
+                ? laneIndex * Math.max(220, (boardMetrics.width + boardPaddingX * 2 - 48 - (laneCount - 1) * 18) / laneCount + 18)
                 : 0;
-            const laneOffsetY = storyboardLayout === 'vertical' && hasMixedFrames
-                ? laneIndex * 14 + (itemOrientation === 'landscape' ? 18 : itemOrientation === 'square' ? 8 : 0)
+            const laneTrackOffsetY = hasMixedFrames && storyboardLayout === 'horizontal'
+                ? laneIndex * Math.max(140, (boardMetrics.height + boardPaddingY * 2 - 48 - (laneCount - 1) * 16) / laneCount + 16)
                 : 0;
+            const laneOffsetX = storyboardLayout === 'horizontal'
+                ? (hasMixedFrames ? (itemOrientation === 'portrait' ? 24 : itemOrientation === 'square' ? 12 : 0) : 0)
+                : laneTrackOffsetX + (hasMixedFrames ? 12 : 0);
+            const laneOffsetY = storyboardLayout === 'horizontal'
+                ? laneTrackOffsetY + (hasMixedFrames ? 18 : 0)
+                : (hasMixedFrames ? (itemOrientation === 'landscape' ? 14 : itemOrientation === 'square' ? 8 : 0) : 0);
             const x = storyboardLayout === 'horizontal'
                 ? cursorX + laneOffsetX + layoutBiasX
-                : baseX + (maxWidth - nodeSize.width) / 2 + laneOffsetX + layoutBiasX;
+                : boardBaseX + 30 + laneOffsetX + layoutBiasX;
             const y = storyboardLayout === 'horizontal'
-                ? baseY + (maxHeight - nodeSize.height) + laneOffsetY + layoutBiasY
+                ? boardBaseY + 42 + laneOffsetY + layoutBiasY
                 : cursorY + laneOffsetY + layoutBiasY;
 
             if (storyboardLayout === 'horizontal') {
