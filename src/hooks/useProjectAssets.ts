@@ -487,6 +487,10 @@ export function summarizeProductionBoard(items: Array<Pick<StoryboardItem, 'aspe
     health.orientationCounts.square > 0 ? `Square lane ${health.orientationCounts.square}` : null,
   ].filter(Boolean).join(' · ') || 'Single lane';
 
+  const driftSummary = health.hasMixedOrientation
+    ? `Mixed lanes · ${health.lockRateLabel}`
+    : `Single lane · ${health.lockRateLabel}`;
+
   return {
     ...health,
     ...sizing,
@@ -495,6 +499,7 @@ export function summarizeProductionBoard(items: Array<Pick<StoryboardItem, 'aspe
     durationSummary,
     renderSummary,
     laneSummary,
+    driftSummary,
     coverageSummary: health.adaptiveCount > 0
       ? `${health.lockedCount} locked · ${health.adaptiveCount} adaptive`
       : 'All source locked',

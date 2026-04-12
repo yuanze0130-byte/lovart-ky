@@ -876,7 +876,7 @@ function LovartCanvasContent() {
             y: boardBaseY - 84,
             width: Math.max(360, Math.min(boardMetrics.width + boardPaddingX * 2, 760)),
             height: 88,
-            content: `${boardSummary.boardTitle}｜${storyboard.length} shots｜${recommendedLayout === storyboardLayout ? 'Layout aligned' : `Recommend ${recommendedLayout}`}｜${hasMixedFrames ? 'Adaptive frames' : 'Unified frames'}｜${boardOrientationSummary || 'Portrait × 0'}｜${boardSummary.laneSummary}｜${boardSummary.coverageSummary}｜${boardSummary.renderSummary}｜${boardSummary.durationSummary}｜${boardSummary.frameSummary}｜${boardSummary.boardSubtitle}`,
+            content: `${boardSummary.boardTitle}｜${storyboard.length} shots｜${recommendedLayout === storyboardLayout ? 'Layout aligned' : `Recommend ${recommendedLayout}`}｜${hasMixedFrames ? 'Adaptive frames' : 'Unified frames'}｜${boardOrientationSummary || 'Portrait × 0'}｜${boardSummary.laneSummary}｜${boardSummary.driftSummary}｜${boardSummary.coverageSummary}｜${boardSummary.renderSummary}｜${boardSummary.durationSummary}｜${boardSummary.frameSummary}｜${boardSummary.boardSubtitle}`,
             fontSize: 14,
             color: '#0f172a',
             backgroundColor: '#ffffff',

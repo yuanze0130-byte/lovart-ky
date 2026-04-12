@@ -713,6 +713,7 @@ export function CanvasArea({
                                                                 <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{aspectLabel}</span>
                                                             )}
                                                             <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
+                                                            <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{laneLabel}</span>
                                                             {durationLabel && (
                                                                 <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{durationLabel}</span>
                                                             )}
@@ -921,6 +922,7 @@ export function CanvasArea({
                                                     <div className="flex max-w-[58%] flex-wrap items-center justify-end gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-700/80 dark:text-sky-100/75">
                                                         {aspectLabel && !compactPortrait && <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{aspectLabel}</span>}
                                                         <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
+                                                        <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{laneLabel}</span>
                                                         {durationLabel && <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{durationLabel}</span>}
                                                     </div>
                                                 </div>
