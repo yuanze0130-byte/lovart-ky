@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift, Shield, Search, Save } from 'lucide-react';
 import { LoginModal } from '@/components/auth/LoginModal';
-import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
 import type { UserCreditsRow, CreditTransactionRow } from '@/lib/supabase';

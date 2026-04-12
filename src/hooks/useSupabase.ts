@@ -33,7 +33,7 @@ export function useSupabase() {
         },
       }
     );
-  }, [hasSupabaseEnv, session?.access_token]);
+  }, [hasSupabaseEnv, session]);
 
   return supabaseClient;
 }
