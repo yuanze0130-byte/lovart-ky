@@ -12,14 +12,15 @@ function stringifyErrorPayload(value: unknown): string {
 
 interface VideoStatusResponse {
   id?: string;
+  task_id?: string;
   status?: string;
-  progress?: number;
+  progress?: number | string;
   video_url?: string;
   videoUrl?: string;
   url?: string;
   urls?: string[];
   model?: string;
-  created_at?: string;
+  created_at?: string | number;
   size?: string;
   seconds?: number;
   error?: unknown;
@@ -27,6 +28,15 @@ interface VideoStatusResponse {
     video_url?: string;
     url?: string;
     urls?: string[];
+  };
+  data?: {
+    status?: string;
+    duration?: string;
+    content?: {
+      video_url?: string;
+      url?: string;
+      urls?: string[];
+    };
   };
 }
 
@@ -39,7 +49,7 @@ export async function GET(request: NextRequest) {
     }
 
     const apiKey = process.env.VIDEO_API_KEY;
-    const baseUrl = process.env.VIDEO_API_BASE_URL || 'https://www.clockapi.fun/v1';
+    const baseUrl = process.env.VIDEO_API_BASE_URL || 'https://ai.t8star.cn';
 
     if (!apiKey) {
       return NextResponse.json({ error: 'VIDEO_API_KEY not configured' }, { status: 500 });
@@ -65,6 +75,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const nestedStatus = data.data?.status;
+    const normalizedStatus = (nestedStatus || data.status || '').toLowerCase();
+
     const resolvedVideoUrl =
       data.video_url ||
       data.videoUrl ||
@@ -72,19 +85,24 @@ export async function GET(request: NextRequest) {
       data.output?.video_url ||
       data.output?.url ||
       data.urls?.[0] ||
-      data.output?.urls?.[0];
+      data.output?.urls?.[0] ||
+      data.data?.content?.video_url ||
+      data.data?.content?.url ||
+      data.data?.content?.urls?.[0];
 
     const resolvedProgress = typeof data.progress === 'number'
       ? data.progress
-      : data.status === 'succeeded' || data.status === 'completed'
-        ? 100
-        : data.status === 'failed'
-          ? 0
-          : 50;
+      : typeof data.progress === 'string' && data.progress.endsWith('%')
+        ? Number.parseInt(data.progress, 10)
+        : normalizedStatus === 'succeeded' || normalizedStatus === 'completed' || normalizedStatus === 'success'
+          ? 100
+          : normalizedStatus === 'failed'
+            ? 0
+            : 50;
 
     return NextResponse.json({
-      id: data.id,
-      status: data.status,
+      id: data.id || data.task_id,
+      status: normalizedStatus || data.status,
       progress: resolvedProgress,
       videoUrl: resolvedVideoUrl,
       model: data.model,
