@@ -38,6 +38,13 @@ interface GenerateImagePayload {
   editMode?: ImageEditMode;
 }
 
+interface NormalizedReferenceImage {
+  kind: 'url' | 'inline';
+  url?: string;
+  data?: string;
+  mimeType?: string;
+}
+
 function getProvider(): GeminiProvider {
   const provider = (process.env.GEMINI_PROVIDER || 'proxy').toLowerCase();
   if (provider === 'official' || provider === 'auto') return provider;
@@ -56,15 +63,39 @@ function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRati
   return `${prompt}\n\n${aspectRatioInstruction}\n${resolutionInstruction}`;
 }
 
-function normalizeReferenceImage(referenceImage?: string) {
+function normalizeReferenceImage(referenceImage?: string): NormalizedReferenceImage | undefined {
   if (!referenceImage) return undefined;
-  return referenceImage.replace(/^data:image\/\w+;base64,/, '');
+
+  const trimmed = referenceImage.trim();
+  if (!trimmed) return undefined;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return {
+      kind: 'url',
+      url: trimmed,
+    };
+  }
+
+  const dataUrlMatch = trimmed.match(/^data:(image\/[^;]+);base64,(.+)$/i);
+  if (dataUrlMatch) {
+    return {
+      kind: 'inline',
+      mimeType: dataUrlMatch[1],
+      data: dataUrlMatch[2],
+    };
+  }
+
+  return {
+    kind: 'inline',
+    mimeType: 'image/jpeg',
+    data: trimmed,
+  };
 }
 
 function normalizeReferenceImages(referenceImages?: string[], referenceImage?: string) {
   const normalized = (referenceImages || [])
     .map((image) => normalizeReferenceImage(image))
-    .filter(Boolean) as string[];
+    .filter(Boolean) as NormalizedReferenceImage[];
 
   if (normalized.length > 0) return normalized.slice(0, 4);
 
@@ -120,10 +151,14 @@ async function generateViaProxy(payload: GenerateImagePayload) {
   > = [];
 
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
-  references.forEach((base64Data) => {
+  references.forEach((reference) => {
+    const url = reference.kind === 'url'
+      ? reference.url!
+      : `data:${reference.mimeType || 'image/jpeg'};base64,${reference.data || ''}`;
+
     content.push({
       type: 'image_url',
-      image_url: { url: `data:image/jpeg;base64,${base64Data}` },
+      image_url: { url },
     });
   });
 
@@ -143,6 +178,9 @@ async function generateViaProxy(payload: GenerateImagePayload) {
     requestedAspectRatio: payload.aspectRatio || '1:1',
     requestedResolution: payload.resolution || '1K',
     provider: 'proxy' as const,
+    providerMode: getProvider(),
+    providerFallbackUsed: false,
+    model: proxyModel,
     modelVariant: payload.modelVariant || 'pro',
     editMode: payload.editMode || 'generate',
     referenceCount: references.length,
@@ -216,14 +254,34 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
 
-  references.forEach((base64Data) => {
-    parts.push({
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: base64Data,
-      },
-    });
-  });
+  for (const reference of references) {
+    if (reference.kind === 'url' && reference.url) {
+      const upstreamResponse = await fetch(reference.url);
+      if (!upstreamResponse.ok) {
+        throw new Error(`Failed to fetch reference image URL (${upstreamResponse.status} ${upstreamResponse.statusText}): ${reference.url}`);
+      }
+
+      const contentType = upstreamResponse.headers.get('content-type') || 'image/jpeg';
+      const arrayBuffer = await upstreamResponse.arrayBuffer();
+      const base64Data = Buffer.from(arrayBuffer).toString('base64');
+      parts.push({
+        inlineData: {
+          mimeType: contentType,
+          data: base64Data,
+        },
+      });
+      continue;
+    }
+
+    if (reference.data) {
+      parts.push({
+        inlineData: {
+          mimeType: reference.mimeType || 'image/jpeg',
+          data: reference.data,
+        },
+      });
+    }
+  }
 
   parts.push({ text: finalPrompt });
 
@@ -248,6 +306,9 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
     requestedAspectRatio: payload.aspectRatio || '1:1',
     requestedResolution: payload.resolution || '1K',
     provider: 'official' as const,
+    providerMode: getProvider(),
+    providerFallbackUsed: false,
+    model,
     modelVariant: payload.modelVariant || 'pro',
     editMode: payload.editMode || 'generate',
     referenceCount: references.length,
@@ -341,7 +402,13 @@ export async function POST(request: NextRequest) {
     } catch (officialError) {
       console.warn('Official Gemini failed, fallback to proxy:', officialError);
       const result = await generateViaProxy(payload);
-      return NextResponse.json(result);
+      return NextResponse.json({
+        ...result,
+        providerMode: 'auto',
+        providerFallbackUsed: true,
+        fallbackFrom: 'official',
+        fallbackReason: officialError instanceof Error ? officialError.message : String(officialError),
+      });
     }
   } catch (error: unknown) {
     console.error('Error generating image:', error);
