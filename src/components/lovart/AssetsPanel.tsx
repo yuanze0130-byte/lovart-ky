@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square } from 'lucide-react';
-import { getStoryboardAspectMeta, getStoryboardVideoSizeOptions, getStoryboardRenderProfile, getStoryboardRenderProfileLabel, type ProjectAsset, type StoryboardItem, type StoryboardLayoutMode, type StoryboardAspectRatio, type StoryboardVideoSize, type StoryboardRenderProfile } from '@/hooks/useProjectAssets';
+import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2 } from 'lucide-react';
+import { getStoryboardAspectMeta, getStoryboardVideoSizeOptions, getStoryboardRenderProfile, getStoryboardRenderProfileLabel, getRecommendedStoryboardLayout, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel, getStoryboardNodeDimensions, getStoryboardOrientationLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, summarizeStoryboardBatchHealth, summarizeStoryboardNodeSizing, summarizeProductionBoard, type ProjectAsset, type StoryboardItem, type StoryboardLayoutMode, type StoryboardAspectRatio, type StoryboardVideoSize, type StoryboardRenderProfile } from '@/hooks/useProjectAssets';
 
 interface AssetsPanelProps {
   assets: ProjectAsset[];
@@ -26,6 +26,7 @@ interface AssetsPanelProps {
   onUpdateAllStoryboardAspectRatios: (aspectRatio: StoryboardAspectRatio) => void;
   onUpdateAllStoryboardDurations: (durationSec: number) => void;
   onUpdateAllStoryboardRenderProfiles: (renderProfile: StoryboardRenderProfile) => void;
+  onNormalizeAllStoryboardOutputSizes: () => void;
   onResetAllStoryboardAspectRatiosFromAssets: () => void;
   onApplyStoryboardBoardPreset: (preset: 'portrait-reels' | 'landscape-cinematic' | 'poster-stack' | 'square-social') => void;
   onAutoStoryboardLayout: () => void;
@@ -57,6 +58,7 @@ export function AssetsPanel({
   onUpdateAllStoryboardAspectRatios,
   onUpdateAllStoryboardDurations,
   onUpdateAllStoryboardRenderProfiles,
+  onNormalizeAllStoryboardOutputSizes,
   onResetAllStoryboardAspectRatiosFromAssets,
   onApplyStoryboardBoardPreset,
   onAutoStoryboardLayout,
@@ -66,7 +68,7 @@ export function AssetsPanel({
   onCreateStoryboardFlow,
 }: AssetsPanelProps) {
   const [activeTab, setActiveTab] = useState<'assets' | 'storyboard'>('assets');
-  const [expandedStoryboardId, setExpandedStoryboardId] = useState<string | null>(null);
+  const [expandedStoryboardIds, setExpandedStoryboardIds] = useState<string[]>([]);
 
   const grouped = useMemo(() => ({
     image: assets.filter((asset) => asset.type === 'image'),
@@ -76,9 +78,9 @@ export function AssetsPanel({
   const storyboardOrientationSummary = useMemo(() => {
     const orientationOrder = ['portrait', 'landscape', 'square'] as const;
     const orientationLabelMap: Record<(typeof orientationOrder)[number], string> = {
-      portrait: 'Portrait',
-      landscape: 'Landscape',
-      square: 'Square',
+      portrait: '竖版',
+      landscape: '横版',
+      square: '方形',
     };
 
     const counts = storyboard.reduce<Record<(typeof orientationOrder)[number], number>>((acc, item) => {
@@ -155,9 +157,9 @@ export function AssetsPanel({
       ['square', squareShots],
     ] as const).reduce((best, current) => current[1] > best[1] ? current : best, ['portrait', 0] as const);
     const dominantOrientationLabelMap = {
-      portrait: 'Portrait-led',
-      landscape: 'Landscape-led',
-      square: 'Square-led',
+      portrait: '竖版主导',
+      landscape: '横版主导',
+      square: '方形主导',
     } as const;
 
     return {
@@ -172,18 +174,56 @@ export function AssetsPanel({
     };
   }, [storyboard]);
 
-  const recommendedLayout = useMemo<StoryboardLayoutMode>(() => {
-    if (storyboard.length <= 1) return 'vertical';
-    const landscapeCount = storyboard.filter((item) => getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation === 'landscape').length;
-    return landscapeCount >= Math.ceil(storyboard.length / 2) ? 'horizontal' : 'vertical';
-  }, [storyboard]);
+  const recommendedLayout = useMemo<StoryboardLayoutMode>(() => getRecommendedStoryboardLayout(storyboard), [storyboard]);
+  const productionBoardSummary = useMemo(() => summarizeProductionBoard(storyboard), [storyboard]);
+
+  const boardHealth = useMemo(() => {
+    const summary = summarizeStoryboardBatchHealth(storyboard);
+    const nodeSizing = summarizeStoryboardNodeSizing(storyboard);
+
+    return {
+      aspectVariants: summary.uniqueAspects,
+      renderVariants: summary.uniqueOutputs,
+      remappedCount: summary.adaptiveCount,
+      lockedCount: summary.lockedCount,
+      croppedCount: summary.croppedCount,
+      recomposedCount: summary.recomposedCount,
+      durationVariants: summary.uniqueDurations,
+      renderProfileVariants: summary.uniqueProfiles,
+      adaptationLabel: summary.adaptationLabel,
+      boardDensityLabel: summary.boardDensityLabel,
+      dominantOrientationLabel: summary.dominantOrientationLabel,
+      dominantAspectLabel: summary.dominantAspectLabel,
+      dominantRenderProfileLabel: summary.dominantRenderProfileLabel,
+      lockRateLabel: summary.lockRateLabel,
+      dominantFootprint: nodeSizing.dominantFootprint,
+      dominantFootprintCount: nodeSizing.dominantFootprintCount,
+      widestFootprint: nodeSizing.widest.footprint,
+      tallestFootprint: nodeSizing.tallest.footprint,
+      largestFootprint: nodeSizing.largestArea.footprint,
+      nodeFootprintVariants: nodeSizing.uniqueFootprints,
+      isLayoutRecommended: storyboardLayout === recommendedLayout,
+      hasUnifiedAspect: summary.uniqueAspects === 1,
+      hasUnifiedDuration: summary.uniqueDurations === 1,
+      hasUnifiedRenderProfile: summary.uniqueProfiles === 1,
+      hasMixedOrientation: summary.hasMixedOrientation,
+    };
+  }, [recommendedLayout, storyboard, storyboardLayout]);
 
   const boardPresetCards = useMemo(() => ([
-    { id: 'portrait-reels' as const, title: 'Reels Board', note: '9:16 · 竖版短视频流', aspect: '9:16', accent: 'from-fuchsia-500/20 via-purple-500/10 to-transparent' },
-    { id: 'landscape-cinematic' as const, title: 'Cinematic Board', note: '16:9 · 横向叙事镜头', aspect: '16:9', accent: 'from-sky-500/20 via-blue-500/10 to-transparent' },
-    { id: 'poster-stack' as const, title: 'Poster Stack', note: '4:5 · 海报型分镜', aspect: '4:5', accent: 'from-amber-500/20 via-orange-500/10 to-transparent' },
-    { id: 'square-social' as const, title: 'Social Grid', note: '1:1 · 方形社媒版', aspect: '1:1', accent: 'from-emerald-500/20 via-teal-500/10 to-transparent' },
+    { id: 'portrait-reels' as const, title: '短视频板', note: '9:16 · 竖版短视频流', aspect: '9:16', accent: 'from-fuchsia-500/20 via-purple-500/10 to-transparent' },
+    { id: 'landscape-cinematic' as const, title: '电影镜头板', note: '16:9 · 横向叙事镜头', aspect: '16:9', accent: 'from-sky-500/20 via-blue-500/10 to-transparent' },
+    { id: 'poster-stack' as const, title: '海报分镜板', note: '4:5 · 海报型分镜', aspect: '4:5', accent: 'from-amber-500/20 via-orange-500/10 to-transparent' },
+    { id: 'square-social' as const, title: '社媒方版', note: '1:1 · 方形社媒版', aspect: '1:1', accent: 'from-emerald-500/20 via-teal-500/10 to-transparent' },
   ]), []);
+
+  const expandAllStoryboardCards = () => {
+    setExpandedStoryboardIds(storyboard.map((item) => item.id));
+  };
+
+  const collapseAllStoryboardCards = () => {
+    setExpandedStoryboardIds([]);
+  };
 
   if (collapsed) {
     return (
@@ -287,77 +327,179 @@ export function AssetsPanel({
               <div className="space-y-3 rounded-3xl border border-gray-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.94))] p-4 shadow-[0_20px_60px_rgba(15,23,42,0.10)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.08),rgba(255,255,255,0.04)_40%,rgba(255,255,255,0.02)_100%)]">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <div className="text-xs font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">Production Board</div>
+                    <div className="text-xs font-medium uppercase tracking-[0.18em] text-gray-500 dark:text-gray-400">制作板</div>
                     <div className="mt-1 text-sm text-gray-600 dark:text-gray-300">{storyboard.length} 个镜头，支持批量落盘为带画幅感知的视频节点。</div>
-                    <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">{storyboardLayout === 'vertical' ? 'Shot Queue Controller' : 'Storyboard Flow Controller'}</div>
+                    <div className="mt-1 text-[11px] uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">{storyboardLayout === 'vertical' ? '镜头队列控制器' : '分镜流程控制器'}</div>
                   </div>
                   <div className="space-y-1.5 text-right">
                     <div className="rounded-full bg-gray-100 px-3 py-1 text-[11px] font-medium text-gray-600 dark:bg-white/8 dark:text-gray-300">
-                      {storyboardLayout === 'vertical' ? 'Vertical flow' : 'Horizontal flow'}
+                      {storyboardLayout === 'vertical' ? '纵向流程' : '横向流程'}
                     </div>
                     <div className="rounded-full border border-gray-200 bg-white/80 px-3 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
-                      {storyboardRuntimeSummary.hasMixedOrientation ? 'Mixed frame board' : 'Unified frame board'}
+                      {storyboardRuntimeSummary.hasMixedOrientation ? '混合画幅制作板' : '统一画幅制作板'}
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-gray-200/80 bg-white/80 px-3 py-2.5 dark:border-white/10 dark:bg-white/6">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <div className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">制作板信号</div>
+                      <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">
+                        {boardHealth.isLayoutRecommended
+                          ? `${storyboardLayout === 'horizontal' ? '横向' : '纵向'}轨道已对齐`
+                          : `建议切换为${recommendedLayout === 'horizontal' ? '横向' : '纵向'}轨道`}
+                      </div>
+                    </div>
+                    <div className={`rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${boardHealth.isLayoutRecommended ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100' : 'bg-amber-50 text-amber-700 dark:bg-amber-400/12 dark:text-amber-100'}`}>
+                      {boardHealth.isLayoutRecommended ? '已对齐' : '有偏移'}
+                    </div>
+                  </div>
+                  <div className={`mt-2 rounded-2xl border px-3 py-2 text-[11px] dark:bg-white/6 ${productionBoardSummary.reviewRailState === 'clean' ? 'border-emerald-200/80 bg-emerald-50/70 text-emerald-700 dark:border-emerald-400/20 dark:text-emerald-100' : productionBoardSummary.reviewRailState === 'watch' ? 'border-amber-200/80 bg-amber-50/70 text-amber-700 dark:border-amber-400/20 dark:text-amber-100' : 'border-sky-200/80 bg-sky-50/70 text-sky-700 dark:border-sky-400/20 dark:text-sky-100'}`}>
+                    <div className="uppercase tracking-[0.14em] opacity-70">审阅轨</div>
+                    <div className="mt-1 font-semibold">{productionBoardSummary.reviewRailSummary}</div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 text-[10px]">
+                    <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Lead</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.dominantOrientationLabel || '混合'}</div>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅适配</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.adaptationLabel}</div>
+                    </div>
+                    <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Density</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.boardDensityLabel}</div>
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Shots</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">镜头数</div>
                     <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboard.length}</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Layout</div>
-                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardLayout === 'vertical' ? 'Vertical' : 'Horizontal'}</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">布局</div>
+                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardLayout === 'vertical' ? '纵向' : '横向'}</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Aspect mix</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅组合</div>
                     <div className="mt-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{Array.from(new Set(storyboard.map((item) => item.aspectRatio ?? '9:16'))).join(' · ')}</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Render mix</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">渲染组合</div>
                     <div className="mt-1 truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{Array.from(new Set(storyboard.map((item) => item.outputSize ?? getStoryboardAspectMeta(item.aspectRatio ?? '9:16').videoSize))).join(' · ')}</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Detail rail</div>
-                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRenderSummary.dominantRenderProfile ? getStoryboardRenderProfileLabel(storyboardRenderSummary.dominantRenderProfile) : 'Pending'}</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">细节轨道</div>
+                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRenderSummary.dominantRenderProfile ? getStoryboardRenderProfileLabel(storyboardRenderSummary.dominantRenderProfile) : '待定'}</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Profile mix</div>
-                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRenderSummary.hasMixedRenderProfiles ? 'Mixed quality' : storyboard.length > 0 ? 'Unified quality' : 'Pending'}</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">质量组合</div>
+                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRenderSummary.hasMixedRenderProfiles ? '混合质量' : storyboard.length > 0 ? '统一质量' : '待定'}</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime</div>
-                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRuntimeSummary.totalDurationSec}s total</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">总时长</div>
+                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">总计 {storyboardRuntimeSummary.totalDurationSec} 秒</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Pacing</div>
-                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRuntimeSummary.averageDurationSec.toFixed(1)}s avg</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">节奏</div>
+                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">平均 {storyboardRuntimeSummary.averageDurationSec.toFixed(1)} 秒</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Orientation</div>
-                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRuntimeSummary.dominantOrientationLabel || 'Mixed'}</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">朝向</div>
+                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboardRuntimeSummary.dominantOrientationLabel || '混合'}</div>
                   </div>
                   <div className="rounded-2xl bg-gray-50 px-3 py-2 dark:bg-white/6">
-                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Batch intent</div>
-                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboard.length > 1 ? 'Multi-shot board' : 'Single-shot board'}</div>
+                    <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">批量意图</div>
+                    <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{storyboard.length > 1 ? '多镜头制作板' : '单镜头制作板'}</div>
+                  </div>
+                  <div className="col-span-2 grid grid-cols-3 gap-2">
+                    <div className="rounded-2xl border border-gray-200/80 bg-white/75 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅轨道</div>
+                      <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{boardHealth.hasUnifiedAspect ? '统一' : '混合'}</div>
+                      <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{boardHealth.aspectVariants} 个变体</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200/80 bg-white/75 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">节奏轨道</div>
+                      <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{boardHealth.hasUnifiedDuration ? '统一' : '混合'}</div>
+                      <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{boardHealth.durationVariants} 个节奏层</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200/80 bg-white/75 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">细节轨道</div>
+                      <div className="mt-1 text-sm font-semibold text-gray-800 dark:text-gray-100">{boardHealth.hasUnifiedRenderProfile ? '统一' : '混合'}</div>
+                      <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{boardHealth.renderProfileVariants} 个质量层</div>
+                    </div>
                   </div>
                   <div className="col-span-2 rounded-2xl border border-gray-200/80 bg-white/70 px-3 py-2 dark:border-white/10 dark:bg-white/5">
                     <div className="flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                      <span>Board readiness</span>
-                      <span>{storyboardRuntimeSummary.hasMixedOrientation ? 'Adaptive frames' : 'Locked frames'}</span>
+                      <span>制作板就绪度</span>
+                      <span>{storyboardRuntimeSummary.hasMixedOrientation ? '自适应画幅' : '锁定画幅'}</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                      <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">布局适配</div>
+                        <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.isLayoutRecommended ? '已对齐' : '建议切换'}</div>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅路由</div>
+                        <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.adaptationLabel}</div>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅变体数</div>
+                        <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.aspectVariants}</div>
+                      </div>
+                      <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">渲染变体数</div>
+                        <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.renderVariants}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                      <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 dark:border-white/10 dark:bg-white/8">{boardHealth.boardDensityLabel}</span>
+                      <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 dark:border-white/10 dark:bg-white/8">{boardHealth.lockedCount} 已锁定</span>
+                      {boardHealth.croppedCount > 0 && <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/12 dark:text-amber-100">{boardHealth.croppedCount} 安全裁切</span>}
+                      {boardHealth.recomposedCount > 0 && <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/12 dark:text-sky-100">{boardHealth.recomposedCount} 已重构</span>}
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
                       <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
-                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Portrait</div>
+                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">竖版</div>
                         <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{storyboardRuntimeSummary.portraitShots}</div>
                       </div>
                       <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
-                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Landscape</div>
+                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">横版</div>
                         <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{storyboardRuntimeSummary.landscapeShots}</div>
                       </div>
                       <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
-                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Square</div>
+                        <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">方形</div>
                         <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{storyboardRuntimeSummary.squareShots}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-gray-200/80 bg-white/80 px-3 py-3 dark:border-white/10 dark:bg-white/6">
+                      <div className="flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                        <span className="flex items-center gap-1.5"><Maximize2 size={12} /> 节点尺寸</span>
+                        <span>{boardHealth.nodeFootprintVariants} footprint variant{boardHealth.nodeFootprintVariants > 1 ? 's' : ''}</span>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">主导尺寸</div>
+                          <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.dominantFootprint || '待定'}</div>
+                          <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">{boardHealth.dominantFootprintCount > 0 ? `${boardHealth.dominantFootprintCount} nodes` : '暂无节点尺寸'}</div>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">最大画布面</div>
+                          <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.largestFootprint}</div>
+                          <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">board 主视觉占比最高</div>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">最宽轨道</div>
+                          <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.widestFootprint}</div>
+                          <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">适合横向 flow 节奏</div>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">最高轨道</div>
+                          <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.tallestFootprint}</div>
+                          <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">适合竖向 shot queue</div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -371,13 +513,14 @@ export function AssetsPanel({
                     <div className="flex flex-wrap gap-2">
                       {(['9:16', '16:9', '4:5', '1:1'] as StoryboardAspectRatio[]).map((aspectRatio) => {
                         const meta = getStoryboardAspectMeta(aspectRatio);
+                        const currentCount = storyboard.filter((item) => (item.aspectRatio ?? '9:16') === aspectRatio).length;
                         return (
                           <button
                             key={aspectRatio}
                             onClick={() => onUpdateAllStoryboardAspectRatios(aspectRatio)}
                             className="rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-medium text-gray-600 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:bg-white/6 dark:text-gray-200 dark:hover:border-sky-400/30 dark:hover:bg-sky-400/12 dark:hover:text-sky-100"
                           >
-                            {aspectRatio} · {meta.shortLabel}
+                            {aspectRatio} · {meta.shortLabel}{currentCount > 0 ? ` · ${currentCount}` : ''}
                           </button>
                         );
                       })}
@@ -437,6 +580,17 @@ export function AssetsPanel({
                           <div>• 4:5：1024×1280</div>
                           <div>• 1:1：1024×1024</div>
                         </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            onClick={onNormalizeAllStoryboardOutputSizes}
+                            className="rounded-full border border-dashed border-gray-300 bg-transparent px-3 py-1.5 text-[11px] font-medium text-gray-500 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/15 dark:text-gray-300 dark:hover:border-sky-400/20 dark:hover:bg-sky-400/12 dark:hover:text-sky-100"
+                          >
+                            统一为当前画幅推荐输出
+                          </button>
+                        </div>
+                        <div className="mt-2 text-[10px] leading-5 text-gray-500 dark:text-gray-400">
+                          按每个镜头当前的 aspect + detail rail，自动回到最匹配的 output size，避免混用不合适的 render 档位。
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2 text-[11px] text-gray-500 dark:text-gray-400">
@@ -466,9 +620,9 @@ export function AssetsPanel({
                     </div>
                     <div className="rounded-2xl border border-gray-200/80 bg-white/70 px-3 py-2 text-[11px] text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Board note</div>
+                        <div className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">制作板说明</div>
                         <div className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-medium text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
-                          {storyboard.length > 1 ? `${storyboardLayout === 'horizontal' ? 'Flow strip' : 'Shot queue'} · ${storyboard.length} shots` : 'Single shot'}
+                          {storyboard.length > 1 ? `${storyboardLayout === 'horizontal' ? '流程带' : '镜头队列'} · ${storyboard.length} 个镜头` : '单镜头'}
                         </div>
                       </div>
                       <div className="mt-1 leading-5 text-gray-600 dark:text-gray-300">
@@ -476,18 +630,32 @@ export function AssetsPanel({
                           ? '当前是混合画幅分镜流，批量落盘会保留每个镜头自己的画幅与输出尺寸。'
                           : '当前分镜画幅统一，适合直接批量落盘为一致规格的视频节点。'}
                       </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">主导画幅</div>
+                          <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.dominantAspectLabel || '待定'}</div>
+                        </div>
+                        <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                          <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">主导细节</div>
+                          <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{boardHealth.dominantRenderProfileLabel || '待定'}</div>
+                        </div>
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                        <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Auto node sizing</span>
-                        <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Per-shot frame memory</span>
-                        <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Board-aware video prompt</span>
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">自动节点尺寸</span>
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">逐镜头画幅记忆</span>
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">制作板感知视频提示</span>
+                        {boardHealth.dominantFootprint && <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{boardHealth.dominantFootprint} 节点轨道</span>}
                       </div>
                     </div>
                   </div>
                 )}
                 <div className="space-y-3 rounded-2xl border border-gray-200/80 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Board presets</span>
-                    <span className="text-[10px] text-gray-400 dark:text-gray-500">一键统一画幅 + quality rail</span>
+                    <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">制作板预设</span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">一键统一画幅 + 质量轨道</span>
+                  </div>
+                  <div className="rounded-2xl border border-dashed border-gray-200/80 bg-white/70 px-3 py-2 text-[11px] leading-5 text-gray-500 dark:border-white/10 dark:bg-white/4 dark:text-gray-400">
+                    推荐优先选择与当前主导画幅更接近的预设；如果想最大程度保留原镜头构图，优先保持 <span className="font-medium text-gray-700 dark:text-gray-200">{boardHealth.lockRateLabel}</span>。
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {boardPresetCards.map((preset) => (
@@ -508,13 +676,26 @@ export function AssetsPanel({
                 </div>
                 <div className="rounded-2xl border border-gray-200/80 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Board layout</span>
+                    <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">制作板布局</span>
                     <button
                       onClick={onAutoStoryboardLayout}
                       className="rounded-full border border-dashed border-gray-300 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 transition-colors hover:border-gray-400 hover:bg-gray-50 hover:text-gray-700 dark:border-white/15 dark:text-gray-300 dark:hover:bg-white/8 dark:hover:text-gray-100"
                     >
-                      Auto · {recommendedLayout === 'horizontal' ? '横排' : '竖排'}
+                      自动 · {recommendedLayout === 'horizontal' ? '横排' : '竖排'}
                     </button>
+                  </div>
+                  <div className="mb-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                    <div className="rounded-2xl border border-gray-200/80 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">当前轨道</div>
+                      <div className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{storyboardLayout === 'horizontal' ? '横向流程' : '纵向队列'}</div>
+                    </div>
+                    <div className="rounded-2xl border border-gray-200/80 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                      <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">推荐轨道</div>
+                      <div className="mt-1 flex items-center gap-1.5 font-semibold text-gray-800 dark:text-gray-100">
+                        <span>{recommendedLayout === 'horizontal' ? '横向流程' : '纵向队列'}</span>
+                        {recommendedLayout !== storyboardLayout && <ArrowRight size={12} className="text-gray-400 dark:text-gray-500" />}
+                      </div>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1 rounded-2xl bg-gray-100 p-1 dark:bg-white/8">
                     <button
@@ -537,6 +718,29 @@ export function AssetsPanel({
                       ? '当前布局已经与分镜画幅结构匹配。'
                       : `建议切到${recommendedLayout === 'horizontal' ? '横排' : '竖排'}，更适合当前镜头画幅分布。`}
                   </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                    <span className={`rounded-full border px-2 py-1 ${boardHealth.isLayoutRecommended ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/12 dark:text-emerald-100' : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/12 dark:text-amber-100'}`}>
+                      {boardHealth.isLayoutRecommended ? '布局已对齐' : '布局有偏移'}
+                    </span>
+                    <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{boardHealth.lockedCount} 已锁定</span>
+                    <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{boardHealth.remappedCount} 已重映射</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={expandAllStoryboardCards}
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-white/6 dark:text-gray-100 dark:hover:bg-white/10"
+                  >
+                    <GripVertical size={15} />
+                    展开全部镜头卡
+                  </button>
+                  <button
+                    onClick={collapseAllStoryboardCards}
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-white/6 dark:text-gray-100 dark:hover:bg-white/10"
+                  >
+                    <X size={15} />
+                    收起全部镜头卡
+                  </button>
                 </div>
                 <button
                   onClick={onCreateStoryboardFlow}
@@ -549,25 +753,37 @@ export function AssetsPanel({
             )}
             {storyboard.length > 0 && (
               <div className="mb-2 flex items-center justify-between gap-2 px-1 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                <span>Shot Cards</span>
-                <span>{storyboard.length} items</span>
+                <span>镜头卡</span>
+                <div className="flex items-center gap-2">
+                  <span>{expandedStoryboardIds.length} 个已展开</span>
+                  <span>{storyboard.length} 个条目</span>
+                </div>
               </div>
             )}
             {storyboard.length > 0 ? storyboard.map((item, index) => {
-              const aspectMeta = getStoryboardAspectMeta(item.aspectRatio ?? '9:16');
+              const resolvedAspectRatio = item.aspectRatio ?? '9:16';
+              const aspectMeta = getStoryboardAspectMeta(resolvedAspectRatio);
               const OrientationIcon = aspectMeta.orientation === 'landscape' ? RectangleHorizontal : aspectMeta.orientation === 'square' ? Square : RectangleVertical;
-              const isExpanded = expandedStoryboardId === item.id;
-              const renderProfile = item.renderProfile ?? getStoryboardRenderProfile(item.outputSize ?? aspectMeta.videoSize);
-              const frameDelta = (item.sourceAspectRatio ?? item.aspectRatio ?? '9:16') === (item.aspectRatio ?? '9:16')
-                ? 'Locked'
-                : `${item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'} → ${item.aspectRatio ?? '9:16'}`;
-              const sequenceLabel = storyboard.length === 1
-                ? 'Single'
+              const isExpanded = expandedStoryboardIds.includes(item.id);
+              const resolvedOutputSize = item.outputSize ?? aspectMeta.videoSize;
+              const renderProfile = item.renderProfile ?? getStoryboardRenderProfile(resolvedOutputSize);
+              const sourceAspectRatio = item.sourceAspectRatio ?? resolvedAspectRatio;
+              const frameDelta = getStoryboardFrameDeltaLabel(sourceAspectRatio, resolvedAspectRatio);
+              const frameRoutingLabel = getStoryboardFrameRoutingLabel(sourceAspectRatio, resolvedAspectRatio);
+              const coverageLabel = getStoryboardCoverageLabel(sourceAspectRatio, resolvedAspectRatio);
+              const adaptationLabel = getStoryboardFrameAdaptationLabel(sourceAspectRatio, resolvedAspectRatio);
+              const adaptationTone = getStoryboardFrameAdaptationTone(sourceAspectRatio, resolvedAspectRatio);
+              const frameDeltaTag = frameDelta === '跟随源画幅' ? '已锁定' : `重映射 ${frameDelta}`;
+              const sequenceState = storyboard.length === 1
+                ? 'single'
                 : index === 0
-                  ? (storyboardLayout === 'horizontal' ? 'Start →' : 'Head →')
+                  ? 'first'
                   : index === storyboard.length - 1
-                    ? 'End'
-                    : (storyboardLayout === 'horizontal' ? 'Next →' : 'Queue →');
+                    ? 'last'
+                    : 'middle';
+              const sequenceLabel = getStoryboardSequenceHint(storyboardLayout, sequenceState);
+              const boardModeLabel = getStoryboardBoardMode(storyboardLayout, sequenceState);
+              const nodeDimensions = getStoryboardNodeDimensions(resolvedOutputSize, resolvedAspectRatio);
 
               return (
                 <div
@@ -575,7 +791,7 @@ export function AssetsPanel({
                   className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5"
                 >
                   <button
-                    onClick={() => setExpandedStoryboardId((prev) => prev === item.id ? null : item.id)}
+                    onClick={() => setExpandedStoryboardIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])}
                     className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/8"
                   >
                     <div className="flex w-[96px] shrink-0 flex-col items-center gap-2">
@@ -597,23 +813,24 @@ export function AssetsPanel({
                     <div className="min-w-0 flex-1">
                       <div className="mb-2 flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                            {isExpanded ? 'Shot Card · Expanded' : 'Shot Card · Compact'}
+                          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
+                            <GripVertical size={11} />
+                            <span>{isExpanded ? '镜头卡 · 展开' : '镜头卡 · 紧凑'}</span>
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                            <span>Shot {String(index + 1).padStart(2, '0')}</span>
+                            <span>镜头 {String(index + 1).padStart(2, '0')}</span>
                             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-white/10 dark:text-gray-300">
-                              {item.type === 'image' ? 'Image Source' : 'Video Source'}
+                              {item.type === 'image' ? '图片素材' : '视频素材'}
                             </span>
-                            <span className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 text-[10px] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
-                              {aspectMeta.orientation}
+                            <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 text-[10px] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
+                              {getStoryboardOrientationLabel(aspectMeta.orientation)}
                             </span>
-                            <span className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 text-[10px] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
-                              {item.outputSize ?? aspectMeta.videoSize}
+                            <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 text-[10px] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
+                              {resolvedOutputSize}
                             </span>
                           </div>
                         </div>
-                        <div className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
+                        <div className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
                           {isExpanded ? '收起细节' : '展开细节'}
                         </div>
                       </div>
@@ -622,14 +839,16 @@ export function AssetsPanel({
                         onChange={(e) => onRenameStoryboardItem(item.id, e.target.value)}
                         onClick={(e) => e.stopPropagation()}
                         className="w-full rounded-md bg-transparent text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400 focus:bg-gray-50 dark:text-gray-100 dark:focus:bg-white/8"
-                        placeholder={`Shot ${String(index + 1).padStart(2, '0')}`}
+                        placeholder={`镜头 ${String(index + 1).padStart(2, '0')}`}
                       />
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                        <span className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 dark:border-white/10 dark:bg-white/8">{storyboardLayout === 'horizontal' ? 'Storyboard Flow' : 'Shot Queue'}</span>
-                        <span className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 dark:border-white/10 dark:bg-white/8">{isExpanded ? 'Detailed View' : 'Quick View'}</span>
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 dark:border-white/10 dark:bg-white/8">{boardModeLabel}</span>
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 dark:border-white/10 dark:bg-white/8">{sequenceLabel}</span>
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 dark:border-white/10 dark:bg-white/8">{isExpanded ? '详细视图' : '快速视图'}</span>
+                        <span className="rounded-full border border-dashed border-gray-300 bg-transparent px-2.5 py-1 text-gray-400 dark:border-white/15 dark:text-gray-500">{String(index + 1).padStart(2, '0')} / {String(storyboard.length).padStart(2, '0')}</span>
                       </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Duration</span>
+                        <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">时长</span>
                         <input
                           type="number"
                           min={1}
@@ -639,32 +858,46 @@ export function AssetsPanel({
                           onClick={(e) => e.stopPropagation()}
                           className="w-16 rounded-md border border-gray-200 bg-transparent px-2 py-1 text-xs text-gray-700 outline-none focus:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:focus:bg-white/8"
                         />
-                        <span className="text-xs text-gray-400">sec</span>
-                        <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
-                          {frameDelta === 'Locked' ? 'Follow source frame' : `Remap ${frameDelta}`}
+                        <span className="text-xs text-gray-400">秒</span>
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${
+                          adaptationTone === 'stable'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/12 dark:text-emerald-100'
+                            : adaptationTone === 'warning'
+                              ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/12 dark:text-amber-100'
+                              : 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/12 dark:text-sky-100'
+                        }`}>
+                          {adaptationLabel}
                         </span>
-                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${renderProfile === 'high' ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/12 dark:text-violet-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/12 dark:text-emerald-100'}`}>
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
+                          {frameDeltaTag}
+                        </span>
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] ${renderProfile === 'high' ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/12 dark:text-violet-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/12 dark:text-emerald-100'}`}>
                           {getStoryboardRenderProfileLabel(renderProfile)}
                         </span>
-                        <span className="rounded-full border border-gray-200 bg-white/80 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
-                          {aspectMeta.orientation}
+                        <span className="rounded-full border border-gray-200 bg-white/85 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:border-white/10 dark:bg-white/8 dark:text-gray-300">
+                          {getStoryboardOrientationLabel(aspectMeta.orientation)}
                         </span>
                       </div>
                       {isExpanded ? (
                         <div className="mt-2 space-y-2">
-                          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Shot Meta</div>
+                          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">镜头信息</div>
                           <div className="grid grid-cols-2 gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Shot</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{String(index + 1).padStart(2, '0')} / {String(storyboard.length).padStart(2, '0')}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Frame</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.aspectRatio ?? '9:16'}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Source</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Delta</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{frameDelta}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Canvas</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.displaySize}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Output</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.outputSize ?? aspectMeta.videoSize}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Orientation</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.orientation}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Detail rail</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{getStoryboardRenderProfileLabel(renderProfile)}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">镜头</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{String(index + 1).padStart(2, '0')} / {String(storyboard.length).padStart(2, '0')}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">目标画幅</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.aspectRatio ?? '9:16'}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">源画幅</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅差异</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{frameDelta}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画布参考</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.displaySize}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">输出尺寸</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{resolvedOutputSize}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">节点尺寸</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{nodeDimensions.width} × {nodeDimensions.height}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">制作板模式</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{boardModeLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">朝向</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{getStoryboardOrientationLabel(aspectMeta.orientation)}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">路由策略</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{frameRoutingLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">适配方式</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{adaptationLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">覆盖策略</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{coverageLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">细节轨道</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{getStoryboardRenderProfileLabel(renderProfile)}</div></div>
                           </div>
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Aspect</span>
+                            <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅</span>
                             <div className="flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-[10px] font-medium text-gray-500 dark:bg-white/8 dark:text-gray-300">
                               <OrientationIcon size={12} />
                               <span>{aspectMeta.shortLabel}</span>
@@ -672,70 +905,89 @@ export function AssetsPanel({
                           </div>
                           <div className="rounded-2xl border border-gray-200/80 bg-white/70 px-3 py-2 text-[11px] text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
                             <div className="flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                              <span>Frame routing</span>
+                              <span>画幅路由</span>
                               <span>{item.sourceOutputSize ?? aspectMeta.videoSize} → {item.outputSize ?? aspectMeta.videoSize}</span>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-2 text-[10px] text-gray-500 dark:text-gray-400">
+                              <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">源画幅</div>
+                                <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'} · {item.sourceOutputSize ?? aspectMeta.videoSize}</div>
+                              </div>
+                              <div className="rounded-xl bg-gray-50 px-2.5 py-2 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">目标画幅</div>
+                                <div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.aspectRatio ?? '9:16'} · {item.outputSize ?? aspectMeta.videoSize}</div>
+                              </div>
                             </div>
                             <div className="mt-1 leading-5 text-gray-600 dark:text-gray-300">
                               {item.sourceAspectRatio === item.aspectRatio
-                                ? '当前镜头沿用源镜头画幅，只在输出尺寸层做 board-aware 适配。'
+                                ? '当前镜头沿用源镜头画幅，只在输出尺寸层做制作板感知适配。'
                                 : `当前镜头会从 ${item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'} 重新映射到 ${item.aspectRatio ?? '9:16'}，并按对应安全尺寸生成视频节点。`}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{getStoryboardOrientationLabel((item.sourceOrientation ?? aspectMeta.orientation) as 'portrait' | 'landscape' | 'square')} · 源朝向</span>
+                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{getStoryboardOrientationLabel(aspectMeta.orientation)} · 目标朝向</span>
+                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{nodeDimensions.width}×{nodeDimensions.height}</span>
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Batch slot</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{storyboardLayout === 'horizontal' ? `Column ${index + 1}` : `Row ${index + 1}`}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Sequence</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{sequenceLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">批量槽位</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{storyboardLayout === 'horizontal' ? `列 ${index + 1}` : `行 ${index + 1}`}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">序列</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{sequenceLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">路由策略</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{frameRoutingLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">覆盖策略</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{coverageLabel}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">制作板适配</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{storyboardLayout === recommendedLayout ? '已对齐' : '自适应'}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">朝向轨道</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{getStoryboardOrientationLabel(aspectMeta.orientation)}</div></div>
                           </div>
                           <div className="rounded-2xl border border-gray-200/80 bg-white/70 px-3 py-2 text-[11px] leading-5 text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
                             <div className="flex items-center justify-between gap-2">
-                              <span className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Shot Note</span>
-                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-white/8 dark:text-gray-300">{aspectMeta.orientation}</span>
+                              <span className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">镜头说明</span>
+                              <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-white/8 dark:text-gray-300">{getStoryboardOrientationLabel(aspectMeta.orientation)}</span>
                             </div>
                             <div className="mt-1">
-                              当前镜头会按 <span className="font-medium text-gray-800 dark:text-gray-100">{item.aspectRatio ?? '9:16'}</span> / <span className="font-medium text-gray-800 dark:text-gray-100">{item.outputSize ?? aspectMeta.videoSize}</span> 落成视频节点，并保留画幅感知。
+                              当前镜头会按 <span className="font-medium text-gray-800 dark:text-gray-100">{resolvedAspectRatio}</span> / <span className="font-medium text-gray-800 dark:text-gray-100">{resolvedOutputSize}</span> 落成视频节点，并保留画幅感知；节点尺寸将落在 <span className="font-medium text-gray-800 dark:text-gray-100">{nodeDimensions.width} × {nodeDimensions.height}</span>，当前 coverage 策略为 <span className="font-medium text-gray-800 dark:text-gray-100">{coverageLabel}</span>。
                             </div>
                             <div className="mt-2 flex flex-wrap gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Source {item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'}</span>
-                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">Frame {item.aspectRatio ?? '9:16'}</span>
-                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{frameDelta === 'Locked' ? 'Locked' : 'Remapped'}</span>
+                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">源画幅 {item.sourceAspectRatio ?? item.aspectRatio ?? '9:16'}</span>
+                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">目标画幅 {item.aspectRatio ?? '9:16'}</span>
+                              <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{frameDelta === '跟随源画幅' ? '已锁定' : '已重映射'}</span>
                               <span className="rounded-full border border-gray-200 bg-white/85 px-2 py-1 dark:border-white/10 dark:bg-white/8">{String(index + 1).padStart(2, '0')} / {String(storyboard.length).padStart(2, '0')}</span>
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-2">
                             <label className="space-y-1">
-                              <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Aspect</span>
+                              <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅</span>
                               <select
                                 value={item.aspectRatio ?? '9:16'}
                                 onChange={(e) => onUpdateStoryboardAspectRatio(item.id, e.target.value as StoryboardAspectRatio)}
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-full rounded-xl border border-gray-200 bg-transparent px-3 py-2 text-xs text-gray-700 outline-none focus:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:focus:bg-white/8"
                               >
-                                <option value="9:16">9:16 · Portrait</option>
-                                <option value="16:9">16:9 · Landscape</option>
-                                <option value="4:5">4:5 · Portrait</option>
-                                <option value="1:1">1:1 · Square</option>
+                                <option value="9:16">9:16 · 竖版</option>
+                                <option value="16:9">16:9 · 横版</option>
+                                <option value="4:5">4:5 · 竖版</option>
+                                <option value="1:1">1:1 · 方形</option>
                               </select>
                             </label>
                             <label className="space-y-1">
-                              <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">Output size</span>
+                              <span className="text-[11px] uppercase tracking-wide text-gray-400 dark:text-gray-500">输出尺寸</span>
                               <select
                                 value={item.outputSize ?? aspectMeta.videoSize}
                                 onChange={(e) => onUpdateStoryboardOutputSize(item.id, e.target.value as StoryboardVideoSize)}
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-full rounded-xl border border-gray-200 bg-transparent px-3 py-2 text-xs text-gray-700 outline-none focus:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:focus:bg-white/8"
                               >
-                                {getStoryboardVideoSizeOptions(item.aspectRatio ?? '9:16').map((sizeOption) => (
+                                {getStoryboardVideoSizeOptions(resolvedAspectRatio).map((sizeOption) => (
                                   <option key={sizeOption} value={sizeOption}>{sizeOption}</option>
                                 ))}
                               </select>
                             </label>
                           </div>
                           <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Frame preset</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.label}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Render output</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.outputSize ?? aspectMeta.videoSize}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Orientation rail</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.orientation}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Source output</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceOutputSize ?? aspectMeta.videoSize}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Source orient</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceOrientation ?? aspectMeta.orientation}</div></div>
-                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">Render detail</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{renderProfile === 'high' ? 'High detail rail' : 'Standard rail'}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">画幅预设</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.label}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">渲染输出</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.outputSize ?? aspectMeta.videoSize}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">朝向轨道</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{aspectMeta.orientation}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">源输出</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceOutputSize ?? aspectMeta.videoSize}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">源朝向</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{item.sourceOrientation ?? aspectMeta.orientation}</div></div>
+                            <div className="rounded-xl bg-gray-50 px-3 py-2 dark:bg-white/6"><div className="uppercase tracking-wide text-gray-400 dark:text-gray-500">渲染细节</div><div className="mt-1 font-medium text-gray-700 dark:text-gray-200">{renderProfile === 'high' ? '高细节轨道' : '标准轨道'}</div></div>
                           </div>
                           <button
                             onClick={() => onResetStoryboardAspectRatioFromAsset(item.id)}
@@ -754,7 +1006,7 @@ export function AssetsPanel({
                         </div>
                       ) : (
                         <div className="mt-1.5 space-y-2 text-[11px] text-gray-500 dark:text-gray-400">
-                          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">Shot Meta</div>
+                          <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">镜头信息</div>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 font-medium text-blue-700 dark:border-sky-400/20 dark:bg-sky-400/12 dark:text-sky-100">{item.aspectRatio ?? '9:16'}</span>
                             <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 font-medium text-gray-600 dark:border-white/10 dark:bg-white/8 dark:text-gray-200">{item.outputSize ?? aspectMeta.videoSize}</span>
@@ -766,10 +1018,10 @@ export function AssetsPanel({
                           </div>
                           <div className="rounded-xl border border-gray-200/80 bg-white/70 px-3 py-2 text-[11px] leading-5 text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
                             <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
-                              <span>Shot Note</span>
-                              <span>{frameDelta === 'Locked' ? 'Follow' : 'Remapped'}</span>
+                              <span>镜头说明</span>
+                              <span>{frameDelta === '跟随源画幅' ? '跟随源画幅' : '已重映射'}</span>
                             </div>
-                            <div className="line-clamp-2">{item.sourcePrompt || `${item.aspectRatio ?? '9:16'} / ${item.outputSize ?? aspectMeta.videoSize} 默认输出。`}</div>
+                            <div className="line-clamp-2">{item.sourcePrompt || `${resolvedAspectRatio} / ${resolvedOutputSize} 默认输出，节点尺寸 ${nodeDimensions.width} × ${nodeDimensions.height}，覆盖策略 ${coverageLabel}。`}</div>
                           </div>
                         </div>
                       )}
@@ -777,8 +1029,12 @@ export function AssetsPanel({
                   </button>
                   <div className="border-t border-gray-100 p-3 dark:border-white/10">
                     <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                      <span>Shot Actions</span>
-                      <span>{storyboardLayout === 'horizontal' ? 'Flow Footer' : 'Queue Footer'}</span>
+                      <span>镜头操作</span>
+                      <span>{storyboardLayout === 'horizontal' ? '流程底栏' : '队列底栏'}</span>
+                    </div>
+                    <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-gray-200/80 bg-gray-50/80 px-2.5 py-2 text-[10px] font-medium uppercase tracking-[0.14em] text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-400">
+                      <span>{boardModeLabel}</span>
+                      <span>{sequenceLabel}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <button

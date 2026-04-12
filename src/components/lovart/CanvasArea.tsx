@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { ContextToolbar } from './ContextToolbar';
 import type { Json } from '@/lib/supabase';
+import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
 import { v4 as uuidv4 } from 'uuid';
 
 export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'connector';
@@ -46,8 +47,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardDurationSec?: number;
     storyboardShotIndex?: number;
     storyboardShotCount?: number;
-    storyboardSequenceState?: 'single' | 'first' | 'middle' | 'last';
-    storyboardSequenceHint?: string;
+    storyboard序列State?: 'single' | 'first' | 'middle' | 'last';
+    storyboard序列Hint?: string;
     storyboardBoardMode?: string;
     storyboardElementRole?: 'board-header' | 'board-surface' | 'board-lane' | 'board-lane-label';
     storyboardLaneOrientation?: 'portrait' | 'landscape' | 'square';
@@ -67,6 +68,12 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     connectorFrom?: string;
     connectorTo?: string;
     connectorStyle?: 'solid' | 'dashed';
+}
+
+function getReviewRailToneClass(state: 'clean' | 'watch' | 'check') {
+    if (state === 'clean') return 'border-emerald-300/20 bg-emerald-400/15 text-emerald-50';
+    if (state === 'watch') return 'border-amber-300/20 bg-amber-400/15 text-amber-50';
+    return 'border-sky-300/20 bg-sky-400/15 text-sky-50';
 }
 
 interface CanvasAreaProps {
@@ -592,56 +599,64 @@ export function CanvasArea({
                                 {el.type === 'video-generator' && (() => {
                                     const promptText = typeof el.prompt === 'string' ? el.prompt : '';
                                     const promptParts = promptText.split('｜').filter(Boolean);
-                                    const shotLabel = (typeof el.storyboardShotLabel === 'string' && el.storyboardShotLabel) || promptParts[0] || 'Shot';
-                                    const shotTitle = (typeof el.storyboardTitle === 'string' && el.storyboardTitle) || promptParts[1] || 'Video Generator';
+                                    const shotLabel = (typeof el.storyboardShotLabel === 'string' && el.storyboardShotLabel) || promptParts[0] || '镜头';
+                                    const shotTitle = (typeof el.storyboardTitle === 'string' && el.storyboardTitle) || promptParts[1] || '视频生成器';
                                     const shotMeta = (typeof el.storyboardMeta === 'string' && el.storyboardMeta) || promptParts[2] || `${Math.round(el.width || 0)} x ${Math.round(el.height || 0)}`;
                                     const sizeMeta = (typeof el.storyboardVideoSize === 'string' && el.storyboardVideoSize)
                                         || (typeof el.content === 'string' && /^\d+x\d+$/.test(el.content) ? el.content : undefined);
                                     const aspectLabel = (typeof el.storyboardAspectRatio === 'string' && el.storyboardAspectRatio)
                                         || shotMeta.match(/(9:16|16:9|4:5|1:1)/)?.[1];
                                     const orientationLabel = el.storyboardOrientation === 'landscape'
-                                        ? 'Landscape'
+                                        ? '横版'
                                         : el.storyboardOrientation === 'square'
-                                            ? 'Square'
+                                            ? '方形'
                                             : el.storyboardOrientation === 'portrait'
-                                                ? 'Portrait'
+                                                ? '竖版'
                                                 : shotMeta.includes('Landscape') || shotMeta.includes('横版')
-                                                    ? 'Landscape'
+                                                    ? '横版'
                                                     : shotMeta.includes('Square') || shotMeta.includes('方形')
-                                                        ? 'Square'
-                                                        : 'Portrait';
+                                                        ? '方形'
+                                                        : '竖版';
                                     const boardBrief = (typeof el.storyboardBrief === 'string' && el.storyboardBrief)
                                         || promptParts[3]
-                                        || 'Ready for motion, camera move and pacing direction.';
+                                        || '已准备好承接运动、镜头调度与节奏方向。';
                                     const durationLabel = typeof el.storyboardDurationSec === 'number' ? `${el.storyboardDurationSec}s` : undefined;
-                                    const sequenceHint = typeof el.storyboardSequenceHint === 'string' && el.storyboardSequenceHint
-                                        ? el.storyboardSequenceHint
-                                        : 'Next →';
-                                    const sequenceState = typeof el.storyboardSequenceState === 'string' && el.storyboardSequenceState
-                                        ? el.storyboardSequenceState
+                                    const sequenceHint = typeof el.storyboard序列Hint === 'string' && el.storyboard序列Hint
+                                        ? el.storyboard序列Hint
+                                        : '下一镜 →';
+                                    const sequenceState = typeof el.storyboard序列State === 'string' && el.storyboard序列State
+                                        ? el.storyboard序列State
                                         : 'middle';
                                     const shotIndex = typeof el.storyboardShotIndex === 'number' ? el.storyboardShotIndex : undefined;
                                     const shotCount = typeof el.storyboardShotCount === 'number' ? el.storyboardShotCount : undefined;
                                     const sourceAspectLabel = typeof el.storyboardSourceAspectRatio === 'string' ? el.storyboardSourceAspectRatio : undefined;
                                     const frameDeltaLabel = sourceAspectLabel && aspectLabel
                                         ? sourceAspectLabel === aspectLabel
-                                            ? 'Source frame locked'
+                                            ? '源画幅锁定'
                                             : `${sourceAspectLabel} → ${aspectLabel}`
-                                        : aspectLabel || 'Auto frame';
+                                        : aspectLabel || '自动画幅';
                                     const coverageLabel = sourceAspectLabel && aspectLabel
                                         ? sourceAspectLabel === aspectLabel
-                                            ? 'Coverage locked'
+                                            ? '覆盖范围锁定'
                                             : (el.storyboardOrientation === 'landscape'
-                                                ? 'Recompose wide'
+                                                ? '重构为横版'
                                                 : el.storyboardOrientation === 'square'
-                                                    ? 'Center recrop'
-                                                    : 'Recompose tall')
-                                        : 'Coverage locked';
+                                                    ? '中心重裁'
+                                                    : '重构为竖版')
+                                        : '覆盖范围锁定';
+                                    const resolvedSourceAspect = (sourceAspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? ((aspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? '9:16');
+                                    const resolvedCurrentAspect = (aspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? '9:16';
+                                    const reviewRailState = getStoryboardReviewRailState(resolvedSourceAspect, resolvedCurrentAspect);
+                                    const reviewRailLabel = getStoryboardReviewRailLabel(resolvedSourceAspect, resolvedCurrentAspect);
+                                    const reviewRailToneClass = getReviewRailToneClass(reviewRailState);
+                                    const chipPrimaryClass = 'rounded-full border border-blue-200/80 bg-white/88 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/85 shadow-sm dark:border-white/10 dark:bg-white/7 dark:text-sky-100/80';
+                                    const chipSecondaryClass = 'rounded-full bg-blue-600/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/85 dark:bg-sky-400/12 dark:text-sky-100/80';
+                                    const infoCardClass = 'rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4';
                                     const boardProgressLabel = shotIndex && shotCount
                                         ? `${String(shotIndex).padStart(2, '0')} / ${String(shotCount).padStart(2, '0')}`
                                         : shotIndex
-                                            ? `Shot ${String(shotIndex).padStart(2, '0')}`
-                                            : 'Draft';
+                                            ? `镜头 ${String(shotIndex).padStart(2, '0')}`
+                                            : '草稿';
                                     const frameToneClass = el.storyboardOrientation === 'landscape'
                                         ? 'from-violet-500/12 via-fuchsia-500/10 to-transparent dark:from-violet-400/18 dark:via-fuchsia-400/12 dark:to-transparent'
                                         : el.storyboardOrientation === 'square'
@@ -658,14 +673,14 @@ export function CanvasArea({
                                     const compactVertical = (el.height || 0) >= 420;
                                     const boardModeLabel = typeof el.storyboardBoardMode === 'string' && el.storyboardBoardMode
                                         ? el.storyboardBoardMode
-                                        : sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow';
-                                    const detailRailLabel = el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail';
+                                        : sequenceState === 'single' ? '单镜头板' : '分镜流程';
+                                    const detailRailLabel = el.storyboardRenderProfile === 'high' ? '高细节' : '标准细节';
                                     const laneLabel = el.storyboardOrientation === 'landscape'
-                                        ? 'Landscape lane'
+                                        ? '横版轨道'
                                         : el.storyboardOrientation === 'square'
-                                            ? 'Square lane'
-                                            : 'Portrait lane';
-                                    const outputRailLabel = sizeMeta ? `${sizeMeta} render` : 'Storyboard render';
+                                            ? '方形轨道'
+                                            : '竖版轨道';
+                                    const outputRailLabel = sizeMeta ? `${sizeMeta} 渲染` : '分镜渲染';
 
                                     return (
                                         <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.92))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.18),rgba(15,23,42,0.94)_68%)] dark:text-sky-50">
@@ -678,21 +693,21 @@ export function CanvasArea({
                                                     <div className={`h-2 rounded-full bg-blue-600/15 dark:bg-sky-400/14 ${sequenceBarClass}`} />
                                                 </div>
                                                 <div className="text-[11px] uppercase tracking-[0.14em] text-blue-600/80 dark:text-sky-200/70">
-                                                    {boardModeLabel === 'Shot Queue'
+                                                    {boardModeLabel === '镜头队列'
                                                         ? sequenceState === 'first'
-                                                            ? 'Queue Head'
+                                                            ? '队列起点'
                                                             : sequenceState === 'last'
-                                                                ? 'Queue End'
+                                                                ? '队列终点'
                                                                 : sequenceState === 'single'
-                                                                    ? 'Single Frame'
-                                                                    : 'Shot Queue'
+                                                                    ? '单帧'
+                                                                    : '镜头队列'
                                                         : sequenceState === 'first'
-                                                            ? 'Strip Start'
+                                                            ? '流程起点'
                                                             : sequenceState === 'last'
-                                                                ? 'Strip End'
+                                                                ? '流程终点'
                                                                 : sequenceState === 'single'
-                                                                    ? 'Single Frame'
-                                                                    : 'Production Board'}
+                                                                    ? '单帧'
+                                                                    : '制作板'}
                                                 </div>
                                             </div>
                                             <div className="relative flex h-[calc(100%-56px)] flex-col justify-between p-4">
@@ -710,59 +725,59 @@ export function CanvasArea({
                                                         </div>
                                                         <div className="flex max-w-[58%] flex-wrap items-center justify-end gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-700/80 dark:text-sky-100/75">
                                                             {aspectLabel && !compactPortrait && (
-                                                                <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{aspectLabel}</span>
+                                                                <span className={chipSecondaryClass}>{aspectLabel}</span>
                                                             )}
-                                                            <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
-                                                            <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{laneLabel}</span>
+                                                            <span className={chipSecondaryClass}>{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
+                                                            <span className={chipSecondaryClass}>{laneLabel}</span>
                                                             {durationLabel && (
-                                                                <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{durationLabel}</span>
+                                                                <span className={chipSecondaryClass}>{durationLabel}</span>
                                                             )}
                                                         </div>
                                                     </div>
                                                     <div className="line-clamp-2 pr-20 text-base font-semibold leading-snug">{shotTitle}</div>
                                                     <div className="mt-1 text-xs text-blue-700/80 dark:text-sky-200/70">{shotMeta}</div>
                                                     <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/80 dark:text-sky-100/75">
-                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{sequenceState === 'single' ? 'Single Shot' : sequenceState === 'first' ? 'Shot Strip Start' : sequenceState === 'last' ? 'Shot Strip End' : 'Shot Strip'}</span>
-                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardModeLabel}</span>
-                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardProgressLabel}</span>
-                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{laneLabel}</span>
-                                                        {!compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{orientationLabel}</span>}
+                                                        <span className={chipPrimaryClass}>{sequenceState === 'single' ? '单镜头' : sequenceState === 'first' ? '镜头带起点' : sequenceState === 'last' ? '镜头带终点' : '镜头带'}</span>
+                                                        <span className={chipPrimaryClass}>{boardModeLabel}</span>
+                                                        <span className={chipPrimaryClass}>{boardProgressLabel}</span>
+                                                        <span className={chipPrimaryClass}>{laneLabel}</span>
+                                                        {!compactVertical && <span className={chipPrimaryClass}>{orientationLabel}</span>}
                                                         {aspectLabel && !compactVertical && (
-                                                            <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{aspectLabel}</span>
+                                                            <span className={chipPrimaryClass}>{aspectLabel}</span>
                                                         )}
                                                         {durationLabel && (
-                                                            <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{durationLabel}</span>
+                                                            <span className={chipPrimaryClass}>{durationLabel}</span>
                                                         )}
                                                     </div>
                                                 </div>
                                                 <div className="space-y-3">
                                                     <div className="rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
-                                                        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">Shot Note</div>
+                                                        <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">镜头说明</div>
                                                         <div className={compactPortrait ? 'line-clamp-4' : 'line-clamp-5'}>{boardBrief}</div>
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
-                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame</div>
-                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || 'Auto'} · {orientationLabel}</div>
+                                                        <div className={infoCardClass}>
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">画幅</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || '自动画幅'} · {orientationLabel}</div>
                                                         </div>
-                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Output</div>
+                                                        <div className={infoCardClass}>
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">输出</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{outputRailLabel}</div>
                                                         </div>
-                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame delta</div>
+                                                        <div className={infoCardClass}>
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">画幅差异</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{frameDeltaLabel}</div>
                                                         </div>
-                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Coverage</div>
+                                                        <div className={infoCardClass}>
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">覆盖策略</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{coverageLabel}</div>
                                                         </div>
-                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Detail rail</div>
+                                                        <div className={infoCardClass}>
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">细节轨道</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{detailRailLabel}</div>
                                                         </div>
-                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>
+                                                        <div className={infoCardClass}>
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">序列</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sequenceHint}</div>
                                                         </div>
                                                     </div>
@@ -818,8 +833,8 @@ export function CanvasArea({
 
                                     const promptText = typeof el.prompt === 'string' ? el.prompt : '';
                                     const promptParts = promptText.split('｜').filter(Boolean);
-                                    const shotLabel = (typeof el.storyboardShotLabel === 'string' && el.storyboardShotLabel) || promptParts[0] || 'Shot';
-                                    const shotTitle = (typeof el.storyboardTitle === 'string' && el.storyboardTitle) || promptParts[1] || 'Rendered Shot';
+                                    const shotLabel = (typeof el.storyboardShotLabel === 'string' && el.storyboardShotLabel) || promptParts[0] || '镜头';
+                                    const shotTitle = (typeof el.storyboardTitle === 'string' && el.storyboardTitle) || promptParts[1] || '已渲染镜头';
                                     const shotMeta = (typeof el.storyboardMeta === 'string' && el.storyboardMeta) || promptParts[2] || `${Math.round(el.width || 0)} x ${Math.round(el.height || 0)}`;
                                     const sizeMeta = (typeof el.storyboardVideoSize === 'string' && el.storyboardVideoSize) || undefined;
                                     const aspectLabel = (typeof el.storyboardAspectRatio === 'string' && el.storyboardAspectRatio) || shotMeta.match(/(9:16|16:9|4:5|1:1)/)?.[1];
@@ -832,36 +847,44 @@ export function CanvasArea({
                                         || promptParts[3]
                                         || 'Rendered from storyboard direction.';
                                     const durationLabel = typeof el.storyboardDurationSec === 'number' ? `${el.storyboardDurationSec}s` : undefined;
-                                    const sequenceHint = typeof el.storyboardSequenceHint === 'string' && el.storyboardSequenceHint
-                                        ? el.storyboardSequenceHint
+                                    const sequenceHint = typeof el.storyboard序列Hint === 'string' && el.storyboard序列Hint
+                                        ? el.storyboard序列Hint
                                         : 'Ready';
-                                    const sequenceState = typeof el.storyboardSequenceState === 'string' && el.storyboardSequenceState
-                                        ? el.storyboardSequenceState
+                                    const sequenceState = typeof el.storyboard序列State === 'string' && el.storyboard序列State
+                                        ? el.storyboard序列State
                                         : 'single';
                                     const shotIndex = typeof el.storyboardShotIndex === 'number' ? el.storyboardShotIndex : undefined;
                                     const shotCount = typeof el.storyboardShotCount === 'number' ? el.storyboardShotCount : undefined;
                                     const sourceAspectLabel = typeof el.storyboardSourceAspectRatio === 'string' ? el.storyboardSourceAspectRatio : undefined;
                                     const frameDeltaLabel = sourceAspectLabel && aspectLabel
                                         ? sourceAspectLabel === aspectLabel
-                                            ? 'Source frame locked'
+                                            ? '源画幅锁定'
                                             : `${sourceAspectLabel} → ${aspectLabel}`
-                                        : aspectLabel || 'Auto frame';
+                                        : aspectLabel || '自动画幅';
                                     const coverageLabel = sourceAspectLabel && aspectLabel
                                         ? sourceAspectLabel === aspectLabel
-                                            ? 'Coverage locked'
+                                            ? '覆盖范围锁定'
                                             : (el.storyboardOrientation === 'landscape'
-                                                ? 'Recompose wide'
+                                                ? '重构为横版'
                                                 : el.storyboardOrientation === 'square'
-                                                    ? 'Center recrop'
-                                                    : 'Recompose tall')
-                                        : 'Coverage locked';
+                                                    ? '中心重裁'
+                                                    : '重构为竖版')
+                                        : '覆盖范围锁定';
+                                    const resolvedSourceAspect = (sourceAspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? ((aspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? '9:16');
+                                    const resolvedCurrentAspect = (aspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? '9:16';
+                                    const reviewRailState = getStoryboardReviewRailState(resolvedSourceAspect, resolvedCurrentAspect);
+                                    const reviewRailLabel = getStoryboardReviewRailLabel(resolvedSourceAspect, resolvedCurrentAspect);
+                                    const reviewRailToneClass = getReviewRailToneClass(reviewRailState);
+                                    const chipPrimaryClass = 'rounded-full border border-blue-200/80 bg-white/88 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/85 shadow-sm dark:border-white/10 dark:bg-white/7 dark:text-sky-100/80';
+                                    const chipSecondaryClass = 'rounded-full bg-blue-600/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/85 dark:bg-sky-400/12 dark:text-sky-100/80';
+                                    const infoCardClass = 'rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4';
                                     const boardProgressLabel = shotIndex && shotCount
                                         ? `${String(shotIndex).padStart(2, '0')} / ${String(shotCount).padStart(2, '0')}`
                                         : shotIndex
-                                            ? `Shot ${String(shotIndex).padStart(2, '0')}`
-                                            : 'Rendered';
+                                            ? `镜头 ${String(shotIndex).padStart(2, '0')}`
+                                            : '已渲染';
                                     const boardModeLabel = (typeof el.storyboardBoardMode === 'string' && el.storyboardBoardMode)
-                                        || (sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow');
+                                        || (sequenceState === 'single' ? '单镜头板' : '分镜流程');
                                     const frameToneClass = el.storyboardOrientation === 'landscape'
                                         ? 'from-violet-500/16 via-fuchsia-500/12 to-transparent dark:from-violet-400/24 dark:via-fuchsia-400/16 dark:to-transparent'
                                         : el.storyboardOrientation === 'square'
@@ -877,10 +900,10 @@ export function CanvasArea({
                                     const compactPortrait = el.storyboardOrientation === 'portrait' && (el.width || 0) <= 280;
                                     const compactVertical = (el.height || 0) >= 420;
                                     const laneLabel = el.storyboardOrientation === 'landscape'
-                                        ? 'Landscape lane'
+                                        ? '横版轨道'
                                         : el.storyboardOrientation === 'square'
-                                            ? 'Square lane'
-                                            : 'Portrait lane';
+                                            ? '方形轨道'
+                                            : '竖版轨道';
 
                                     return (
                                         <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(239,246,255,0.96))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),rgba(15,23,42,0.96)_68%)] dark:text-sky-50">
@@ -891,21 +914,21 @@ export function CanvasArea({
                                                     <div className={`h-2 rounded-full bg-blue-600/15 dark:bg-sky-400/14 ${sequenceBarClass}`} />
                                                 </div>
                                                 <div className="text-[11px] uppercase tracking-[0.14em] text-blue-600/80 dark:text-sky-200/70">
-                                                    {boardModeLabel === 'Shot Queue'
+                                                    {boardModeLabel === '镜头队列'
                                                         ? sequenceState === 'first'
-                                                            ? 'Queue Head'
+                                                            ? '队列起点'
                                                             : sequenceState === 'last'
-                                                                ? 'Queue End'
+                                                                ? '队列终点'
                                                                 : sequenceState === 'single'
-                                                                    ? 'Single Frame'
-                                                                    : 'Rendered Queue'
+                                                                    ? '单帧'
+                                                                    : '已渲染队列'
                                                         : sequenceState === 'first'
-                                                            ? 'Strip Start'
+                                                            ? '流程起点'
                                                             : sequenceState === 'last'
-                                                                ? 'Strip End'
+                                                                ? '流程终点'
                                                                 : sequenceState === 'single'
-                                                                    ? 'Single Frame'
-                                                                    : 'Rendered Flow'}
+                                                                    ? '单帧'
+                                                                    : '已渲染流程'}
                                                 </div>
                                             </div>
                                             <div className="relative flex h-[calc(100%-56px)] flex-col p-4">
@@ -920,10 +943,10 @@ export function CanvasArea({
                                                         <div className="mt-1 text-xs text-blue-700/80 dark:text-sky-200/70">{shotMeta}</div>
                                                     </div>
                                                     <div className="flex max-w-[58%] flex-wrap items-center justify-end gap-1.5 text-[10px] font-medium uppercase tracking-wide text-blue-700/80 dark:text-sky-100/75">
-                                                        {aspectLabel && !compactPortrait && <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{aspectLabel}</span>}
-                                                        <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
-                                                        <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{laneLabel}</span>
-                                                        {durationLabel && <span className="rounded-full bg-blue-600/10 px-2 py-1 dark:bg-sky-400/12">{durationLabel}</span>}
+                                                        {aspectLabel && !compactPortrait && <span className={chipSecondaryClass}>{aspectLabel}</span>}
+                                                        <span className={chipSecondaryClass}>{compactPortrait ? aspectLabel || orientationLabel : orientationLabel}</span>
+                                                        <span className={chipSecondaryClass}>{laneLabel}</span>
+                                                        {durationLabel && <span className={chipSecondaryClass}>{durationLabel}</span>}
                                                     </div>
                                                 </div>
                                                 <div className="relative flex-1 overflow-hidden rounded-2xl border border-blue-200/80 bg-black/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:border-white/10">
@@ -931,12 +954,12 @@ export function CanvasArea({
                                                     <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/68 via-black/18 to-transparent p-2.5 text-white">
                                                         <div className="mb-1 flex items-center justify-between gap-1.5">
                                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
-                                                                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/15 px-2 py-1 text-emerald-50">Rendered</span>
-                                                                <span className={`rounded-full border px-2 py-1 ${el.storyboardRenderProfile === 'high' ? 'border-violet-300/20 bg-violet-400/15 text-violet-50' : 'border-sky-300/20 bg-sky-400/15 text-sky-50'}`}>{el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail'}</span>
-                                                                <span className="rounded-full border border-white/12 bg-white/8 px-2 py-1 text-white/85">Review Rail · Pass 1</span>
+                                                                <span className="rounded-full border border-emerald-300/20 bg-emerald-400/15 px-2.5 py-1 text-emerald-50">已渲染</span>
+                                                                <span className={`rounded-full border px-2.5 py-1 ${el.storyboardRenderProfile === 'high' ? 'border-violet-300/20 bg-violet-400/15 text-violet-50' : 'border-sky-300/20 bg-sky-400/15 text-sky-50'}`}>{el.storyboardRenderProfile === 'high' ? '高细节' : '标准细节'}</span>
+                                                                <span className={`rounded-full border px-2.5 py-1 ${reviewRailToneClass}`}>{reviewRailLabel}</span>
                                                                 <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-white/70">{boardModeLabel} · {boardProgressLabel}</span>
                                                             </div>
-                                                            <span className="rounded-full border border-white/10 bg-white/6 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white/75">Review Rail · Ready</span>
+                                                            <span className="rounded-full border border-white/10 bg-white/6 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white/75">审阅轨 · 就绪</span>
                                                         </div>
                                                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                             <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{sequenceHint}</span>
@@ -947,41 +970,41 @@ export function CanvasArea({
                                                     </div>
                                                 </div>
                                                 <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/80 dark:text-sky-100/75">
-                                                    <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{sequenceState === 'single' ? 'Single Shot' : sequenceState === 'first' ? 'Shot Strip Start' : sequenceState === 'last' ? 'Shot Strip End' : 'Shot Strip'}</span>
-                                                    <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardModeLabel}</span>
-                                                    <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardProgressLabel}</span>
-                                                    {!compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{orientationLabel}</span>}
-                                                    {aspectLabel && !compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{aspectLabel}</span>}
-                                                    {durationLabel && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{durationLabel}</span>}
+                                                    <span className={chipPrimaryClass}>{sequenceState === 'single' ? '单镜头' : sequenceState === 'first' ? '镜头带起点' : sequenceState === 'last' ? '镜头带终点' : '镜头带'}</span>
+                                                    <span className={chipPrimaryClass}>{boardModeLabel}</span>
+                                                    <span className={chipPrimaryClass}>{boardProgressLabel}</span>
+                                                    {!compactVertical && <span className={chipPrimaryClass}>{orientationLabel}</span>}
+                                                    {aspectLabel && !compactVertical && <span className={chipPrimaryClass}>{aspectLabel}</span>}
+                                                    {durationLabel && <span className={chipPrimaryClass}>{durationLabel}</span>}
                                                 </div>
                                                 <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
-                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Frame</div>
-                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || 'Auto'} · {orientationLabel}</div>
+                                                    <div className={infoCardClass}>
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">画幅</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{aspectLabel || '自动画幅'} · {orientationLabel}</div>
                                                     </div>
-                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Render</div>
-                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sizeMeta || 'Rendered'}</div>
+                                                    <div className={infoCardClass}>
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">渲染输出</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sizeMeta || '已渲染'}</div>
                                                     </div>
-                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Delta</div>
+                                                    <div className={infoCardClass}>
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">画幅差异</div>
                                                         <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{frameDeltaLabel}</div>
                                                     </div>
-                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Coverage</div>
+                                                    <div className={infoCardClass}>
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">覆盖策略</div>
                                                         <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{coverageLabel}</div>
                                                     </div>
-                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>
+                                                    <div className={infoCardClass}>
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">序列</div>
                                                         <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sequenceHint}</div>
                                                     </div>
-                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
-                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Review</div>
-                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">Review Rail Ready</div>
+                                                    <div className={infoCardClass}>
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">审阅轨</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{reviewRailLabel}</div>
                                                     </div>
                                                 </div>
                                                 <div className="mt-3 rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
-                                                    <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">Shot Note</div>
+                                                    <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">镜头说明</div>
                                                     <div className={compactPortrait ? 'line-clamp-4' : 'line-clamp-5'}>{boardBrief}</div>
                                                 </div>
                                             </div>
@@ -1002,20 +1025,34 @@ export function CanvasArea({
                                     />
                                 ) : el.storyboardElementRole === 'board-lane-label' ? (
                                     <div className={`inline-flex h-full items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-sm ${el.storyboardLaneOrientation === 'landscape' ? 'border-violet-200 bg-violet-50/90 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-100' : el.storyboardLaneOrientation === 'square' ? 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-100' : 'border-sky-200 bg-sky-50/90 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100'}`}>
-                                        {el.content || 'LANE'}
+                                        {el.content || '轨道'}
                                     </div>
                                 ) : el.storyboardElementRole === 'board-header' ? (() => {
                                     const parts = (el.content || '').split('｜').filter(Boolean);
-                                    const title = parts[0] || 'Production Board';
+                                    const title = parts[0] || '制作板';
                                     const subtitle = parts[parts.length - 1] || '';
                                     const chips = parts.slice(1, Math.max(1, parts.length - 1));
                                     const toneAligned = typeof el.borderColor === 'string' && el.borderColor.toLowerCase() === '#86efac';
+                                    const reviewRailChip = chips.find((chip) => /review rail/i.test(chip));
                                     const groupedChips = {
                                         lanes: chips.filter((chip) => /lane|portrait|landscape|square/i.test(chip)),
                                         frame: chips.filter((chip) => /frame|adaptive|layout|recommend|locked/i.test(chip)),
                                         render: chips.filter((chip) => /detail|render|\d+s/i.test(chip)),
                                         coverage: chips.filter((chip) => /coverage|drift|board/i.test(chip)),
                                     };
+                                    const headerReviewState = reviewRailChip
+                                        ? (/check/i.test(reviewRailChip)
+                                            ? 'check'
+                                            : /watch/i.test(reviewRailChip)
+                                                ? 'watch'
+                                                : 'clean')
+                                        : chips.some((chip) => /adaptive|recompose|check/i.test(chip))
+                                            ? 'check'
+                                            : chips.some((chip) => /crop|drift/i.test(chip))
+                                                ? 'watch'
+                                                : 'clean';
+                                    const headerReviewLabel = headerReviewState === 'check' ? '审阅轨 · 检查' : headerReviewState === 'watch' ? '审阅轨 · 关注' : '审阅轨 · 正常';
+                                    const headerReviewToneClass = getReviewRailToneClass(headerReviewState);
                                     const renderChipGroup = (label: string, values: string[]) => values.length > 0 ? (
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">{label}</span>
@@ -1032,21 +1069,21 @@ export function CanvasArea({
                                             <div className="relative flex h-full flex-col justify-between">
                                                 <div className="flex items-start justify-between gap-3">
                                                     <div>
-                                                        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Storyboard board</div>
+                                                        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">分镜制作板</div>
                                                         <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{title}</div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <div className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:border-white/10 dark:bg-white/6 dark:text-slate-200">Review rail · pass 1</div>
+                                                        <div className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${headerReviewToneClass}`}>{headerReviewLabel}</div>
                                                         <div className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${toneAligned ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/14 dark:text-emerald-100' : 'bg-amber-100 text-amber-700 dark:bg-amber-400/14 dark:text-amber-100'}`}>
-                                                            {toneAligned ? 'Layout aligned' : 'Layout drift'}
+                                                            {toneAligned ? '布局已对齐' : '布局有偏移'}
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div className="mt-3 space-y-2">
-                                                    {renderChipGroup('Lanes', groupedChips.lanes)}
-                                                    {renderChipGroup('Frame', groupedChips.frame)}
-                                                    {renderChipGroup('Render', groupedChips.render)}
-                                                    {renderChipGroup('Coverage', groupedChips.coverage)}
+                                                    {renderChipGroup('轨道', groupedChips.lanes)}
+                                                    {renderChipGroup('画幅', groupedChips.frame)}
+                                                    {renderChipGroup('渲染', groupedChips.render)}
+                                                    {renderChipGroup('覆盖', groupedChips.coverage)}
                                                 </div>
                                                 {subtitle && subtitle !== title && (
                                                     <div className="mt-3 text-xs text-slate-500 dark:text-slate-300/80">{subtitle}</div>
@@ -1115,3 +1152,6 @@ export function CanvasArea({
         </div>
     );
 }
+
+
+

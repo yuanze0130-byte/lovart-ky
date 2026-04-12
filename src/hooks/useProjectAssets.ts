@@ -61,7 +61,7 @@ export function getStoryboardRenderProfile(outputSize: StoryboardVideoSize): Sto
 }
 
 export function getStoryboardRenderProfileLabel(renderProfile: StoryboardRenderProfile) {
-  return renderProfile === 'high' ? 'High detail' : 'Standard detail';
+  return renderProfile === 'high' ? '高细节' : '标准细节';
 }
 
 export function formatStoryboardMeta(
@@ -78,18 +78,18 @@ export function getStoryboardBoardMode(
   sequenceState: 'single' | 'first' | 'middle' | 'last' = 'single',
 ) {
   return layoutMode === 'horizontal'
-    ? (sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow')
-    : 'Shot Queue';
+    ? (sequenceState === 'single' ? '单镜头板' : '分镜流程')
+    : '镜头队列';
 }
 
 export function getStoryboardSequenceHint(
   layoutMode: StoryboardLayoutMode,
   sequenceState: 'single' | 'first' | 'middle' | 'last' = 'single',
 ) {
-  if (sequenceState === 'single') return 'Single';
-  if (sequenceState === 'first') return layoutMode === 'horizontal' ? 'Start →' : 'Head ↓';
-  if (sequenceState === 'last') return 'End';
-  return layoutMode === 'horizontal' ? 'Next →' : 'Queue ↓';
+  if (sequenceState === 'single') return '单镜头';
+  if (sequenceState === 'first') return layoutMode === 'horizontal' ? '起始 →' : '队首 ↓';
+  if (sequenceState === 'last') return '结束';
+  return layoutMode === 'horizontal' ? '下一镜 →' : '队列 ↓';
 }
 
 export function getStoryboardFrameDeltaLabel(
@@ -97,7 +97,7 @@ export function getStoryboardFrameDeltaLabel(
   currentAspectRatio: StoryboardAspectRatio,
 ) {
   if (sourceAspectRatio === currentAspectRatio) {
-    return 'Follow source';
+    return '跟随源画幅';
   }
 
   return `${sourceAspectRatio} → ${currentAspectRatio}`;
@@ -107,7 +107,7 @@ export function getStoryboardFrameRoutingLabel(
   sourceAspectRatio: StoryboardAspectRatio,
   currentAspectRatio: StoryboardAspectRatio,
 ) {
-  return sourceAspectRatio === currentAspectRatio ? 'Source locked' : 'Aspect remap';
+  return sourceAspectRatio === currentAspectRatio ? '源画幅锁定' : '画幅重映射';
 }
 
 export function getStoryboardCoverageLabel(
@@ -115,17 +115,17 @@ export function getStoryboardCoverageLabel(
   currentAspectRatio: StoryboardAspectRatio,
 ) {
   if (sourceAspectRatio === currentAspectRatio) {
-    return 'Coverage locked';
+    return '覆盖范围锁定';
   }
 
   const sourceOrientation = getStoryboardOrientation(sourceAspectRatio);
   const currentOrientation = getStoryboardOrientation(currentAspectRatio);
 
   if (sourceOrientation === currentOrientation) {
-    return 'Safe crop';
+    return '安全裁切';
   }
 
-  return currentOrientation === 'landscape' ? 'Recompose wide' : currentOrientation === 'square' ? 'Center recrop' : 'Recompose tall';
+  return currentOrientation === 'landscape' ? '重构为横版' : currentOrientation === 'square' ? '中心重裁' : '重构为竖版';
 }
 
 export function getStoryboardFrameAdaptationState(
@@ -154,12 +154,12 @@ export function getStoryboardFrameAdaptationLabel(
 
   switch (state) {
     case 'cropped':
-      return 'Safe crop';
+      return '安全裁切';
     case 'recomposed':
-      return 'Recomposed';
+      return '已重构';
     case 'locked':
     default:
-      return 'Source locked';
+      return '源画幅锁定';
   }
 }
 
@@ -177,6 +177,38 @@ export function getStoryboardFrameAdaptationTone(
     case 'locked':
     default:
       return 'stable' as const;
+  }
+}
+
+export function getStoryboardReviewRailState(
+  sourceAspectRatio: StoryboardAspectRatio,
+  currentAspectRatio: StoryboardAspectRatio,
+) {
+  const state = getStoryboardFrameAdaptationState(sourceAspectRatio, currentAspectRatio);
+  switch (state) {
+    case 'cropped':
+      return 'watch' as const;
+    case 'recomposed':
+      return 'check' as const;
+    case 'locked':
+    default:
+      return 'clean' as const;
+  }
+}
+
+export function getStoryboardReviewRailLabel(
+  sourceAspectRatio: StoryboardAspectRatio,
+  currentAspectRatio: StoryboardAspectRatio,
+) {
+  const state = getStoryboardReviewRailState(sourceAspectRatio, currentAspectRatio);
+  switch (state) {
+    case 'watch':
+      return '审阅轨 · 关注';
+    case 'check':
+      return '审阅轨 · 检查';
+    case 'clean':
+    default:
+      return '审阅轨 · 正常';
   }
 }
 
@@ -319,7 +351,7 @@ export function summarizeStoryboardBatchHealth(items: Array<Pick<StoryboardItem,
     recomposedCount,
     adaptiveCount,
     lockRate,
-    lockRateLabel: `${Math.round(lockRate * 100)}% source locked`,
+    lockRateLabel: `源画幅锁定 ${Math.round(lockRate * 100)}%`,
     hasMixedOrientation: orientationSet.size > 1,
     orientationCount: orientationSet.size,
     orientationCounts,
@@ -331,8 +363,8 @@ export function summarizeStoryboardBatchHealth(items: Array<Pick<StoryboardItem,
     dominantAspectLabel: dominantAspectMeta ? `${dominantAspectRatio[0]} · ${dominantAspectMeta.shortLabel}` : null,
     dominantRenderProfile: dominantRenderProfile[1] > 0 ? dominantRenderProfile[0] : null,
     dominantRenderProfileLabel: dominantRenderProfile[1] > 0 ? getStoryboardRenderProfileLabel(dominantRenderProfile[0]) : null,
-    adaptationLabel: adaptiveCount === 0 ? 'Fully locked' : recomposedCount > 0 ? 'Adaptive reframe' : 'Safe crop mix',
-    boardDensityLabel: normalized.length >= 8 ? 'Dense board' : normalized.length >= 4 ? 'Balanced board' : normalized.length >= 2 ? 'Light board' : 'Single shot',
+    adaptationLabel: adaptiveCount === 0 ? '完全锁定' : recomposedCount > 0 ? '自适应重构' : '安全裁切混合',
+    boardDensityLabel: normalized.length >= 8 ? '高密度制作板' : normalized.length >= 4 ? '均衡制作板' : normalized.length >= 2 ? '轻量制作板' : '单镜头',
   };
 }
 
@@ -482,14 +514,25 @@ export function summarizeProductionBoard(items: Array<Pick<StoryboardItem, 'aspe
   const durationSummary = Array.from(new Set(items.map((item) => `${item.durationSec ?? 5}s`))).join(' · ');
   const renderSummary = Array.from(new Set(items.map((item) => getStoryboardRenderProfileLabel(item.renderProfile ?? getStoryboardRenderProfile(item.outputSize ?? getStoryboardAspectMeta(item.aspectRatio ?? '9:16').videoSize))))).join(' · ');
   const laneSummary = [
-    health.orientationCounts.portrait > 0 ? `Portrait lane ${health.orientationCounts.portrait}` : null,
-    health.orientationCounts.landscape > 0 ? `Landscape lane ${health.orientationCounts.landscape}` : null,
-    health.orientationCounts.square > 0 ? `Square lane ${health.orientationCounts.square}` : null,
-  ].filter(Boolean).join(' · ') || 'Single lane';
+    health.orientationCounts.portrait > 0 ? `竖版轨道 ${health.orientationCounts.portrait}` : null,
+    health.orientationCounts.landscape > 0 ? `横版轨道 ${health.orientationCounts.landscape}` : null,
+    health.orientationCounts.square > 0 ? `方形轨道 ${health.orientationCounts.square}` : null,
+  ].filter(Boolean).join(' · ') || '单轨道';
 
   const driftSummary = health.hasMixedOrientation
-    ? `Mixed lanes · ${health.lockRateLabel}`
-    : `Single lane · ${health.lockRateLabel}`;
+    ? `混合轨道 · ${health.lockRateLabel}`
+    : `单轨道 · ${health.lockRateLabel}`;
+
+  const reviewRailState = health.recomposedCount > 0
+    ? 'check'
+    : health.croppedCount > 0
+      ? 'watch'
+      : 'clean';
+  const reviewRailSummary = reviewRailState === 'check'
+    ? `审阅轨 · ${health.adaptiveCount} 个镜头需要检查画幅`
+    : reviewRailState === 'watch'
+      ? `审阅轨 · ${health.croppedCount} 个镜头建议复核裁切`
+      : '审阅轨 · 画幅锁定正常';
 
   return {
     ...health,
@@ -500,11 +543,13 @@ export function summarizeProductionBoard(items: Array<Pick<StoryboardItem, 'aspe
     renderSummary,
     laneSummary,
     driftSummary,
+    reviewRailState,
+    reviewRailSummary,
     coverageSummary: health.adaptiveCount > 0
-      ? `${health.lockedCount} locked · ${health.adaptiveCount} adaptive`
-      : 'All source locked',
-    boardTitle: recommendedLayout === 'horizontal' ? 'Production Board · Horizontal Flow' : 'Production Board · Vertical Queue',
-    boardSubtitle: `${health.boardDensityLabel} · ${health.adaptationLabel} · ${health.dominantAspectLabel ?? 'Mixed frame'}`,
+      ? `${health.lockedCount} 个已锁定 · ${health.adaptiveCount} 个自适应`
+      : '全部沿用源画幅',
+    boardTitle: recommendedLayout === 'horizontal' ? '制作板 · 横向流程' : '制作板 · 纵向队列',
+    boardSubtitle: `${health.boardDensityLabel} · ${health.adaptationLabel} · ${health.dominantAspectLabel ?? '混合画幅'}`,
   };
 }
 

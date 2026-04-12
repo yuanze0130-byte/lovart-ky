@@ -876,7 +876,7 @@ function LovartCanvasContent() {
             y: boardBaseY - 84,
             width: Math.max(360, Math.min(boardMetrics.width + boardPaddingX * 2, 760)),
             height: 88,
-            content: `${boardSummary.boardTitle}｜${storyboard.length} shots｜${recommendedLayout === storyboardLayout ? 'Layout aligned' : `Recommend ${recommendedLayout}`}｜${hasMixedFrames ? 'Adaptive frames' : 'Unified frames'}｜${boardOrientationSummary || 'Portrait × 0'}｜${boardSummary.laneSummary}｜${boardSummary.driftSummary}｜${boardSummary.coverageSummary}｜${boardSummary.renderSummary}｜${boardSummary.durationSummary}｜${boardSummary.frameSummary}｜${boardSummary.boardSubtitle}`,
+            content: `${boardSummary.boardTitle}｜${storyboard.length} 个镜头｜${recommendedLayout === storyboardLayout ? '布局已对齐' : `建议切换${recommendedLayout === 'horizontal' ? '横向流程' : '纵向队列'}`}｜${hasMixedFrames ? '自适应画幅' : '统一画幅'}｜${boardOrientationSummary || '竖版 × 0'}｜${boardSummary.laneSummary}｜${boardSummary.reviewRailSummary}｜${boardSummary.coverageSummary}｜${boardSummary.renderSummary}｜${boardSummary.durationSummary}｜${boardSummary.frameSummary}｜${boardSummary.boardSubtitle}`,
             fontSize: 14,
             color: '#0f172a',
             backgroundColor: '#ffffff',

@@ -87,10 +87,10 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             ? Square
             : RectangleVertical;
     const aspectPresetCards = useMemo(() => ([
-        { value: '9:16' as const, label: 'Portrait', size: ASPECT_PRESET_TO_SIZE['9:16'], note: 'Short-form / reels' },
-        { value: '16:9' as const, label: 'Landscape', size: ASPECT_PRESET_TO_SIZE['16:9'], note: 'Wide story beat' },
-        { value: '4:5' as const, label: 'Tall', size: ASPECT_PRESET_TO_SIZE['4:5'], note: 'Poster crop' },
-        { value: '1:1' as const, label: 'Square', size: ASPECT_PRESET_TO_SIZE['1:1'], note: 'Balanced frame' },
+        { value: '9:16' as const, label: '竖版', size: ASPECT_PRESET_TO_SIZE['9:16'], note: '短视频 / reels' },
+        { value: '16:9' as const, label: '横版', size: ASPECT_PRESET_TO_SIZE['16:9'], note: '宽幅叙事镜头' },
+        { value: '4:5' as const, label: '高版', size: ASPECT_PRESET_TO_SIZE['4:5'], note: '海报式裁切' },
+        { value: '1:1' as const, label: '方形', size: ASPECT_PRESET_TO_SIZE['1:1'], note: '均衡构图' },
     ]), []);
 
     // Auto-fill reference image and prompt from source
@@ -292,7 +292,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                 {currentElement && (
                     <div className="mb-3 space-y-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-3 dark:border-white/10 dark:bg-white/5">
                         <div>
-                            <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{currentElement.storyboardBoardMode || 'Board Editor'}</div>
+                            <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">{currentElement.storyboardBoardMode || '制作板编辑器'}</div>
                             <div className="flex flex-wrap items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                 {currentElement.storyboardShotLabel && (
                                     <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentElement.storyboardShotLabel}</span>
@@ -304,47 +304,47 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.aspectRatio}</span>
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)}</span>
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{seconds}s</span>
-                                <span className={`rounded-full px-2 py-1 shadow-sm ${renderProfile === 'high' ? 'bg-violet-50 text-violet-700 dark:bg-violet-400/12 dark:text-violet-100' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'}`}>{renderProfile === 'high' ? 'High detail' : 'Standard detail'}</span>
+                                <span className={`rounded-full px-2 py-1 shadow-sm ${renderProfile === 'high' ? 'bg-violet-50 text-violet-700 dark:bg-violet-400/12 dark:text-violet-100' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'}`}>{renderProfile === 'high' ? '高细节' : '标准细节'}</span>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Frame</div>
+                                <div className="uppercase tracking-wide text-gray-400">画幅</div>
                                 <div className="mt-1 flex items-center gap-1.5 font-medium text-gray-800 dark:text-gray-100">
                                     <OrientationIcon size={13} />
                                     <span>{currentSizeMeta.aspectRatio} · {currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)}</span>
                                 </div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Output</div>
+                                <div className="uppercase tracking-wide text-gray-400">输出</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{size}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Sequence</div>
-                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement.storyboardSequenceHint || 'Single'}</div>
+                                <div className="uppercase tracking-wide text-gray-400">序列</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{typeof currentElement.storyboardSequenceHint === 'string' ? currentElement.storyboardSequenceHint : '单镜头'}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Shot progress</div>
+                                <div className="uppercase tracking-wide text-gray-400">镜头进度</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{shotProgressLabel}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Board fit</div>
-                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement.storyboardBoardMode || 'Board Editor'}</div>
+                                <div className="uppercase tracking-wide text-gray-400">制作板适配</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement.storyboardBoardMode || '制作板编辑器'}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
+                                <div className="uppercase tracking-wide text-gray-400">画幅差异</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{frameDeltaLabel}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Frame routing</div>
+                                <div className="uppercase tracking-wide text-gray-400">画幅路由</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{frameRoutingLabel}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Coverage</div>
+                                <div className="uppercase tracking-wide text-gray-400">覆盖策略</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{coverageLabel}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Adaptation</div>
+                                <div className="uppercase tracking-wide text-gray-400">适配方式</div>
                                 <div className="mt-1 flex flex-wrap items-center gap-1.5 font-medium text-gray-800 dark:text-gray-100">
                                     <span>{frameAdaptationLabel}</span>
                                     <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
@@ -357,23 +357,23 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                 </div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Detail rail</div>
-                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{renderProfile === 'high' ? 'High detail' : 'Standard detail'}</div>
+                                <div className="uppercase tracking-wide text-gray-400">细节轨道</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{renderProfile === 'high' ? '高细节' : '标准细节'}</div>
                             </div>
                             <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                <div className="uppercase tracking-wide text-gray-400">Node size</div>
+                                <div className="uppercase tracking-wide text-gray-400">节点尺寸</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{getNodeDimensions(size, currentSizeMeta.aspectRatio).width} × {getNodeDimensions(size, currentSizeMeta.aspectRatio).height}</div>
                             </div>
                         </div>
                         <div className="space-y-2">
                             <div className="flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                                <span>Aspect Preset</span>
+                                <span>画幅预设</span>
                                 <button
                                     type="button"
                                     onClick={() => setShowAdvancedBoardSettings((prev) => !prev)}
                                     className="rounded-full border border-gray-200 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-gray-500 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-sky-400/20 dark:hover:bg-white/8 dark:hover:text-sky-100"
                                 >
-                                    {showAdvancedBoardSettings ? 'Hide advanced' : 'Storyboard aware output'}
+                                    {showAdvancedBoardSettings ? '隐藏高级设置' : '分镜感知输出'}
                                 </button>
                             </div>
                             <div className="grid grid-cols-2 gap-2">
@@ -413,24 +413,24 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                             {showAdvancedBoardSettings && (
                                 <div className="grid grid-cols-2 gap-2 rounded-2xl border border-gray-200 bg-white/70 p-3 text-[11px] text-gray-500 dark:border-white/10 dark:bg-white/6 dark:text-gray-400">
                                     <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                        <div className="uppercase tracking-wide text-gray-400">Source frame</div>
+                                        <div className="uppercase tracking-wide text-gray-400">源画幅</div>
                                         <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement?.storyboardSourceAspectRatio || currentElement?.storyboardAspectRatio || currentSizeMeta.aspectRatio}</div>
                                     </div>
                                     <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                        <div className="uppercase tracking-wide text-gray-400">Current frame</div>
+                                        <div className="uppercase tracking-wide text-gray-400">当前画幅</div>
                                         <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentSizeMeta.aspectRatio}</div>
                                     </div>
                                     <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                        <div className="uppercase tracking-wide text-gray-400">Source render</div>
+                                        <div className="uppercase tracking-wide text-gray-400">源输出</div>
                                         <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{currentElement?.storyboardSourceVideoSize || currentElement?.storyboardVideoSize || size}</div>
                                     </div>
                                     <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/6">
-                                        <div className="uppercase tracking-wide text-gray-400">Node size</div>
+                                        <div className="uppercase tracking-wide text-gray-400">节点尺寸</div>
                                         <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{getNodeDimensions(size, currentSizeMeta.aspectRatio).width} × {getNodeDimensions(size, currentSizeMeta.aspectRatio).height}</div>
                                     </div>
                                     <div className="col-span-2 rounded-xl border border-dashed border-gray-200 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/4">
                                         <div className="flex items-center justify-between gap-2">
-                                            <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
+                                            <div className="uppercase tracking-wide text-gray-400">画幅差异</div>
                                             {!isBoardFitSize && (
                                                 <button
                                                     type="button"
@@ -438,7 +438,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                                     className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-gray-500 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-sky-400/20 dark:hover:bg-sky-400/12 dark:hover:text-sky-100"
                                                 >
                                                     <RotateCcw size={10} />
-                                                    回到 board fit
+                                                    回到制作板适配
                                                 </button>
                                             )}
                                         </div>
@@ -454,14 +454,14 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                                 {frameAdaptationLabel}
                                             </span>
                                             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-gray-500 dark:bg-white/8 dark:text-gray-300">
-                                                {availableSizeOptions.includes(size) ? 'preset fit' : 'manual override'}
+                                                {availableSizeOptions.includes(size) ? '预设适配' : '手动覆盖'}
                                             </span>
                                             <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
                                                 isBoardFitSize
                                                     ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'
                                                     : 'bg-amber-50 text-amber-700 dark:bg-amber-400/12 dark:text-amber-100'
                                             }`}>
-                                                {isBoardFitSize ? 'board fit' : `board fit ${boardFitSize}`}
+                                                {isBoardFitSize ? '制作板适配' : `制作板适配 ${boardFitSize}`}
                                             </span>
                                         </div>
                                     </div>
@@ -469,7 +469,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                             )}
                         </div>
                         <div>
-                            <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Shot Note</div>
+                            <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">镜头说明</div>
                             <textarea
                                 value={prompt}
                                 onChange={(e) => setPrompt(e.target.value)}
