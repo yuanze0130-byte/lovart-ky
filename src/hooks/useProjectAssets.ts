@@ -18,7 +18,7 @@ export interface ProjectAsset {
   outputSize?: StoryboardVideoSize;
 }
 
-export type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1';
+export type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3';
 
 export interface StoryboardItem {
   id: string;
@@ -42,7 +42,7 @@ export interface StoryboardItem {
 
 export type StoryboardLayoutMode = 'vertical' | 'horizontal';
 export type StoryboardOrientation = 'portrait' | 'landscape' | 'square';
-export type StoryboardVideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
+export type StoryboardVideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024' | '1024x768' | '768x1024' | '1536x640' | '1152x768' | '768x1152';
 export type StoryboardRenderProfile = 'standard' | 'high';
 
 export const STORYBOARD_VIDEO_SIZE_OPTIONS: Record<StoryboardAspectRatio, StoryboardVideoSize[]> = {
@@ -50,6 +50,11 @@ export const STORYBOARD_VIDEO_SIZE_OPTIONS: Record<StoryboardAspectRatio, Storyb
   '16:9': ['1280x720', '1792x1024'],
   '4:5': ['1024x1280'],
   '1:1': ['1024x1024'],
+  '4:3': ['1024x768'],
+  '3:4': ['768x1024'],
+  '21:9': ['1536x640'],
+  '3:2': ['1152x768'],
+  '2:3': ['768x1152'],
 };
 
 export function getStoryboardVideoSizeOptions(aspectRatio: StoryboardAspectRatio): StoryboardVideoSize[] {
@@ -323,6 +328,11 @@ export function summarizeStoryboardBatchHealth(items: Array<Pick<StoryboardItem,
     '16:9': 0,
     '4:5': 0,
     '1:1': 0,
+    '4:3': 0,
+    '3:4': 0,
+    '21:9': 0,
+    '3:2': 0,
+    '2:3': 0,
   });
   const renderProfileCounts = normalized.reduce<Record<StoryboardRenderProfile, number>>((acc, item) => {
     acc[item.renderProfile] += 1;
@@ -385,6 +395,11 @@ export function getStoryboardNodeDimensions(outputSize: StoryboardVideoSize, asp
     '1024x1024': { width: 320, height: 320 },
     '720x1280': { width: 260, height: 462 },
     '1280x720': { width: 420, height: 236 },
+    '1024x768': { width: 384, height: 288 },
+    '768x1024': { width: 288, height: 384 },
+    '1536x640': { width: 520, height: 217 },
+    '1152x768': { width: 432, height: 288 },
+    '768x1152': { width: 288, height: 432 },
   };
 
   if (dimensionOverrides[outputSize]) {
@@ -410,6 +425,16 @@ export function inferStoryboardAspectRatioFromVideoSize(size?: string): Storyboa
     case '720x1280':
     case '1024x1792':
       return '9:16';
+    case '1024x768':
+      return '4:3';
+    case '768x1024':
+      return '3:4';
+    case '1536x640':
+      return '21:9';
+    case '1152x768':
+      return '3:2';
+    case '768x1152':
+      return '2:3';
     default:
       return null;
   }
@@ -424,6 +449,11 @@ export function inferStoryboardAspectRatio(width?: number, height?: number): Sto
     { value: '16:9', ratio: 16 / 9 },
     { value: '4:5', ratio: 4 / 5 },
     { value: '1:1', ratio: 1 },
+    { value: '4:3', ratio: 4 / 3 },
+    { value: '3:4', ratio: 3 / 4 },
+    { value: '21:9', ratio: 21 / 9 },
+    { value: '3:2', ratio: 3 / 2 },
+    { value: '2:3', ratio: 2 / 3 },
   ];
 
   return candidates.reduce((best, current) => {
@@ -435,7 +465,10 @@ export function inferStoryboardAspectRatio(width?: number, height?: number): Sto
 
 export function getStoryboardOrientation(aspectRatio: StoryboardAspectRatio): StoryboardOrientation {
   if (aspectRatio === '1:1') return 'square';
-  return aspectRatio === '16:9' ? 'landscape' : 'portrait';
+  if (aspectRatio === '16:9' || aspectRatio === '4:3' || aspectRatio === '21:9' || aspectRatio === '3:2') {
+    return 'landscape';
+  }
+  return 'portrait';
 }
 
 export function getStoryboardOrientationLabel(orientation: StoryboardOrientation) {
@@ -463,6 +496,39 @@ export function getStoryboardAspectMeta(aspectRatio: StoryboardAspectRatio) {
         canvasHeight: 236,
         videoSize: '1280x720' as StoryboardVideoSize,
       };
+    case '4:3':
+      return {
+        label: '经典横版',
+        shortLabel: 'Classic',
+        orientation: 'landscape' as const,
+        frameClass: 'aspect-[4/3]',
+        displaySize: '384 × 288',
+        canvasWidth: 384,
+        canvasHeight: 288,
+        videoSize: '1024x768' as StoryboardVideoSize,
+      };
+    case '21:9':
+      return {
+        label: '超宽银幕',
+        shortLabel: 'Cinematic',
+        orientation: 'landscape' as const,
+        frameClass: 'aspect-[21/9]',
+        displaySize: '520 × 217',
+        canvasWidth: 520,
+        canvasHeight: 217,
+        videoSize: '1536x640' as StoryboardVideoSize,
+      };
+    case '3:2':
+      return {
+        label: '摄影横版',
+        shortLabel: 'Photo',
+        orientation: 'landscape' as const,
+        frameClass: 'aspect-[3/2]',
+        displaySize: '432 × 288',
+        canvasWidth: 432,
+        canvasHeight: 288,
+        videoSize: '1152x768' as StoryboardVideoSize,
+      };
     case '4:5':
       return {
         label: '海报',
@@ -473,6 +539,28 @@ export function getStoryboardAspectMeta(aspectRatio: StoryboardAspectRatio) {
         canvasWidth: 300,
         canvasHeight: 375,
         videoSize: '1024x1280' as StoryboardVideoSize,
+      };
+    case '3:4':
+      return {
+        label: '经典竖版',
+        shortLabel: 'Classic Portrait',
+        orientation: 'portrait' as const,
+        frameClass: 'aspect-[3/4]',
+        displaySize: '288 × 384',
+        canvasWidth: 288,
+        canvasHeight: 384,
+        videoSize: '768x1024' as StoryboardVideoSize,
+      };
+    case '2:3':
+      return {
+        label: '摄影竖版',
+        shortLabel: 'Photo Portrait',
+        orientation: 'portrait' as const,
+        frameClass: 'aspect-[2/3]',
+        displaySize: '288 × 432',
+        canvasWidth: 288,
+        canvasHeight: 432,
+        videoSize: '768x1152' as StoryboardVideoSize,
       };
     case '1:1':
       return {

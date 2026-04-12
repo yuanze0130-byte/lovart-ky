@@ -99,7 +99,7 @@ export function AssetsPanel({
   }, [storyboard]);
 
   const storyboardAspectSummary = useMemo(() => {
-    const aspectOrder: StoryboardAspectRatio[] = ['9:16', '16:9', '4:5', '1:1'];
+    const aspectOrder: StoryboardAspectRatio[] = ['9:16', '16:9', '4:5', '1:1', '4:3', '3:4', '21:9', '3:2', '2:3'];
     const counts = storyboard.reduce<Record<StoryboardAspectRatio, number>>((acc, item) => {
       const aspectRatio = item.aspectRatio ?? '9:16';
       acc[aspectRatio] += 1;
@@ -109,6 +109,11 @@ export function AssetsPanel({
       '16:9': 0,
       '4:5': 0,
       '1:1': 0,
+      '4:3': 0,
+      '3:4': 0,
+      '21:9': 0,
+      '3:2': 0,
+      '2:3': 0,
     });
 
     return aspectOrder
@@ -511,7 +516,7 @@ export function AssetsPanel({
                       <span className="text-[11px] text-gray-500 dark:text-gray-400">一键统一全部镜头画幅与节奏</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {(['9:16', '16:9', '4:5', '1:1'] as StoryboardAspectRatio[]).map((aspectRatio) => {
+                      {(['9:16', '16:9', '4:5', '1:1', '4:3', '3:4', '21:9', '3:2', '2:3'] as StoryboardAspectRatio[]).map((aspectRatio) => {
                         const meta = getStoryboardAspectMeta(aspectRatio);
                         const currentCount = storyboard.filter((item) => (item.aspectRatio ?? '9:16') === aspectRatio).length;
                         return (
@@ -961,10 +966,15 @@ export function AssetsPanel({
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-full rounded-xl border border-gray-200 bg-transparent px-3 py-2 text-xs text-gray-700 outline-none focus:bg-gray-50 dark:border-white/10 dark:text-gray-200 dark:focus:bg-white/8"
                               >
-                                <option value="9:16">9:16 · 竖版</option>
-                                <option value="16:9">16:9 · 横版</option>
-                                <option value="4:5">4:5 · 竖版</option>
                                 <option value="1:1">1:1 · 方形</option>
+                                <option value="16:9">16:9 · 横版</option>
+                                <option value="9:16">9:16 · 竖版</option>
+                                <option value="4:3">4:3 · 经典横版</option>
+                                <option value="3:4">3:4 · 经典竖版</option>
+                                <option value="21:9">21:9 · 超宽银幕</option>
+                                <option value="3:2">3:2 · 摄影横版</option>
+                                <option value="2:3">2:3 · 摄影竖版</option>
+                                <option value="4:5">4:5 · 高版</option>
                               </select>
                             </label>
                             <label className="space-y-1">

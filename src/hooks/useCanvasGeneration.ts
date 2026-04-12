@@ -109,7 +109,7 @@ export function useCanvasGeneration({
                 videoModelMode: generatorElement.videoModelMode || el.videoModelMode,
                 requestedAspectRatio: generatorElement.storyboardAspectRatio === '1:1'
                   ? '1:1'
-                  : generatorElement.storyboardAspectRatio === '16:9'
+                  : generatorElement.storyboardAspectRatio === '16:9' || generatorElement.storyboardAspectRatio === '21:9' || generatorElement.storyboardAspectRatio === '3:2'
                     ? '16:9'
                     : '4:3',
                 prompt: generatorElement.prompt || el.prompt,

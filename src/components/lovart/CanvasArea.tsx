@@ -38,11 +38,11 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardTitle?: string;
     storyboardMeta?: string;
     storyboardBrief?: string;
-    storyboardAspectRatio?: '9:16' | '16:9' | '4:5' | '1:1';
-    storyboardVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
+    storyboardAspectRatio?: '9:16' | '16:9' | '4:5' | '1:1' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3';
+    storyboardVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024' | '1024x768' | '768x1024' | '1536x640' | '1152x768' | '768x1152';
     storyboardOrientation?: 'portrait' | 'landscape' | 'square';
-    storyboardSourceAspectRatio?: '9:16' | '16:9' | '4:5' | '1:1';
-    storyboardSourceVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
+    storyboardSourceAspectRatio?: '9:16' | '16:9' | '4:5' | '1:1' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3';
+    storyboardSourceVideoSize?: '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024' | '1024x768' | '768x1024' | '1536x640' | '1152x768' | '768x1152';
     storyboardSourceOrientation?: 'portrait' | 'landscape' | 'square';
     storyboardRenderProfile?: 'standard' | 'high';
     storyboardDurationSec?: number;

@@ -6,11 +6,11 @@ import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 import { getStoryboardNodeDimensions, getStoryboardRenderProfile, getStoryboardVideoSizeOptions, formatStoryboardMeta, getStoryboardFrameDeltaLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, getPreferredStoryboardVideoSize, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel } from '@/hooks/useProjectAssets';
 
-type VideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
-type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1';
+type VideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024' | '1024x768' | '768x1024' | '1536x640' | '1152x768' | '768x1152';
+type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3';
 type StoryboardOrientation = 'portrait' | 'landscape' | 'square';
-const STORYBOARD_SIZE_PRIORITY: VideoSize[] = ['720x1280', '1024x1792', '1280x720', '1792x1024', '1024x1280', '1024x1024'];
-type VideoSeconds = 10 | 15;
+const STORYBOARD_SIZE_PRIORITY: VideoSize[] = ['720x1280', '1024x1792', '1280x720', '1792x1024', '1024x1280', '1024x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'];
+type VideoSeconds = 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
 type VideoModelMode = 'standard' | 'fast';
 
 const VIDEO_MODEL_MODE_OPTIONS: Array<{ value: VideoModelMode; label: string; hint: string }> = [
@@ -23,6 +23,11 @@ const ASPECT_PRESET_TO_SIZE: Record<StoryboardAspectRatio, VideoSize> = {
     '16:9': '1280x720',
     '4:5': '1024x1280',
     '1:1': '1024x1024',
+    '4:3': '1024x768',
+    '3:4': '768x1024',
+    '21:9': '1536x640',
+    '3:2': '1152x768',
+    '2:3': '768x1152',
 };
 
 interface VideoGeneratorPanelProps {
@@ -53,19 +58,29 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    const sizes = useMemo<VideoSize[]>(() => ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024'], []);
-    const secondsOptions: VideoSeconds[] = [10, 15];
+    const sizes = useMemo<VideoSize[]>(() => ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'], []);
+    const secondsOptions: VideoSeconds[] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
     const getSizeMeta = (value: VideoSize) => {
         const [width, height] = value.split('x').map(Number);
         const orientation: StoryboardOrientation = width === height ? 'square' : width > height ? 'landscape' : 'portrait';
-        const aspectRatio: StoryboardAspectRatio = width === height
-            ? '1:1'
-            : width > height
-              ? '16:9'
-              : width === 1024 && height === 1280
-                ? '4:5'
-                : '9:16';
+        const ratio = width / height;
+        const candidates: Array<{ value: StoryboardAspectRatio; ratio: number }> = [
+            { value: '1:1', ratio: 1 },
+            { value: '16:9', ratio: 16 / 9 },
+            { value: '9:16', ratio: 9 / 16 },
+            { value: '4:5', ratio: 4 / 5 },
+            { value: '4:3', ratio: 4 / 3 },
+            { value: '3:4', ratio: 3 / 4 },
+            { value: '21:9', ratio: 21 / 9 },
+            { value: '3:2', ratio: 3 / 2 },
+            { value: '2:3', ratio: 2 / 3 },
+        ];
+        const aspectRatio = candidates.reduce((best, current) => {
+            const bestDelta = Math.abs(best.ratio - ratio);
+            const currentDelta = Math.abs(current.ratio - ratio);
+            return currentDelta < bestDelta ? current : best;
+        }).value;
         return { orientation, aspectRatio };
     };
 
@@ -97,10 +112,14 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             ? Square
             : RectangleVertical;
     const aspectPresetCards = useMemo(() => ([
-        { value: '9:16' as const, label: '竖版', size: ASPECT_PRESET_TO_SIZE['9:16'], note: '短视频 / reels' },
-        { value: '16:9' as const, label: '横版', size: ASPECT_PRESET_TO_SIZE['16:9'], note: '宽幅叙事镜头' },
-        { value: '4:5' as const, label: '高版', size: ASPECT_PRESET_TO_SIZE['4:5'], note: '海报式裁切' },
         { value: '1:1' as const, label: '方形', size: ASPECT_PRESET_TO_SIZE['1:1'], note: '均衡构图' },
+        { value: '16:9' as const, label: '横版', size: ASPECT_PRESET_TO_SIZE['16:9'], note: '宽幅叙事镜头' },
+        { value: '9:16' as const, label: '竖版', size: ASPECT_PRESET_TO_SIZE['9:16'], note: '短视频 / reels' },
+        { value: '4:3' as const, label: '经典横版', size: ASPECT_PRESET_TO_SIZE['4:3'], note: '通用画面比例' },
+        { value: '3:4' as const, label: '经典竖版', size: ASPECT_PRESET_TO_SIZE['3:4'], note: '海报与人物构图' },
+        { value: '21:9' as const, label: '超宽银幕', size: ASPECT_PRESET_TO_SIZE['21:9'], note: '电影感宽荧幕' },
+        { value: '3:2' as const, label: '摄影横版', size: ASPECT_PRESET_TO_SIZE['3:2'], note: '偏摄影构图' },
+        { value: '2:3' as const, label: '摄影竖版', size: ASPECT_PRESET_TO_SIZE['2:3'], note: '海报 / 封面纵幅' },
     ]), []);
 
     // Auto-fill reference image and prompt from source
@@ -131,7 +150,8 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         }
 
         if (typeof currentElement.storyboardDurationSec === 'number') {
-            setSeconds(currentElement.storyboardDurationSec >= 15 ? 15 : 10);
+            const boundedSeconds = Math.min(15, Math.max(4, Math.round(currentElement.storyboardDurationSec))) as VideoSeconds;
+            setSeconds(boundedSeconds);
         }
 
         if (currentElement.videoModelMode === 'fast' || currentElement.videoModelMode === 'standard') {
@@ -150,7 +170,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         if (taskId && isGenerating) {
             pollingIntervalRef.current = setInterval(async () => {
                 try {
-                    const response = await fetch(`/api/video-status?taskId=${taskId}`);
+                    const response = await authedFetch(`/api/video-status?taskId=${taskId}`);
                     const data = await response.json();
 
                     console.log('Video status:', data);
@@ -413,7 +433,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                     {showAdvancedBoardSettings ? '隐藏高级设置' : '分镜感知输出'}
                                 </button>
                             </div>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
                                 {aspectPresetCards.map((preset) => {
                                     const presetMeta = getSizeMeta(preset.size);
                                     const PresetIcon = presetMeta.orientation === 'landscape'
