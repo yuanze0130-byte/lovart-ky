@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2, RectangleHorizontal, RectangleVertical, Square, RotateCcw } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import { authedFetch } from '@/lib/authed-fetch';
 import { getStoryboardNodeDimensions, getStoryboardRenderProfile, getStoryboardVideoSizeOptions, formatStoryboardMeta, getStoryboardFrameDeltaLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, getPreferredStoryboardVideoSize, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel } from '@/hooks/useProjectAssets';
 
 type VideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
@@ -222,7 +223,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         }
 
         try {
-            const response = await fetch('/api/generate-video', {
+            const response = await authedFetch('/api/generate-video', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
