@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2, RectangleHorizontal, RectangleVertical, Square } from 'lucide-react';
+import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2, RectangleHorizontal, RectangleVertical, Square, RotateCcw } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import { getStoryboardNodeDimensions, getStoryboardRenderProfile, getStoryboardVideoSizeOptions, formatStoryboardMeta, getStoryboardFrameDeltaLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, getPreferredStoryboardVideoSize, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel } from '@/hooks/useProjectAssets';
 
 type VideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024';
 type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1';
 type StoryboardOrientation = 'portrait' | 'landscape' | 'square';
-const STORYBOARD_SIZE_PRIORITY: VideoSize[] = ['720x1280', '1280x720', '1024x1280', '1024x1024'];
+const STORYBOARD_SIZE_PRIORITY: VideoSize[] = ['720x1280', '1024x1792', '1280x720', '1792x1024', '1024x1280', '1024x1024'];
 type VideoSeconds = 10 | 15;
 
 const ASPECT_PRESET_TO_SIZE: Record<StoryboardAspectRatio, VideoSize> = {
@@ -15,15 +16,6 @@ const ASPECT_PRESET_TO_SIZE: Record<StoryboardAspectRatio, VideoSize> = {
     '16:9': '1280x720',
     '4:5': '1024x1280',
     '1:1': '1024x1024',
-};
-
-const STORYBOARD_NODE_DIMENSIONS_BY_SIZE: Record<VideoSize, { width: number; height: number }> = {
-    '720x1280': { width: 260, height: 462 },
-    '1280x720': { width: 420, height: 236 },
-    '1024x1280': { width: 300, height: 375 },
-    '1024x1024': { width: 320, height: 320 },
-    '1024x1792': { width: 284, height: 500 },
-    '1792x1024': { width: 460, height: 262 },
 };
 
 interface VideoGeneratorPanelProps {
@@ -69,27 +61,36 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     };
 
     const getNodeDimensions = (videoSize: VideoSize, aspectRatio: StoryboardAspectRatio) => {
-        return STORYBOARD_NODE_DIMENSIONS_BY_SIZE[videoSize] || STORYBOARD_NODE_DIMENSIONS_BY_SIZE[ASPECT_PRESET_TO_SIZE[aspectRatio]];
+        return getStoryboardNodeDimensions(videoSize, aspectRatio);
     };
 
     const currentElement = canvasElements?.find(el => el.id === elementId);
     const currentSizeMeta = getSizeMeta(size);
+    const availableSizeOptions = useMemo(() => getStoryboardVideoSizeOptions(currentSizeMeta.aspectRatio), [currentSizeMeta.aspectRatio]);
     const shotProgressLabel = currentElement?.storyboardShotIndex && currentElement?.storyboardShotCount
         ? `${String(currentElement.storyboardShotIndex).padStart(2, '0')} / ${String(currentElement.storyboardShotCount).padStart(2, '0')}`
         : currentElement?.storyboardShotIndex
             ? `Shot ${String(currentElement.storyboardShotIndex).padStart(2, '0')}`
             : 'Single Shot';
-    const frameDeltaLabel = `${currentElement?.storyboardSourceAspectRatio || currentElement?.storyboardAspectRatio || currentSizeMeta.aspectRatio} → ${currentSizeMeta.aspectRatio}`;
+    const sourceAspectRatio = currentElement?.storyboardSourceAspectRatio || currentElement?.storyboardAspectRatio || currentSizeMeta.aspectRatio;
+    const frameDeltaLabel = getStoryboardFrameDeltaLabel(sourceAspectRatio, currentSizeMeta.aspectRatio);
+    const frameRoutingLabel = getStoryboardFrameRoutingLabel(sourceAspectRatio, currentSizeMeta.aspectRatio);
+    const coverageLabel = getStoryboardCoverageLabel(sourceAspectRatio, currentSizeMeta.aspectRatio);
+    const frameAdaptationLabel = getStoryboardFrameAdaptationLabel(sourceAspectRatio, currentSizeMeta.aspectRatio);
+    const frameAdaptationTone = getStoryboardFrameAdaptationTone(sourceAspectRatio, currentSizeMeta.aspectRatio);
+    const renderProfile = getStoryboardRenderProfile(size);
+    const boardFitSize = getPreferredStoryboardVideoSize(currentSizeMeta.aspectRatio, renderProfile);
+    const isBoardFitSize = size === boardFitSize;
     const OrientationIcon = currentSizeMeta.orientation === 'landscape'
         ? RectangleHorizontal
         : currentSizeMeta.orientation === 'square'
             ? Square
             : RectangleVertical;
     const aspectPresetCards = useMemo(() => ([
-        { value: '9:16' as const, label: 'Portrait', size: ASPECT_PRESET_TO_SIZE['9:16'] },
-        { value: '16:9' as const, label: 'Landscape', size: ASPECT_PRESET_TO_SIZE['16:9'] },
-        { value: '4:5' as const, label: 'Tall', size: ASPECT_PRESET_TO_SIZE['4:5'] },
-        { value: '1:1' as const, label: 'Square', size: ASPECT_PRESET_TO_SIZE['1:1'] },
+        { value: '9:16' as const, label: 'Portrait', size: ASPECT_PRESET_TO_SIZE['9:16'], note: 'Short-form / reels' },
+        { value: '16:9' as const, label: 'Landscape', size: ASPECT_PRESET_TO_SIZE['16:9'], note: 'Wide story beat' },
+        { value: '4:5' as const, label: 'Tall', size: ASPECT_PRESET_TO_SIZE['4:5'], note: 'Poster crop' },
+        { value: '1:1' as const, label: 'Square', size: ASPECT_PRESET_TO_SIZE['1:1'], note: 'Balanced frame' },
     ]), []);
 
     // Auto-fill reference image and prompt from source
@@ -251,8 +252,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
     useEffect(() => {
         if (!onConfigChange) return;
-        const orientationLabel = currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1);
-        const meta = `${currentSizeMeta.aspectRatio} · ${orientationLabel} · ${seconds}s`;
+        const meta = formatStoryboardMeta(currentSizeMeta.aspectRatio, seconds, renderProfile);
         const nodeDimensions = getNodeDimensions(size, currentSizeMeta.aspectRatio);
         onConfigChange(elementId, {
             prompt,
@@ -269,6 +269,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             storyboardSourceAspectRatio: currentElement?.storyboardSourceAspectRatio || currentSizeMeta.aspectRatio,
             storyboardSourceVideoSize: currentElement?.storyboardSourceVideoSize || size,
             storyboardSourceOrientation: currentElement?.storyboardSourceOrientation || currentSizeMeta.orientation,
+            storyboardRenderProfile: renderProfile,
         });
     }, [currentSizeMeta.aspectRatio, currentSizeMeta.orientation, elementId, getNodeDimensions, onConfigChange, prompt, seconds, size]);
 
@@ -303,6 +304,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.aspectRatio}</span>
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)}</span>
                                 <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{seconds}s</span>
+                                <span className={`rounded-full px-2 py-1 shadow-sm ${renderProfile === 'high' ? 'bg-violet-50 text-violet-700 dark:bg-violet-400/12 dark:text-violet-100' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'}`}>{renderProfile === 'high' ? 'High detail' : 'Standard detail'}</span>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-gray-400">
@@ -333,6 +335,35 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                 <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
                                 <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{frameDeltaLabel}</div>
                             </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Frame routing</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{frameRoutingLabel}</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Coverage</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{coverageLabel}</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Adaptation</div>
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 font-medium text-gray-800 dark:text-gray-100">
+                                    <span>{frameAdaptationLabel}</span>
+                                    <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
+                                        frameAdaptationTone === 'stable'
+                                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'
+                                            : frameAdaptationTone === 'warning'
+                                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-400/12 dark:text-amber-100'
+                                                : 'bg-sky-50 text-sky-700 dark:bg-sky-400/12 dark:text-sky-100'
+                                    }`}>{frameAdaptationTone}</span>
+                                </div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Detail rail</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{renderProfile === 'high' ? 'High detail' : 'Standard detail'}</div>
+                            </div>
+                            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/6">
+                                <div className="uppercase tracking-wide text-gray-400">Node size</div>
+                                <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{getNodeDimensions(size, currentSizeMeta.aspectRatio).width} × {getNodeDimensions(size, currentSizeMeta.aspectRatio).height}</div>
+                            </div>
                         </div>
                         <div className="space-y-2">
                             <div className="flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
@@ -353,7 +384,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                         : presetMeta.orientation === 'square'
                                             ? Square
                                             : RectangleVertical;
-                                    const active = size === preset.size;
+                                    const active = currentSizeMeta.aspectRatio === preset.value;
                                     return (
                                         <button
                                             key={preset.value}
@@ -373,6 +404,8 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                                 <span className="rounded-full bg-black/5 px-2 py-0.5 text-[10px] uppercase tracking-wide dark:bg-white/8">{preset.label}</span>
                                             </div>
                                             <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{preset.size}</div>
+                                            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">{preset.note}</div>
+                                            <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{getStoryboardNodeDimensions(preset.size, preset.value).width} × {getStoryboardNodeDimensions(preset.size, preset.value).height} node</div>
                                         </button>
                                     );
                                 })}
@@ -396,8 +429,41 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                                         <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{getNodeDimensions(size, currentSizeMeta.aspectRatio).width} × {getNodeDimensions(size, currentSizeMeta.aspectRatio).height}</div>
                                     </div>
                                     <div className="col-span-2 rounded-xl border border-dashed border-gray-200 bg-white/80 px-3 py-2 dark:border-white/10 dark:bg-white/4">
-                                        <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
-                                        <div className="mt-1 font-medium text-gray-800 dark:text-gray-100">{frameDeltaLabel}</div>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="uppercase tracking-wide text-gray-400">Frame delta</div>
+                                            {!isBoardFitSize && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSize(boardFitSize)}
+                                                    className="inline-flex items-center gap-1 rounded-full border border-gray-200 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.12em] text-gray-500 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-sky-400/20 dark:hover:bg-sky-400/12 dark:hover:text-sky-100"
+                                                >
+                                                    <RotateCcw size={10} />
+                                                    回到 board fit
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="mt-1 flex flex-wrap items-center gap-1.5 font-medium text-gray-800 dark:text-gray-100">
+                                            <span>{frameDeltaLabel}</span>
+                                            <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
+                                                frameAdaptationTone === 'stable'
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'
+                                                    : frameAdaptationTone === 'warning'
+                                                        ? 'bg-amber-50 text-amber-700 dark:bg-amber-400/12 dark:text-amber-100'
+                                                        : 'bg-sky-50 text-sky-700 dark:bg-sky-400/12 dark:text-sky-100'
+                                            }`}>
+                                                {frameAdaptationLabel}
+                                            </span>
+                                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] text-gray-500 dark:bg-white/8 dark:text-gray-300">
+                                                {availableSizeOptions.includes(size) ? 'preset fit' : 'manual override'}
+                                            </span>
+                                            <span className={`rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.14em] ${
+                                                isBoardFitSize
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'
+                                                    : 'bg-amber-50 text-amber-700 dark:bg-amber-400/12 dark:text-amber-100'
+                                            }`}>
+                                                {isBoardFitSize ? 'board fit' : `board fit ${boardFitSize}`}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -533,22 +599,47 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                             <span>{currentSizeMeta.orientation[0].toUpperCase() + currentSizeMeta.orientation.slice(1)} / {currentSizeMeta.aspectRatio}</span>
                         </div>
                         {showSizeMenu && (
-                            <div className="absolute bottom-full mb-1 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[100px]">
-                                {sizes.map((s) => (
-                                    <div
-                                        key={s}
-                                        onClick={() => {
-                                            setSize(s);
-                                            setShowSizeMenu(false);
-                                        }}
-                                        className={`flex items-center justify-between gap-3 px-3 py-1.5 text-xs cursor-pointer hover:bg-gray-50 ${
-                                            size === s ? 'text-black font-medium bg-gray-50' : 'text-gray-700'
-                                        }`}
-                                    >
-                                        <span>{s}</span>
-                                        <span className="text-[10px] text-gray-500">{getSizeMeta(s).orientation[0].toUpperCase() + getSizeMeta(s).orientation.slice(1)} · {getSizeMeta(s).aspectRatio}</span>
-                                    </div>
-                                ))}
+                            <div className="absolute bottom-full mb-1 min-w-[220px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-10 dark:border-white/10 dark:bg-gray-950/96">
+                                {sizes.map((s) => {
+                                    const sizeMeta = getSizeMeta(s);
+                                    const isRecommended = availableSizeOptions.includes(s);
+                                    const isBoardDefault = currentElement?.storyboardVideoSize === s;
+                                    return (
+                                        <div
+                                            key={s}
+                                            onClick={() => {
+                                                setSize(s);
+                                                setShowSizeMenu(false);
+                                            }}
+                                            className={`px-3 py-2 text-xs cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
+                                                size === s ? 'text-black font-medium bg-gray-50 dark:bg-white/8 dark:text-white' : 'text-gray-700 dark:text-gray-200'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{s}</span>
+                                                    {isRecommended && (
+                                                        <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-sky-400/14 dark:text-sky-100">fit</span>
+                                                    )}
+                                                    {isBoardDefault && (
+                                                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:bg-emerald-400/14 dark:text-emerald-200">board</span>
+                                                    )}
+                                                    {!isRecommended && !isBoardDefault && sizeMeta.aspectRatio === currentSizeMeta.aspectRatio && (
+                                                        <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:bg-amber-400/14 dark:text-amber-200">same frame</span>
+                                                    )}
+                                                </div>
+                                                <span className="text-[10px] text-gray-500 dark:text-gray-400">{sizeMeta.orientation[0].toUpperCase() + sizeMeta.orientation.slice(1)} · {sizeMeta.aspectRatio}</span>
+                                            </div>
+                                            <div className="mt-1 text-[10px] uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">
+                                                {isRecommended
+                                                    ? (s === boardFitSize ? 'Board fit output' : 'Recommended for current storyboard frame')
+                                                    : sizeMeta.aspectRatio === currentSizeMeta.aspectRatio
+                                                        ? 'Same frame, alternate render tier'
+                                                        : 'Manual override output'}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
                     </div>

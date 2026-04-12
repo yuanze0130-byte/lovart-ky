@@ -15,7 +15,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
 import { useCanvasElements } from '@/hooks/useCanvasElements';
-import { useProjectAssets, type ProjectAsset, type StoryboardItem, type StoryboardAspectRatio, type StoryboardLayoutMode, type StoryboardVideoSize, type StoryboardRenderProfile, inferStoryboardAspectRatio, normalizeStoryboardItems, getStoryboardAspectMeta, inferStoryboardAspectRatioFromVideoSize, getStoryboardNodeDimensions, getStoryboardRenderProfile, getPreferredStoryboardVideoSize, getStoryboardRenderProfileLabel } from '@/hooks/useProjectAssets';
+import { useProjectAssets, type ProjectAsset, type StoryboardItem, type StoryboardAspectRatio, type StoryboardLayoutMode, type StoryboardVideoSize, type StoryboardRenderProfile, inferStoryboardAspectRatio, normalizeStoryboardItems, getStoryboardAspectMeta, inferStoryboardAspectRatioFromVideoSize, getStoryboardNodeDimensions, getStoryboardRenderProfile, getPreferredStoryboardVideoSize, getStoryboardRenderProfileLabel, formatStoryboardMeta, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getRecommendedStoryboardLayout, summarizeProductionBoard } from '@/hooks/useProjectAssets';
 import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { v4 as uuidv4 } from 'uuid';
@@ -231,6 +231,43 @@ function LovartCanvasContent() {
         handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
     }, [elements, handleElementChange, selectedIds]);
 
+    const getStoryboardSequenceState = useCallback((index: number, total: number): 'single' | 'first' | 'middle' | 'last' => {
+        if (total <= 1) return 'single';
+        if (index === 0) return 'first';
+        if (index === total - 1) return 'last';
+        return 'middle';
+    }, []);
+
+    const buildStoryboardLinkedElementPatch = useCallback((item: StoryboardItem, index: number, total: number, layout: StoryboardLayoutMode) => {
+        const resolvedAspectRatio = item.aspectRatio ?? '9:16';
+        const aspectMeta = getStoryboardAspectMeta(resolvedAspectRatio);
+        const resolvedOutputSize = item.outputSize ?? aspectMeta.videoSize;
+        const resolvedOrientation = item.orientation ?? aspectMeta.orientation;
+        const resolvedRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(resolvedOutputSize);
+        const sequenceState = getStoryboardSequenceState(index, total);
+        const shotLabel = `Shot ${String(index + 1).padStart(2, '0')}`;
+
+        return {
+            storyboardShotLabel: shotLabel,
+            storyboardTitle: item.title,
+            storyboardMeta: formatStoryboardMeta(resolvedAspectRatio, item.durationSec ?? 5, resolvedRenderProfile),
+            storyboardBrief: item.sourcePrompt,
+            storyboardAspectRatio: resolvedAspectRatio,
+            storyboardVideoSize: resolvedOutputSize,
+            storyboardOrientation: resolvedOrientation,
+            storyboardSourceAspectRatio: item.sourceAspectRatio ?? resolvedAspectRatio,
+            storyboardSourceVideoSize: item.sourceOutputSize ?? resolvedOutputSize,
+            storyboardSourceOrientation: item.sourceOrientation ?? resolvedOrientation,
+            storyboardRenderProfile: resolvedRenderProfile,
+            storyboardDurationSec: item.durationSec ?? 5,
+            storyboardShotIndex: index + 1,
+            storyboardShotCount: total,
+            storyboardSequenceState: sequenceState,
+            storyboardSequenceHint: getStoryboardSequenceHint(layout, sequenceState),
+            storyboardBoardMode: getStoryboardBoardMode(layout, sequenceState),
+        } satisfies Partial<CanvasElement>;
+    }, [getStoryboardSequenceState]);
+
     const handleAddToStoryboard = useCallback((asset: ProjectAsset) => {
         setStoryboard((prev) => {
             if (prev.some((item) => item.assetId === asset.id)) {
@@ -239,7 +276,7 @@ function LovartCanvasContent() {
             const aspectRatio = asset.aspectRatio ?? inferStoryboardAspectRatio(asset.width, asset.height);
             const aspectMeta = getStoryboardAspectMeta(aspectRatio);
 
-            return normalizeStoryboardItems([
+            const nextStoryboard = normalizeStoryboardItems([
                 ...prev,
                 {
                     id: uuidv4(),
@@ -261,42 +298,13 @@ function LovartCanvasContent() {
                     createdAt: new Date().toISOString(),
                 },
             ]);
+
+            if (prev.length === 0) {
+                setStoryboardLayout(getRecommendedStoryboardLayout(nextStoryboard));
+            }
+
+            return nextStoryboard;
         });
-    }, []);
-
-    const handleMoveStoryboardItem = useCallback((itemId: string, direction: 'up' | 'down') => {
-        setStoryboard((prev) => {
-            const index = prev.findIndex((item) => item.id === itemId);
-            if (index === -1) return prev;
-            const targetIndex = direction === 'up' ? index - 1 : index + 1;
-            if (targetIndex < 0 || targetIndex >= prev.length) return prev;
-            const next = [...prev];
-            const [moved] = next.splice(index, 1);
-            next.splice(targetIndex, 0, moved);
-            return normalizeStoryboardItems(next);
-        });
-    }, []);
-
-    const handleRemoveStoryboardItem = useCallback((itemId: string) => {
-        setStoryboard((prev) => normalizeStoryboardItems(prev.filter((item) => item.id !== itemId)));
-    }, []);
-
-    const handleRenameStoryboardItem = useCallback((itemId: string, title: string) => {
-        setStoryboard((prev) => prev.map((item) => item.id === itemId ? { ...item, title } : item));
-    }, []);
-
-    const handleUpdateStoryboardBrief = useCallback((itemId: string, brief: string) => {
-        setStoryboard((prev) => prev.map((item) => item.id === itemId ? { ...item, sourcePrompt: brief } : item));
-    }, []);
-
-    const handleUpdateStoryboardDuration = useCallback((itemId: string, durationSec: number) => {
-        const normalizedDuration = Number.isFinite(durationSec) ? Math.min(30, Math.max(1, durationSec)) : 5;
-        setStoryboard((prev) => prev.map((item) => item.id === itemId ? { ...item, durationSec: normalizedDuration } : item));
-    }, []);
-
-    const handleUpdateAllStoryboardDurations = useCallback((durationSec: number) => {
-        const normalizedDuration = Number.isFinite(durationSec) ? Math.min(30, Math.max(1, durationSec)) : 5;
-        setStoryboard((prev) => prev.map((item) => ({ ...item, durationSec: normalizedDuration })));
     }, []);
 
     const syncStoryboardNodeFrame = useCallback((element: CanvasElement, options: {
@@ -320,10 +328,97 @@ function LovartCanvasContent() {
             storyboardOrientation: nextOrientation,
             storyboardVideoSize: options.outputSize,
             storyboardRenderProfile: nextRenderProfile,
-            storyboardMeta: `${options.aspectRatio} · ${aspectMeta.label} · ${element.storyboardDurationSec ?? 5}s · ${getStoryboardRenderProfileLabel(nextRenderProfile)}`,
+            storyboardMeta: formatStoryboardMeta(options.aspectRatio, element.storyboardDurationSec ?? 5, nextRenderProfile),
             content: element.type === 'video-generator' ? options.outputSize : element.content,
         };
     }, []);
+
+    const syncStoryboardLinkedElements = useCallback((nextStoryboard: StoryboardItem[], layout: StoryboardLayoutMode, options?: { syncNodeFrame?: boolean }) => {
+        const total = nextStoryboard.length;
+        const patchMap = new Map(nextStoryboard.map((item, index) => [
+            item.id,
+            buildStoryboardLinkedElementPatch(item, index, total, layout),
+        ]));
+
+        setElements((prev) => prev.map((element) => {
+            if (!element.storyboardItemId) return element;
+            const patch = patchMap.get(element.storyboardItemId);
+            if (!patch) return element;
+
+            const nextElement = {
+                ...element,
+                ...patch,
+            };
+
+            if (options?.syncNodeFrame) {
+                return syncStoryboardNodeFrame(nextElement, {
+                    aspectRatio: patch.storyboardAspectRatio ?? '9:16',
+                    orientation: patch.storyboardOrientation,
+                    outputSize: patch.storyboardVideoSize ?? getStoryboardAspectMeta(patch.storyboardAspectRatio ?? '9:16').videoSize,
+                    renderProfile: patch.storyboardRenderProfile,
+                });
+            }
+
+            return nextElement;
+        }));
+    }, [buildStoryboardLinkedElementPatch, setElements, syncStoryboardNodeFrame]);
+
+    const handleMoveStoryboardItem = useCallback((itemId: string, direction: 'up' | 'down') => {
+        setStoryboard((prev) => {
+            const index = prev.findIndex((item) => item.id === itemId);
+            if (index === -1) return prev;
+            const targetIndex = direction === 'up' ? index - 1 : index + 1;
+            if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+            const next = [...prev];
+            const [moved] = next.splice(index, 1);
+            next.splice(targetIndex, 0, moved);
+            const normalized = normalizeStoryboardItems(next);
+            syncStoryboardLinkedElements(normalized, storyboardLayout);
+            return normalized;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
+
+    const handleRemoveStoryboardItem = useCallback((itemId: string) => {
+        setStoryboard((prev) => {
+            const normalized = normalizeStoryboardItems(prev.filter((item) => item.id !== itemId));
+            syncStoryboardLinkedElements(normalized, storyboardLayout);
+            return normalized;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
+
+    const handleRenameStoryboardItem = useCallback((itemId: string, title: string) => {
+        setStoryboard((prev) => {
+            const next = prev.map((item) => item.id === itemId ? { ...item, title } : item);
+            syncStoryboardLinkedElements(next, storyboardLayout);
+            return next;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
+
+    const handleUpdateStoryboardBrief = useCallback((itemId: string, brief: string) => {
+        setStoryboard((prev) => {
+            const next = prev.map((item) => item.id === itemId ? { ...item, sourcePrompt: brief } : item);
+            syncStoryboardLinkedElements(next, storyboardLayout);
+            return next;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
+
+    const handleUpdateStoryboardDuration = useCallback((itemId: string, durationSec: number) => {
+        const normalizedDuration = Number.isFinite(durationSec) ? Math.min(30, Math.max(1, durationSec)) : 5;
+        setStoryboard((prev) => {
+            const next = prev.map((item) => item.id === itemId ? { ...item, durationSec: normalizedDuration } : item);
+            syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
+            return next;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
+
+    const handleUpdateAllStoryboardDurations = useCallback((durationSec: number) => {
+        const normalizedDuration = Number.isFinite(durationSec) ? Math.min(30, Math.max(1, durationSec)) : 5;
+        setStoryboard((prev) => {
+            const next = prev.map((item) => ({ ...item, durationSec: normalizedDuration }));
+            syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
+            return next;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
 
     const handleUpdateStoryboardAspectRatio = useCallback((itemId: string, aspectRatio: StoryboardAspectRatio) => {
         const aspectMeta = getStoryboardAspectMeta(aspectRatio);
@@ -388,35 +483,44 @@ function LovartCanvasContent() {
     }, [setElements, syncStoryboardNodeFrame]);
 
     const handleUpdateAllStoryboardRenderProfiles = useCallback((renderProfile: StoryboardRenderProfile) => {
-        const nextItemState = new Map<string, { outputSize: StoryboardVideoSize; aspectRatio: StoryboardAspectRatio; orientation: ReturnType<typeof getStoryboardAspectMeta>['orientation']; renderProfile: StoryboardRenderProfile }>();
+        setStoryboard((prev) => {
+            const next = prev.map((item) => {
+                const aspectRatio = item.aspectRatio ?? '9:16';
+                const aspectMeta = getStoryboardAspectMeta(aspectRatio);
+                const outputSize = getPreferredStoryboardVideoSize(aspectRatio, renderProfile);
+                return {
+                    ...item,
+                    aspectRatio,
+                    orientation: aspectMeta.orientation,
+                    outputSize,
+                    renderProfile: getStoryboardRenderProfile(outputSize),
+                };
+            });
+            syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
+            return next;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
 
-        setStoryboard((prev) => prev.map((item) => {
-            const aspectRatio = item.aspectRatio ?? '9:16';
-            const aspectMeta = getStoryboardAspectMeta(aspectRatio);
-            const outputSize = getPreferredStoryboardVideoSize(aspectRatio, renderProfile);
-            const nextState = {
-                outputSize,
-                aspectRatio,
-                orientation: aspectMeta.orientation,
-                renderProfile: getStoryboardRenderProfile(outputSize),
-            };
-            nextItemState.set(item.id, nextState);
-            return {
-                ...item,
-                aspectRatio,
-                orientation: aspectMeta.orientation,
-                outputSize,
-                renderProfile: nextState.renderProfile,
-            };
-        }));
-
-        setElements((prev) => prev.map((element) => {
-            if (!element.storyboardItemId) return element;
-            const nextState = nextItemState.get(element.storyboardItemId);
-            if (!nextState) return element;
-            return syncStoryboardNodeFrame(element, nextState);
-        }));
-    }, [setElements, syncStoryboardNodeFrame]);
+    const handleNormalizeAllStoryboardOutputSizes = useCallback(() => {
+        setStoryboard((prev) => {
+            const next = prev.map((item) => {
+                const aspectRatio = item.aspectRatio ?? '9:16';
+                const aspectMeta = getStoryboardAspectMeta(aspectRatio);
+                const currentOutputSize = item.outputSize ?? aspectMeta.videoSize;
+                const preferredRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(currentOutputSize);
+                const preferredOutputSize = getPreferredStoryboardVideoSize(aspectRatio, preferredRenderProfile);
+                return {
+                    ...item,
+                    aspectRatio,
+                    orientation: aspectMeta.orientation,
+                    outputSize: preferredOutputSize,
+                    renderProfile: getStoryboardRenderProfile(preferredOutputSize),
+                };
+            });
+            syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
+            return next;
+        });
+    }, [storyboardLayout, syncStoryboardLinkedElements]);
 
     const handleApplyStoryboardBoardPreset = useCallback((preset: 'portrait-reels' | 'landscape-cinematic' | 'poster-stack' | 'square-social') => {
         const presetMap: Record<'portrait-reels' | 'landscape-cinematic' | 'poster-stack' | 'square-social', { aspectRatio: StoryboardAspectRatio; renderProfile: StoryboardRenderProfile; durationSec: number; layout: StoryboardLayoutMode }> = {
@@ -431,52 +535,28 @@ function LovartCanvasContent() {
         const aspectMeta = getStoryboardAspectMeta(selectedPreset.aspectRatio);
 
         setStoryboardLayout(resolvedLayout);
-        setStoryboard((prev) => prev.map((item) => {
-            const nextOutputSize = getPreferredStoryboardVideoSize(selectedPreset.aspectRatio, selectedPreset.renderProfile);
-            return {
-                ...item,
-                aspectRatio: selectedPreset.aspectRatio,
-                orientation: aspectMeta.orientation,
-                outputSize: nextOutputSize,
-                renderProfile: getStoryboardRenderProfile(nextOutputSize),
-                durationSec: selectedPreset.durationSec,
-            };
-        }));
-
-        setElements((prev) => prev.map((element) => {
-            if (!element.storyboardItemId) return element;
-            const nextOutputSize = getPreferredStoryboardVideoSize(selectedPreset.aspectRatio, selectedPreset.renderProfile);
-            return {
-                ...syncStoryboardNodeFrame(element, {
+        setStoryboard((prev) => {
+            const next = prev.map((item) => {
+                const nextOutputSize = getPreferredStoryboardVideoSize(selectedPreset.aspectRatio, selectedPreset.renderProfile);
+                return {
+                    ...item,
                     aspectRatio: selectedPreset.aspectRatio,
                     orientation: aspectMeta.orientation,
                     outputSize: nextOutputSize,
                     renderProfile: getStoryboardRenderProfile(nextOutputSize),
-                }),
-                storyboardDurationSec: selectedPreset.durationSec,
-                storyboardMeta: `${selectedPreset.aspectRatio} · ${aspectMeta.label} · ${selectedPreset.durationSec}s · ${getStoryboardRenderProfileLabel(getStoryboardRenderProfile(nextOutputSize))}`,
-            };
-        }));
-    }, [setElements, syncStoryboardNodeFrame]);
+                    durationSec: selectedPreset.durationSec,
+                };
+            });
+            syncStoryboardLinkedElements(next, resolvedLayout, { syncNodeFrame: true });
+            return next;
+        });
+    }, [syncStoryboardLinkedElements]);
 
     const handleAutoStoryboardLayout = useCallback(() => {
-        const landscapeCount = storyboard.filter((item) => getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation === 'landscape').length;
-        const nextLayout: StoryboardLayoutMode = storyboard.length > 1 && landscapeCount >= Math.ceil(storyboard.length / 2) ? 'horizontal' : 'vertical';
+        const nextLayout = getRecommendedStoryboardLayout(storyboard);
         setStoryboardLayout(nextLayout);
-    }, [storyboard]);
-
-    const getStoryboardFrameDeltaLabel = useCallback((item: StoryboardItem) => {
-        const currentAspect = item.aspectRatio ?? '9:16';
-        const sourceAspect = item.sourceAspectRatio ?? currentAspect;
-        const currentSize = item.outputSize ?? getStoryboardAspectMeta(currentAspect).videoSize;
-        const sourceSize = item.sourceOutputSize ?? currentSize;
-
-        if (currentAspect === sourceAspect && currentSize === sourceSize) {
-            return 'Follow source';
-        }
-
-        return `${sourceAspect} → ${currentAspect}`;
-    }, []);
+        syncStoryboardLinkedElements(storyboard, nextLayout);
+    }, [storyboard, syncStoryboardLinkedElements]);
 
     const resolveStoryboardAspectRatioFromAsset = useCallback((item: StoryboardItem) => {
         const asset = projectAssets.find((entry) => entry.id === item.assetId);
@@ -574,15 +654,9 @@ function LovartCanvasContent() {
         const durationLabel = `${item.durationSec ?? 5}s`;
         const sequenceState = options?.sequenceState ?? 'single';
         const layoutMode = options?.layoutMode ?? storyboardLayout;
-        const boardMode = layoutMode === 'horizontal' ? (sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow') : 'Shot Queue';
-        const sequenceHint = sequenceState === 'single'
-            ? 'Single'
-            : sequenceState === 'first'
-                ? (layoutMode === 'horizontal' ? 'Start →' : 'Head ↓')
-                : sequenceState === 'last'
-                    ? 'End'
-                    : (layoutMode === 'horizontal' ? 'Next →' : 'Queue ↓');
-        const frameDeltaLabel = getStoryboardFrameDeltaLabel(item);
+        const boardMode = getStoryboardBoardMode(layoutMode, sequenceState);
+        const sequenceHint = getStoryboardSequenceHint(layoutMode, sequenceState);
+        const frameDeltaLabel = getStoryboardFrameDeltaLabel(item.sourceAspectRatio ?? resolvedAspectRatio, resolvedAspectRatio);
         const draftPrompt = [
             shotLabel,
             item.title,
@@ -609,7 +683,7 @@ function LovartCanvasContent() {
                 storyboardItemId: item.id,
                 storyboardShotLabel: shotLabel,
                 storyboardTitle: item.title,
-                storyboardMeta: `${resolvedAspectRatio} · ${label} · ${durationLabel}`,
+                storyboardMeta: formatStoryboardMeta(resolvedAspectRatio, item.durationSec ?? 5, item.renderProfile ?? renderProfile),
                 storyboardBrief: item.sourcePrompt,
                 storyboardAspectRatio: resolvedAspectRatio,
                 storyboardVideoSize: resolvedOutputSize,
@@ -655,7 +729,7 @@ function LovartCanvasContent() {
             storyboardItemId: item.id,
             storyboardShotLabel: shotLabel,
             storyboardTitle: item.title,
-            storyboardMeta: `${resolvedAspectRatio} · ${label} · ${durationLabel}`,
+            storyboardMeta: formatStoryboardMeta(resolvedAspectRatio, item.durationSec ?? 5, item.renderProfile ?? renderProfile),
             storyboardBrief: item.sourcePrompt,
             storyboardAspectRatio: resolvedAspectRatio,
             storyboardVideoSize: resolvedOutputSize,
@@ -746,6 +820,15 @@ function LovartCanvasContent() {
         const verticalGap = hasMixedFrames ? 96 : 84;
         const boardPaddingX = storyboardLayout === 'horizontal' ? (hasMixedFrames ? 84 : 64) : (hasMixedFrames ? 64 : 48);
         const boardPaddingY = storyboardLayout === 'horizontal' ? (hasMixedFrames ? 64 : 52) : (hasMixedFrames ? 52 : 40);
+        const orientationLaneMap = hasMixedFrames
+            ? storyboard.reduce((acc, item) => {
+                const orientation = getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation;
+                if (!(orientation in acc)) {
+                    acc[orientation] = Object.keys(acc).length;
+                }
+                return acc;
+            }, {} as Partial<Record<'portrait' | 'landscape' | 'square', number>>)
+            : {};
         const boardMetrics = storyboardLayout === 'horizontal'
             ? {
                 width: nodeSizes.reduce((sum, size, index) => {
@@ -763,32 +846,50 @@ function LovartCanvasContent() {
         const boardBaseY = (window.innerHeight / 2 - 56 - pan.y) / scale - (boardMetrics.height + boardPaddingY * 2) / 2;
         const baseX = boardBaseX + boardPaddingX;
         const baseY = boardBaseY + boardPaddingY;
+        const boardSummary = summarizeProductionBoard(storyboard);
+        const recommendedLayout = boardSummary.recommendedLayout;
+        const layoutBiasX = storyboardLayout === 'horizontal' && recommendedLayout !== 'horizontal' ? 12 : 0;
+        const layoutBiasY = storyboardLayout === 'vertical' && recommendedLayout !== 'vertical' ? 12 : 0;
+        const boardOrientationSummary = [
+            orientationMix.portrait > 0 ? `Portrait × ${orientationMix.portrait}` : null,
+            orientationMix.landscape > 0 ? `Landscape × ${orientationMix.landscape}` : null,
+            orientationMix.square > 0 ? `Square × ${orientationMix.square}` : null,
+        ].filter(Boolean).join(' · ');
+        const boardAccentElement: CanvasElement = {
+            id: uuidv4(),
+            type: 'text',
+            x: boardBaseX,
+            y: boardBaseY - 84,
+            width: Math.max(360, Math.min(boardMetrics.width + boardPaddingX * 2, 760)),
+            height: 80,
+            content: `${boardSummary.boardTitle}｜${storyboard.length} shots｜${recommendedLayout === storyboardLayout ? 'Layout aligned' : `Recommend ${recommendedLayout}`}｜${hasMixedFrames ? 'Adaptive frames' : 'Unified frames'}｜${boardOrientationSummary || 'Portrait × 0'}｜${boardSummary.laneSummary}｜${boardSummary.coverageSummary}｜${boardSummary.renderSummary}｜${boardSummary.durationSummary}｜${boardSummary.frameSummary}｜${boardSummary.boardSubtitle}`,
+            fontSize: 14,
+            color: '#0f172a',
+            backgroundColor: '#ffffff',
+            borderRadius: 18,
+            strokeWidth: 1,
+            strokeStyle: 'solid',
+            borderColor: recommendedLayout === storyboardLayout ? '#86efac' : '#fcd34d',
+        };
 
         let cursorX = baseX;
         let cursorY = baseY;
         const flows = storyboard.map((item, index) => {
             const nodeSize = nodeSizes[index];
             const itemOrientation = getStoryboardAspectMeta(item.aspectRatio ?? '9:16').orientation;
+            const laneIndex = orientationLaneMap[itemOrientation] ?? 0;
             const laneOffsetX = storyboardLayout === 'horizontal' && hasMixedFrames
-                ? itemOrientation === 'landscape'
-                    ? 0
-                    : itemOrientation === 'square'
-                        ? 12
-                        : 20
+                ? laneIndex * 16 + (itemOrientation === 'portrait' ? 20 : itemOrientation === 'square' ? 10 : 0)
                 : 0;
             const laneOffsetY = storyboardLayout === 'vertical' && hasMixedFrames
-                ? itemOrientation === 'portrait'
-                    ? 0
-                    : itemOrientation === 'square'
-                        ? 12
-                        : 18
+                ? laneIndex * 14 + (itemOrientation === 'landscape' ? 18 : itemOrientation === 'square' ? 8 : 0)
                 : 0;
             const x = storyboardLayout === 'horizontal'
-                ? cursorX + laneOffsetX
-                : baseX + (maxWidth - nodeSize.width) / 2 + laneOffsetX;
+                ? cursorX + laneOffsetX + layoutBiasX
+                : baseX + (maxWidth - nodeSize.width) / 2 + laneOffsetX + layoutBiasX;
             const y = storyboardLayout === 'horizontal'
-                ? baseY + (maxHeight - nodeSize.height) + laneOffsetY
-                : cursorY + laneOffsetY;
+                ? baseY + (maxHeight - nodeSize.height) + laneOffsetY + layoutBiasY
+                : cursorY + laneOffsetY + layoutBiasY;
 
             if (storyboardLayout === 'horizontal') {
                 const adaptiveGap = nodeSize.width >= 380 ? horizontalGap + 16 : nodeSize.width <= 280 ? horizontalGap - 10 : horizontalGap;
@@ -807,8 +908,8 @@ function LovartCanvasContent() {
             });
         });
 
-        setElements((prev) => [...prev, ...flows.flatMap((flow) => flow.elementsToAdd)]);
-        setSelectedIds(flows.map((flow) => flow.selectedId));
+        setElements((prev) => [...prev, boardAccentElement, ...flows.flatMap((flow) => flow.elementsToAdd)]);
+        setSelectedIds([boardAccentElement.id, ...flows.map((flow) => flow.selectedId)]);
         setActiveTool('select');
     }, [buildStoryboardVideoFlow, getStoryboardNodeSize, pan.x, pan.y, scale, setActiveTool, setElements, setSelectedIds, storyboard, storyboardLayout]);
 
@@ -1106,80 +1207,59 @@ function LovartCanvasContent() {
                         onResetStoryboardAspectRatioFromAsset={handleResetStoryboardAspectRatioFromAsset}
                         onUpdateAllStoryboardDurations={handleUpdateAllStoryboardDurations}
                         onUpdateAllStoryboardRenderProfiles={handleUpdateAllStoryboardRenderProfiles}
+                        onNormalizeAllStoryboardOutputSizes={handleNormalizeAllStoryboardOutputSizes}
                         onApplyStoryboardBoardPreset={handleApplyStoryboardBoardPreset}
                         onAutoStoryboardLayout={handleAutoStoryboardLayout}
                         onUpdateAllStoryboardAspectRatios={(aspectRatio) => {
                             const aspectMeta = getStoryboardAspectMeta(aspectRatio);
-                            setStoryboard((prev) => prev.map((item) => {
-                                const currentAspect = item.aspectRatio ?? '9:16';
-                                const currentOutputSize = item.outputSize ?? getStoryboardAspectMeta(currentAspect).videoSize;
-                                const currentRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(currentOutputSize);
-                                const inferredFromCurrentSize = inferStoryboardAspectRatioFromVideoSize(currentOutputSize);
-                                const nextOutputSize = inferredFromCurrentSize === aspectRatio
-                                    ? currentOutputSize
-                                    : getPreferredStoryboardVideoSize(aspectRatio, currentRenderProfile);
-                                return {
-                                    ...item,
-                                    aspectRatio,
-                                    orientation: aspectMeta.orientation,
-                                    outputSize: nextOutputSize,
-                                    renderProfile: getStoryboardRenderProfile(nextOutputSize),
-                                };
-                            }));
-                            setElements((prev) => prev.map((element) => {
-                                if (!element.storyboardItemId) return element;
-                                const currentOutputSize = element.storyboardVideoSize ?? element.content;
-                                const currentRenderProfile = element.storyboardRenderProfile ?? (typeof currentOutputSize === 'string' ? getStoryboardRenderProfile(currentOutputSize as StoryboardVideoSize) : 'standard');
-                                const inferredFromCurrentSize = inferStoryboardAspectRatioFromVideoSize(typeof currentOutputSize === 'string' ? currentOutputSize : undefined);
-                                const nextOutputSize = inferredFromCurrentSize === aspectRatio
-                                    ? (typeof currentOutputSize === 'string' ? currentOutputSize as StoryboardVideoSize : getPreferredStoryboardVideoSize(aspectRatio, currentRenderProfile))
-                                    : getPreferredStoryboardVideoSize(aspectRatio, currentRenderProfile);
-                                return syncStoryboardNodeFrame(element, {
-                                    aspectRatio,
-                                    orientation: aspectMeta.orientation,
-                                    outputSize: nextOutputSize,
-                                    renderProfile: getStoryboardRenderProfile(nextOutputSize),
+                            setStoryboard((prev) => {
+                                const next = prev.map((item) => {
+                                    const currentAspect = item.aspectRatio ?? '9:16';
+                                    const currentOutputSize = item.outputSize ?? getStoryboardAspectMeta(currentAspect).videoSize;
+                                    const currentRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(currentOutputSize);
+                                    const inferredFromCurrentSize = inferStoryboardAspectRatioFromVideoSize(currentOutputSize);
+                                    const nextOutputSize = inferredFromCurrentSize === aspectRatio
+                                        ? currentOutputSize
+                                        : getPreferredStoryboardVideoSize(aspectRatio, currentRenderProfile);
+                                    return {
+                                        ...item,
+                                        aspectRatio,
+                                        orientation: aspectMeta.orientation,
+                                        outputSize: nextOutputSize,
+                                        renderProfile: getStoryboardRenderProfile(nextOutputSize),
+                                    };
                                 });
-                            }));
+                                syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
+                                return next;
+                            });
                         }}
                         onResetAllStoryboardAspectRatiosFromAssets={() => {
-                            const resetMap = new Map<string, { aspectRatio: StoryboardAspectRatio; orientation: ReturnType<typeof getStoryboardAspectMeta>['orientation']; outputSize: StoryboardVideoSize; renderProfile: ReturnType<typeof getStoryboardRenderProfile> }>();
-                            setStoryboard((prev) => prev.map((item) => {
-                                const aspectRatio = resolveStoryboardAspectRatioFromAsset(item);
-                                const aspectMeta = getStoryboardAspectMeta(aspectRatio);
-                                const preferredRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(item.outputSize ?? aspectMeta.videoSize);
-                                const preferredOutputSize = getPreferredStoryboardVideoSize(aspectRatio, preferredRenderProfile);
-                                resetMap.set(item.id, {
-                                    aspectRatio,
-                                    orientation: aspectMeta.orientation,
-                                    outputSize: preferredOutputSize,
-                                    renderProfile: getStoryboardRenderProfile(preferredOutputSize),
+                            setStoryboard((prev) => {
+                                const next = prev.map((item) => {
+                                    const aspectRatio = resolveStoryboardAspectRatioFromAsset(item);
+                                    const aspectMeta = getStoryboardAspectMeta(aspectRatio);
+                                    const preferredRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(item.outputSize ?? aspectMeta.videoSize);
+                                    const preferredOutputSize = getPreferredStoryboardVideoSize(aspectRatio, preferredRenderProfile);
+                                    return {
+                                        ...item,
+                                        aspectRatio,
+                                        orientation: aspectMeta.orientation,
+                                        outputSize: preferredOutputSize,
+                                        renderProfile: getStoryboardRenderProfile(preferredOutputSize),
+                                        sourceAspectRatio: aspectRatio,
+                                        sourceOrientation: aspectMeta.orientation,
+                                        sourceOutputSize: preferredOutputSize,
+                                    };
                                 });
-                                return {
-                                    ...item,
-                                    aspectRatio,
-                                    orientation: aspectMeta.orientation,
-                                    outputSize: preferredOutputSize,
-                                    renderProfile: getStoryboardRenderProfile(preferredOutputSize),
-                                    sourceAspectRatio: aspectRatio,
-                                    sourceOrientation: aspectMeta.orientation,
-                                    sourceOutputSize: preferredOutputSize,
-                                };
-                            }));
-                            setElements((prev) => prev.map((element) => {
-                                if (!element.storyboardItemId) return element;
-                                const resetState = resetMap.get(element.storyboardItemId);
-                                if (!resetState) return element;
-                                return {
-                                    ...syncStoryboardNodeFrame(element, resetState),
-                                    storyboardSourceAspectRatio: resetState.aspectRatio,
-                                    storyboardSourceOrientation: resetState.orientation,
-                                    storyboardSourceVideoSize: resetState.outputSize,
-                                };
-                            }));
+                                syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
+                                return next;
+                            });
                         }}
                         storyboardLayout={storyboardLayout}
-                        onStoryboardLayoutChange={setStoryboardLayout}
+                        onStoryboardLayoutChange={(layout) => {
+                            setStoryboardLayout(layout);
+                            syncStoryboardLinkedElements(storyboard, layout);
+                        }}
                         onCreateVideoFromStoryboard={handleCreateVideoFromStoryboard}
                         onCreateStoryboardFlow={handleCreateStoryboardFlow}
                     />
