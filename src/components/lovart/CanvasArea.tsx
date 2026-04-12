@@ -660,6 +660,11 @@ export function CanvasArea({
                                         ? el.storyboardBoardMode
                                         : sequenceState === 'single' ? 'Single Board' : 'Storyboard Flow';
                                     const detailRailLabel = el.storyboardRenderProfile === 'high' ? 'High detail' : 'Standard detail';
+                                    const laneLabel = el.storyboardOrientation === 'landscape'
+                                        ? 'Landscape lane'
+                                        : el.storyboardOrientation === 'square'
+                                            ? 'Square lane'
+                                            : 'Portrait lane';
                                     const outputRailLabel = sizeMeta ? `${sizeMeta} render` : 'Storyboard render';
 
                                     return (
@@ -719,6 +724,7 @@ export function CanvasArea({
                                                         <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{sequenceState === 'single' ? 'Single Shot' : sequenceState === 'first' ? 'Shot Strip Start' : sequenceState === 'last' ? 'Shot Strip End' : 'Shot Strip'}</span>
                                                         <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardModeLabel}</span>
                                                         <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{boardProgressLabel}</span>
+                                                        <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{laneLabel}</span>
                                                         {!compactVertical && <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{orientationLabel}</span>}
                                                         {aspectLabel && !compactVertical && (
                                                             <span className="rounded-full border border-blue-200/80 bg-white/80 px-2 py-1 dark:border-white/10 dark:bg-white/6">{aspectLabel}</span>
@@ -869,6 +875,11 @@ export function CanvasArea({
                                                 : 'w-12 opacity-75';
                                     const compactPortrait = el.storyboardOrientation === 'portrait' && (el.width || 0) <= 280;
                                     const compactVertical = (el.height || 0) >= 420;
+                                    const laneLabel = el.storyboardOrientation === 'landscape'
+                                        ? 'Landscape lane'
+                                        : el.storyboardOrientation === 'square'
+                                            ? 'Square lane'
+                                            : 'Portrait lane';
 
                                     return (
                                         <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(239,246,255,0.96))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),rgba(15,23,42,0.96)_68%)] dark:text-sky-50">
@@ -928,6 +939,7 @@ export function CanvasArea({
                                                         <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                             <span className="rounded-full border border-white/15 bg-white/10 px-2 py-1">{sequenceHint}</span>
                                                             <span className="rounded-full border border-white/12 bg-white/8 px-2 py-1 text-white/82">{frameDeltaLabel}</span>
+                                                            <span className="rounded-full border border-white/10 bg-white/6 px-2 py-1 text-white/76">{laneLabel}</span>
                                                             {sizeMeta && <span className="rounded-full border border-white/8 bg-white/5 px-2 py-1 text-white/75">{sizeMeta}</span>}
                                                         </div>
                                                     </div>
