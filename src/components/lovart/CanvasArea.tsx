@@ -49,6 +49,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardSequenceState?: 'single' | 'first' | 'middle' | 'last';
     storyboardSequenceHint?: string;
     storyboardBoardMode?: string;
+    storyboardElementRole?: 'board-header' | 'board-surface' | 'board-lane';
+    storyboardLaneOrientation?: 'portrait' | 'landscape' | 'square';
     prompt?: string;
     generationMetadata?: GenerationMetadata;
     color?: string;
@@ -626,6 +628,15 @@ export function CanvasArea({
                                             ? 'Source frame locked'
                                             : `${sourceAspectLabel} → ${aspectLabel}`
                                         : aspectLabel || 'Auto frame';
+                                    const coverageLabel = sourceAspectLabel && aspectLabel
+                                        ? sourceAspectLabel === aspectLabel
+                                            ? 'Coverage locked'
+                                            : (el.storyboardOrientation === 'landscape'
+                                                ? 'Recompose wide'
+                                                : el.storyboardOrientation === 'square'
+                                                    ? 'Center recrop'
+                                                    : 'Recompose tall')
+                                        : 'Coverage locked';
                                     const boardProgressLabel = shotIndex && shotCount
                                         ? `${String(shotIndex).padStart(2, '0')} / ${String(shotCount).padStart(2, '0')}`
                                         : shotIndex
@@ -736,6 +747,10 @@ export function CanvasArea({
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{frameDeltaLabel}</div>
                                                         </div>
                                                         <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                            <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Coverage</div>
+                                                            <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{coverageLabel}</div>
+                                                        </div>
+                                                        <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                             <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Detail rail</div>
                                                             <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{detailRailLabel}</div>
                                                         </div>
@@ -824,6 +839,15 @@ export function CanvasArea({
                                             ? 'Source frame locked'
                                             : `${sourceAspectLabel} → ${aspectLabel}`
                                         : aspectLabel || 'Auto frame';
+                                    const coverageLabel = sourceAspectLabel && aspectLabel
+                                        ? sourceAspectLabel === aspectLabel
+                                            ? 'Coverage locked'
+                                            : (el.storyboardOrientation === 'landscape'
+                                                ? 'Recompose wide'
+                                                : el.storyboardOrientation === 'square'
+                                                    ? 'Center recrop'
+                                                    : 'Recompose tall')
+                                        : 'Coverage locked';
                                     const boardProgressLabel = shotIndex && shotCount
                                         ? `${String(shotIndex).padStart(2, '0')} / ${String(shotCount).padStart(2, '0')}`
                                         : shotIndex
@@ -930,8 +954,16 @@ export function CanvasArea({
                                                         <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{frameDeltaLabel}</div>
                                                     </div>
                                                     <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Coverage</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{coverageLabel}</div>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
                                                         <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Sequence</div>
                                                         <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">{sequenceHint}</div>
+                                                    </div>
+                                                    <div className="rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4">
+                                                        <div className="uppercase tracking-wide text-blue-500/70 dark:text-sky-200/45">Review</div>
+                                                        <div className="mt-1 font-medium text-blue-900 dark:text-sky-50">Review Ready</div>
                                                     </div>
                                                 </div>
                                                 <div className="mt-3 rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
@@ -954,20 +986,61 @@ export function CanvasArea({
                                         onMouseDown={(e) => e.stopPropagation()}
                                         onKeyDown={(e) => e.stopPropagation()}
                                     />
-                                ) : (
+                                ) : el.storyboardElementRole === 'board-header' ? (() => {
+                                    const parts = (el.content || '').split('｜').filter(Boolean);
+                                    const title = parts[0] || 'Production Board';
+                                    const subtitle = parts[parts.length - 1] || '';
+                                    const chips = parts.slice(1, Math.max(1, parts.length - 1));
+                                    const toneAligned = typeof el.borderColor === 'string' && el.borderColor.toLowerCase() === '#86efac';
+                                    return (
+                                        <div className="h-full w-full overflow-hidden rounded-[26px] border border-slate-200/90 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-4 shadow-[0_24px_60px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.14),rgba(15,23,42,0.94)_72%)]">
+                                            <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-r from-sky-500/10 via-blue-500/6 to-transparent dark:from-sky-400/14 dark:via-blue-400/10 dark:to-transparent" />
+                                            <div className="relative flex h-full flex-col justify-between">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">Storyboard board</div>
+                                                        <div className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{title}</div>
+                                                    </div>
+                                                    <div className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] ${toneAligned ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/14 dark:text-emerald-100' : 'bg-amber-100 text-amber-700 dark:bg-amber-400/14 dark:text-amber-100'}`}>
+                                                        {toneAligned ? 'Layout aligned' : 'Layout drift'}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {chips.slice(0, 8).map((chip, index) => (
+                                                        <span key={`${chip}-${index}`} className="rounded-full border border-slate-200 bg-white/90 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600 dark:border-white/10 dark:bg-white/6 dark:text-slate-200">
+                                                            {chip}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                                {subtitle && subtitle !== title && (
+                                                    <div className="mt-3 text-xs text-slate-500 dark:text-slate-300/80">{subtitle}</div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })() : (
                                     <div className="w-full h-full whitespace-nowrap select-none flex items-center" style={{ fontSize: el.fontSize || 24, fontFamily: el.fontFamily || 'Inter', color: el.color || '#000000' }}>
                                         {el.content || 'Double click to edit'}
                                     </div>
                                 ))}
 
                                 {el.type === 'shape' && (
-                                    <div className="w-full h-full flex items-center justify-center">
-                                        {(!el.shapeType || el.shapeType === 'square') && <div className="w-full h-full" style={{ backgroundColor: el.color || '#9CA3AF' }} />}
-                                        {el.shapeType === 'circle' && <div className="w-full h-full rounded-full" style={{ backgroundColor: el.color || '#9CA3AF' }} />}
-                                        {el.shapeType === 'triangle' && (
-                                            <div className="w-0 h-0 border-l-[50px] border-r-[50px] border-b-[100px] border-l-transparent border-r-transparent" style={{ borderBottomColor: el.color || '#9CA3AF', borderBottomWidth: el.height, borderLeftWidth: (el.width || 0) / 2, borderRightWidth: (el.width || 0) / 2 }} />
-                                        )}
-                                    </div>
+                                    el.storyboardElementRole === 'board-surface' ? (
+                                        <div className="h-full w-full rounded-[32px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.9))] shadow-[0_40px_100px_rgba(15,23,42,0.08)] dark:border-white/8 dark:bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),rgba(15,23,42,0.72)_78%)]">
+                                            <div className="absolute inset-5 rounded-[28px] border border-dashed border-slate-200/80 dark:border-white/10" />
+                                            <div className="absolute inset-x-0 top-0 h-24 rounded-t-[32px] bg-gradient-to-r from-sky-500/10 via-blue-500/6 to-transparent dark:from-sky-400/12 dark:via-blue-400/8 dark:to-transparent" />
+                                        </div>
+                                    ) : el.storyboardElementRole === 'board-lane' ? (
+                                        <div className={`h-full w-full rounded-[24px] border border-dashed ${el.storyboardLaneOrientation === 'landscape' ? 'border-violet-300/70 bg-violet-50/55 dark:border-violet-400/18 dark:bg-violet-400/6' : el.storyboardLaneOrientation === 'square' ? 'border-emerald-300/70 bg-emerald-50/55 dark:border-emerald-400/18 dark:bg-emerald-400/6' : 'border-sky-300/70 bg-sky-50/55 dark:border-sky-400/18 dark:bg-sky-400/6'}`} />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center">
+                                            {(!el.shapeType || el.shapeType === 'square') && <div className="w-full h-full" style={{ backgroundColor: el.color || '#9CA3AF' }} />}
+                                            {el.shapeType === 'circle' && <div className="w-full h-full rounded-full" style={{ backgroundColor: el.color || '#9CA3AF' }} />}
+                                            {el.shapeType === 'triangle' && (
+                                                <div className="w-0 h-0 border-l-[50px] border-r-[50px] border-b-[100px] border-l-transparent border-r-transparent" style={{ borderBottomColor: el.color || '#9CA3AF', borderBottomWidth: el.height, borderLeftWidth: (el.width || 0) / 2, borderRightWidth: (el.width || 0) / 2 }} />
+                                            )}
+                                        </div>
+                                    )
                                 )}
 
                                 {el.type === 'path' && el.points && (

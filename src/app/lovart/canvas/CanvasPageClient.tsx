@@ -855,13 +855,27 @@ function LovartCanvasContent() {
             orientationMix.landscape > 0 ? `Landscape × ${orientationMix.landscape}` : null,
             orientationMix.square > 0 ? `Square × ${orientationMix.square}` : null,
         ].filter(Boolean).join(' · ');
+        const boardSurfaceElement: CanvasElement = {
+            id: uuidv4(),
+            type: 'shape',
+            shapeType: 'square',
+            storyboardElementRole: 'board-surface',
+            x: boardBaseX - 16,
+            y: boardBaseY - 20,
+            width: boardMetrics.width + boardPaddingX * 2 + 32,
+            height: boardMetrics.height + boardPaddingY * 2 + 40,
+            color: '#f8fafc',
+            borderRadius: 30,
+        };
+
         const boardAccentElement: CanvasElement = {
             id: uuidv4(),
             type: 'text',
+            storyboardElementRole: 'board-header',
             x: boardBaseX,
             y: boardBaseY - 84,
             width: Math.max(360, Math.min(boardMetrics.width + boardPaddingX * 2, 760)),
-            height: 80,
+            height: 88,
             content: `${boardSummary.boardTitle}｜${storyboard.length} shots｜${recommendedLayout === storyboardLayout ? 'Layout aligned' : `Recommend ${recommendedLayout}`}｜${hasMixedFrames ? 'Adaptive frames' : 'Unified frames'}｜${boardOrientationSummary || 'Portrait × 0'}｜${boardSummary.laneSummary}｜${boardSummary.coverageSummary}｜${boardSummary.renderSummary}｜${boardSummary.durationSummary}｜${boardSummary.frameSummary}｜${boardSummary.boardSubtitle}`,
             fontSize: 14,
             color: '#0f172a',
@@ -871,6 +885,51 @@ function LovartCanvasContent() {
             strokeStyle: 'solid',
             borderColor: recommendedLayout === storyboardLayout ? '#86efac' : '#fcd34d',
         };
+
+        const laneElements: CanvasElement[] = hasMixedFrames
+            ? (Object.entries(orientationLaneMap) as Array<["portrait" | "landscape" | "square", number | undefined]>)
+                .filter(([, laneIndex]) => typeof laneIndex === 'number')
+                .flatMap(([orientation, laneIndex]) => {
+                    const lane = laneIndex ?? 0;
+                    const laneX = storyboardLayout === 'horizontal'
+                        ? boardBaseX + 18 + lane * 22
+                        : boardBaseX + 16;
+                    const laneY = storyboardLayout === 'horizontal'
+                        ? boardBaseY + 22
+                        : boardBaseY + 18 + lane * 18;
+                    const laneWidth = storyboardLayout === 'horizontal'
+                        ? boardMetrics.width + boardPaddingX * 2 - 36
+                        : boardMetrics.width + boardPaddingX * 2 - 32;
+                    const laneHeight = storyboardLayout === 'horizontal'
+                        ? boardMetrics.height + boardPaddingY * 2 - 36
+                        : boardMetrics.height + boardPaddingY * 2 - 24;
+                    return [
+                        {
+                            id: uuidv4(),
+                            type: 'shape',
+                            shapeType: 'square',
+                            storyboardElementRole: 'board-lane',
+                            storyboardLaneOrientation: orientation,
+                            x: laneX,
+                            y: laneY,
+                            width: laneWidth,
+                            height: laneHeight,
+                            color: '#ffffff',
+                        },
+                        {
+                            id: uuidv4(),
+                            type: 'text',
+                            x: laneX + 12,
+                            y: laneY + 10,
+                            width: 180,
+                            height: 24,
+                            content: `${orientation.toUpperCase()} LANE`,
+                            fontSize: 11,
+                            color: orientation === 'landscape' ? '#7c3aed' : orientation === 'square' ? '#059669' : '#0284c7',
+                        },
+                    ] as CanvasElement[];
+                })
+            : [];
 
         let cursorX = baseX;
         let cursorY = baseY;
@@ -908,7 +967,7 @@ function LovartCanvasContent() {
             });
         });
 
-        setElements((prev) => [...prev, boardAccentElement, ...flows.flatMap((flow) => flow.elementsToAdd)]);
+        setElements((prev) => [boardSurfaceElement, ...prev, ...laneElements, boardAccentElement, ...flows.flatMap((flow) => flow.elementsToAdd)]);
         setSelectedIds([boardAccentElement.id, ...flows.map((flow) => flow.selectedId)]);
         setActiveTool('select');
     }, [buildStoryboardVideoFlow, getStoryboardNodeSize, pan.x, pan.y, scale, setActiveTool, setElements, setSelectedIds, storyboard, storyboardLayout]);
