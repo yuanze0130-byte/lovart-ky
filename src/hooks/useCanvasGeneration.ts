@@ -323,6 +323,24 @@ export function useCanvasGeneration({
         const returnedModelVariant = isBananaVariant(data.modelVariant)
           ? data.modelVariant
           : modelVariant;
+        const returnedProvider = data.provider === 'official' || data.provider === 'proxy'
+          ? data.provider
+          : undefined;
+        const returnedProviderMode = data.providerMode === 'official' || data.providerMode === 'proxy' || data.providerMode === 'auto'
+          ? data.providerMode
+          : undefined;
+        const providerFallbackUsed = typeof data.providerFallbackUsed === 'boolean'
+          ? data.providerFallbackUsed
+          : undefined;
+        const fallbackFrom = data.fallbackFrom === 'official' || data.fallbackFrom === 'proxy'
+          ? data.fallbackFrom
+          : undefined;
+        const fallbackReason = typeof data.fallbackReason === 'string'
+          ? data.fallbackReason
+          : undefined;
+        const returnedModel = typeof data.model === 'string'
+          ? data.model
+          : undefined;
 
         if (imageData) {
           const dimensions = await getImageDimensions(imageData);
@@ -334,6 +352,10 @@ export function useCanvasGeneration({
             actualWidth: dimensions.width,
             actualHeight: dimensions.height,
             actualAspectRatio: `${dimensions.width}:${dimensions.height}`,
+            provider: returnedProvider,
+            providerMode: returnedProviderMode,
+            providerFallbackUsed,
+            model: returnedModel,
             modelVariant: returnedModelVariant,
             editMode,
             referenceCount: referenceImages.length,
@@ -358,6 +380,12 @@ export function useCanvasGeneration({
                       resolution: requestedResolution,
                       aspectRatio: requestedAspectRatio,
                       modelVariant: returnedModelVariant,
+                      provider: returnedProvider,
+                      providerMode: returnedProviderMode,
+                      providerFallbackUsed,
+                      fallbackFrom,
+                      fallbackReason,
+                      model: returnedModel,
                     },
                     requestedAspectRatio,
                     requestedResolution,
@@ -384,6 +412,12 @@ export function useCanvasGeneration({
                 resolution: requestedResolution,
                 aspectRatio: requestedAspectRatio,
                 modelVariant: returnedModelVariant,
+                provider: returnedProvider,
+                providerMode: returnedProviderMode,
+                providerFallbackUsed,
+                fallbackFrom,
+                fallbackReason,
+                model: returnedModel,
               },
               content: imageData,
             };

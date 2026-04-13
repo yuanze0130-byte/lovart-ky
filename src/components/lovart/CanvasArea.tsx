@@ -15,6 +15,12 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     promptDebug?: string;
     imageEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
     modelVariant?: 'standard' | 'pro';
+    provider?: 'official' | 'proxy';
+    providerMode?: 'official' | 'proxy' | 'auto';
+    providerFallbackUsed?: boolean;
+    fallbackFrom?: 'official' | 'proxy';
+    fallbackReason?: string;
+    model?: string;
     referenceCount?: number;
     resolution?: '1K' | '2K' | '4K';
     aspectRatio?: '1:1' | '4:3' | '16:9';
@@ -75,6 +81,38 @@ function getReviewRailToneClass(state: 'clean' | 'watch' | 'check') {
     if (state === 'clean') return 'border-emerald-300/20 bg-emerald-400/15 text-emerald-50';
     if (state === 'watch') return 'border-amber-300/20 bg-amber-400/15 text-amber-50';
     return 'border-sky-300/20 bg-sky-400/15 text-sky-50';
+}
+
+function getProviderLabel(metadata?: GenerationMetadata) {
+    if (!metadata) return undefined;
+    const provider = metadata.provider === 'official'
+        ? '官方'
+        : metadata.provider === 'proxy'
+            ? '中转'
+            : undefined;
+    const providerMode = metadata.providerMode === 'official'
+        ? '官方路由'
+        : metadata.providerMode === 'proxy'
+            ? '中转路由'
+            : metadata.providerMode === 'auto'
+                ? '自动路由'
+                : undefined;
+
+    if (metadata.providerFallbackUsed) {
+        const fromLabel = metadata.fallbackFrom === 'official'
+            ? '官方'
+            : metadata.fallbackFrom === 'proxy'
+                ? '中转'
+                : undefined;
+        return fromLabel ? `${providerMode || provider || '自动路由'} · 从${fromLabel}回退` : `${providerMode || provider || '自动路由'} · 已回退`;
+    }
+
+    return providerMode || provider;
+}
+
+function getModelLabel(metadata?: GenerationMetadata) {
+    if (!metadata?.model) return undefined;
+    return metadata.model;
 }
 
 interface CanvasAreaProps {
@@ -682,6 +720,11 @@ export function CanvasArea({
                                             ? '方形轨道'
                                             : '竖版轨道';
                                     const outputRailLabel = sizeMeta ? `${sizeMeta} 渲染` : '分镜渲染';
+                                    const providerLabel = getProviderLabel(el.generationMetadata);
+                                    const modelLabel = getModelLabel(el.generationMetadata);
+                                    const fallbackSummary = el.generationMetadata?.providerFallbackUsed
+                                        ? (el.generationMetadata.fallbackReason || '已触发回退')
+                                        : undefined;
 
                                     return (
                                         <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.92))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.18),rgba(15,23,42,0.94)_68%)] dark:text-sky-50">
@@ -755,6 +798,9 @@ export function CanvasArea({
                                                     <div className="rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
                                                         <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">镜头说明</div>
                                                         <div className={compactPortrait ? 'line-clamp-4' : 'line-clamp-5'}>{boardBrief}</div>
+                                                        {fallbackSummary && (
+                                                            <div className="mt-2 rounded-xl border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-[11px] leading-5 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100/90">回退说明：{fallbackSummary}</div>
+                                                        )}
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
                                                         <div className={infoCardClass}>
@@ -905,6 +951,11 @@ export function CanvasArea({
                                         : el.storyboardOrientation === 'square'
                                             ? '方形轨道'
                                             : '竖版轨道';
+                                    const providerLabel = getProviderLabel(el.generationMetadata);
+                                    const modelLabel = getModelLabel(el.generationMetadata);
+                                    const fallbackSummary = el.generationMetadata?.providerFallbackUsed
+                                        ? (el.generationMetadata.fallbackReason || '已触发回退')
+                                        : undefined;
 
                                     return (
                                         <div className="relative h-full w-full overflow-hidden rounded-2xl border border-blue-300/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.99),rgba(239,246,255,0.96))] text-blue-950 shadow-[0_18px_48px_rgba(37,99,235,0.18)] dark:border-sky-400/30 dark:bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.16),rgba(15,23,42,0.96)_68%)] dark:text-sky-50">
@@ -977,6 +1028,8 @@ export function CanvasArea({
                                                     {!compactVertical && <span className={chipPrimaryClass}>{orientationLabel}</span>}
                                                     {aspectLabel && !compactVertical && <span className={chipPrimaryClass}>{aspectLabel}</span>}
                                                     {durationLabel && <span className={chipPrimaryClass}>{durationLabel}</span>}
+                                                    {providerLabel && <span className={chipPrimaryClass}>{providerLabel}</span>}
+                                                    {modelLabel && <span className={chipPrimaryClass}>{modelLabel}</span>}
                                                 </div>
                                                 <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-blue-700/80 dark:text-sky-100/70">
                                                     <div className={infoCardClass}>
@@ -1007,6 +1060,9 @@ export function CanvasArea({
                                                 <div className="mt-3 rounded-2xl border border-blue-200/80 bg-white/75 px-3 py-2 text-xs leading-5 text-blue-700/85 dark:border-white/10 dark:bg-white/5 dark:text-sky-100/75">
                                                     <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-500/70 dark:text-sky-200/45">镜头说明</div>
                                                     <div className={compactPortrait ? 'line-clamp-4' : 'line-clamp-5'}>{boardBrief}</div>
+                                                    {fallbackSummary && (
+                                                        <div className="mt-2 rounded-xl border border-amber-200/80 bg-amber-50/80 px-2.5 py-2 text-[11px] leading-5 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100/90">回退说明：{fallbackSummary}</div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -1022,7 +1078,6 @@ export function CanvasArea({
                                         onChange={(e) => onElementChange(el.id, { content: e.target.value })}
                                         onBlur={() => setEditingTextId(null)}
                                         onMouseDown={(e) => e.stopPropagation()}
-                                        onKeyDown={(e) => e.stopPropagation()}
                                     />
                                 ) : el.storyboardElementRole === 'board-lane-label' ? (
                                     <div className={`inline-flex h-full items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-sm ${el.storyboardLaneOrientation === 'landscape' ? 'border-violet-200 bg-violet-50/90 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-100' : el.storyboardLaneOrientation === 'square' ? 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-100' : 'border-sky-200 bg-sky-50/90 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100'}`}>
