@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, Suspense, useRef, useCallback, startTransition } from 'react';
-import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff, Map as MapIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
@@ -35,12 +35,17 @@ function LovartCanvasContent() {
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
     const [showChat, setShowChat] = useState(Boolean(promptFromUrl));
     const [assetsCollapsed, setAssetsCollapsed] = useState(false);
+    const [showMiniMap, setShowMiniMap] = useState(false);
+    const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
+    const [miniMapHoveredId, setMiniMapHoveredId] = useState<string | null>(null);
+    const [viewportSize, setViewportSize] = useState({ width: 1440, height: 900 });
     const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
     const [storyboardLayout, setStoryboardLayout] = useState<StoryboardLayoutMode>('vertical');
     const historyRef = useRef<CanvasElement[][]>([]);
     const futureRef = useRef<CanvasElement[][]>([]);
     const clipboardRef = useRef<CanvasElement[]>([]);
     const suppressHistoryRef = useRef(false);
+    const miniMapRef = useRef<HTMLDivElement | null>(null);
 
     const {
         saveStatus,
@@ -121,6 +126,18 @@ function LovartCanvasContent() {
 
     const projectAssets = useProjectAssets(elements);
     const storyboardStorageKey = useMemo(() => `lovart:storyboard:${projectId || 'draft'}`, [projectId]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const syncViewportSize = () => {
+            setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+        };
+
+        syncViewportSize();
+        window.addEventListener('resize', syncViewportSize);
+        return () => window.removeEventListener('resize', syncViewportSize);
+    }, []);
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
@@ -227,11 +244,106 @@ function LovartCanvasContent() {
         handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
     }, [elements, handleElementChange, selectedIds]);
 
+    const miniMapData = useMemo(() => {
+        const drawableElements = elements.filter((element) => element.type !== 'connector');
+        if (drawableElements.length === 0) {
+            return {
+                bounds: { left: -800, top: -600, right: 800, bottom: 600 },
+                viewport: {
+                    left: -viewportSize.width / 2,
+                    top: -viewportSize.height / 2,
+                    right: viewportSize.width / 2,
+                    bottom: viewportSize.height / 2,
+                },
+                nodes: [] as typeof drawableElements,
+            };
+        }
+
+        const left = Math.min(...drawableElements.map((el) => el.x));
+        const top = Math.min(...drawableElements.map((el) => el.y));
+        const right = Math.max(...drawableElements.map((el) => el.x + (el.width || 120)));
+        const bottom = Math.max(...drawableElements.map((el) => el.y + (el.height || 120)));
+        const padding = 240;
+        return {
+            bounds: { left: left - padding, top: top - padding, right: right + padding, bottom: bottom + padding },
+            viewport: {
+                left: -pan.x / scale,
+                top: -pan.y / scale,
+                right: (viewportSize.width - pan.x) / scale,
+                bottom: (viewportSize.height - pan.y) / scale,
+            },
+            nodes: drawableElements,
+        };
+    }, [elements, pan.x, pan.y, scale, viewportSize.height, viewportSize.width]);
+
     const handleUseAsVideoReference = useCallback((asset: ProjectAsset) => {
         const activeGenerator = elements.find((element) => selectedIds.length === 1 && element.id === selectedIds[0] && element.type === 'video-generator');
         if (!activeGenerator) return;
         handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
     }, [elements, handleElementChange, selectedIds]);
+
+    const handleMiniMapNavigate = useCallback((clientX: number, clientY: number, rect: DOMRect) => {
+        const { bounds, viewport } = miniMapData;
+        const width = Math.max(1, bounds.right - bounds.left);
+        const height = Math.max(1, bounds.bottom - bounds.top);
+        const relativeX = Math.min(Math.max(0, clientX - rect.left), rect.width) / rect.width;
+        const relativeY = Math.min(Math.max(0, clientY - rect.top), rect.height) / rect.height;
+
+        const viewportWidth = viewport.right - viewport.left;
+        const viewportHeight = viewport.bottom - viewport.top;
+        const targetCenterX = bounds.left + relativeX * width;
+        const targetCenterY = bounds.top + relativeY * height;
+        const unclampedLeft = targetCenterX - viewportWidth / 2;
+        const unclampedTop = targetCenterY - viewportHeight / 2;
+        const minLeft = bounds.left;
+        const maxLeft = Math.max(bounds.left, bounds.right - viewportWidth);
+        const minTop = bounds.top;
+        const maxTop = Math.max(bounds.top, bounds.bottom - viewportHeight);
+        const targetLeft = Math.min(Math.max(unclampedLeft, minLeft), maxLeft);
+        const targetTop = Math.min(Math.max(unclampedTop, minTop), maxTop);
+
+        setPan({
+            x: -targetLeft * scale,
+            y: -targetTop * scale,
+        });
+    }, [miniMapData, scale, setPan]);
+
+    const handleMiniMapFocusElement = useCallback((element: CanvasElement) => {
+        const centerX = element.x + (element.width || 120) / 2;
+        const centerY = element.y + (element.height || 90) / 2;
+        setSelectedIds([element.id]);
+        setPan({
+            x: viewportSize.width / 2 - centerX * scale,
+            y: viewportSize.height / 2 - centerY * scale,
+        });
+    }, [scale, setPan, viewportSize.height, viewportSize.width]);
+
+    const handleFitCanvas = useCallback(() => {
+        const { bounds } = miniMapData;
+        const contentWidth = Math.max(1, bounds.right - bounds.left);
+        const contentHeight = Math.max(1, bounds.bottom - bounds.top);
+        const padding = 96;
+        const nextScale = Math.min(
+            3,
+            Math.max(
+                0.2,
+                Math.min(
+                    (viewportSize.width - padding * 2) / contentWidth,
+                    (viewportSize.height - padding * 2) / contentHeight,
+                ),
+            ),
+        );
+
+        const centerX = (bounds.left + bounds.right) / 2;
+        const centerY = (bounds.top + bounds.bottom) / 2;
+        zoomTo(nextScale, { x: viewportSize.width / 2, y: viewportSize.height / 2 });
+        window.setTimeout(() => {
+            setPan({
+                x: viewportSize.width / 2 - centerX * nextScale,
+                y: viewportSize.height / 2 - centerY * nextScale,
+            });
+        }, 0);
+    }, [miniMapData, setPan, viewportSize.height, viewportSize.width, zoomTo]);
 
     const getStoryboardSequenceState = useCallback((index: number, total: number): 'single' | 'first' | 'middle' | 'last' => {
         if (total <= 1) return 'single';
@@ -1339,16 +1451,133 @@ function LovartCanvasContent() {
                     />
                 </div>
 
-                <div className="absolute bottom-4 left-4 z-50 flex items-center rounded-2xl border border-gray-200 bg-white/92 p-1.5 shadow-[0_10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-black/72 dark:shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
-                    <button onClick={() => zoomOut()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
-                        <Minus size={16} />
-                    </button>
-                    <span className="min-w-[3.4rem] px-2 text-center text-xs font-medium text-gray-700 dark:text-gray-200">
-                        {Math.round(scale * 100)}%
-                    </span>
-                    <button onClick={() => zoomIn()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
-                        <Plus size={16} />
-                    </button>
+                <div className="absolute bottom-4 left-4 z-50 flex flex-col gap-3">
+                    {showMiniMap && (() => {
+                        const { bounds, viewport, nodes } = miniMapData;
+                        const mapWidth = 208;
+                        const mapHeight = 144;
+                        const boundsWidth = Math.max(1, bounds.right - bounds.left);
+                        const boundsHeight = Math.max(1, bounds.bottom - bounds.top);
+                        const toMapX = (value: number) => ((value - bounds.left) / boundsWidth) * mapWidth;
+                        const toMapY = (value: number) => ((value - bounds.top) / boundsHeight) * mapHeight;
+                        return (
+                            <div className="w-[220px] rounded-[22px] border border-gray-200/90 bg-white/96 p-3 shadow-[0_20px_50px_rgba(15,23,42,0.15)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/82 dark:shadow-[0_28px_70px_rgba(0,0,0,0.5)]">
+                                <div className="mb-2 flex items-center justify-between px-1">
+                                    <div>
+                                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-slate-400">小地图</div>
+                                        <div className="mt-0.5 text-[11px] text-gray-400 dark:text-slate-500">点节点聚焦 · 拖框导航</div>
+                                    </div>
+                                    <button
+                                        onClick={handleFitCanvas}
+                                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-white/10 dark:bg-white/6 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
+                                        title="适配全部内容"
+                                    >
+                                        Fit
+                                    </button>
+                                </div>
+                                <div
+                                    ref={miniMapRef}
+                                    className={`relative overflow-hidden rounded-2xl border border-gray-200/90 bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.28),_rgba(255,255,255,0.98))] shadow-inner transition-all dark:border-white/10 dark:bg-[radial-gradient(circle_at_top,_rgba(30,41,59,0.96),_rgba(2,6,23,0.98))] ${isMiniMapDragging ? 'cursor-grabbing ring-2 ring-sky-300/50 dark:ring-sky-400/30' : 'cursor-pointer hover:border-sky-200 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_24px_rgba(14,165,233,0.08)] dark:hover:border-sky-400/20'}`}
+                                    style={{ width: mapWidth, height: mapHeight }}
+                                    onMouseDown={(e) => {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setIsMiniMapDragging(true);
+                                        handleMiniMapNavigate(e.clientX, e.clientY, rect);
+                                    }}
+                                    onMouseMove={(e) => {
+                                        if (!isMiniMapDragging) return;
+                                        handleMiniMapNavigate(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
+                                    }}
+                                    onMouseUp={() => setIsMiniMapDragging(false)}
+                                    onMouseLeave={() => setIsMiniMapDragging(false)}
+                                >
+                                    {nodes.map((node) => {
+                                        const width = Math.max(6, ((node.width || 120) / boundsWidth) * mapWidth);
+                                        const height = Math.max(6, ((node.height || 90) / boundsHeight) * mapHeight);
+                                        const isSelected = selectedIds.includes(node.id);
+                                        const tone = node.type === 'image' || node.type === 'video'
+                                            ? 'border-emerald-300/80 bg-emerald-400/22 dark:border-emerald-300/50 dark:bg-emerald-400/16'
+                                            : node.type === 'image-generator' || node.type === 'video-generator'
+                                                ? 'border-violet-300/80 bg-violet-400/22 dark:border-violet-300/50 dark:bg-violet-400/16'
+                                                : 'border-sky-300/80 bg-sky-400/22 dark:border-sky-300/50 dark:bg-sky-400/16';
+                                        return (
+                                            <button
+                                                key={node.id}
+                                                type="button"
+                                                className={`absolute rounded-[4px] border transition-all hover:z-10 hover:brightness-110 hover:shadow-sm ${tone} ${isSelected ? 'ring-1 ring-blue-500/60 dark:ring-sky-300/60' : ''} ${miniMapHoveredId === node.id ? 'scale-[1.04]' : ''}`}
+                                                style={{
+                                                    left: toMapX(node.x),
+                                                    top: toMapY(node.y),
+                                                    width,
+                                                    height,
+                                                }}
+                                                title={node.storyboardTitle || node.prompt || node.type}
+                                                onMouseEnter={() => setMiniMapHoveredId(node.id)}
+                                                onMouseLeave={() => setMiniMapHoveredId((current) => (current === node.id ? null : current))}
+                                                onMouseDown={(e) => {
+                                                    e.stopPropagation();
+                                                    handleMiniMapFocusElement(node);
+                                                }}
+                                            />
+                                        );
+                                    })}
+                                    <div
+                                        className="absolute rounded-xl border border-blue-500/90 bg-blue-400/10 shadow-[0_0_0_1px_rgba(59,130,246,0.2),0_8px_20px_rgba(59,130,246,0.12)] transition-shadow dark:border-sky-300/90 dark:bg-sky-400/10 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_10px_24px_rgba(56,189,248,0.12)]"
+                                        style={{
+                                            left: toMapX(viewport.left),
+                                            top: toMapY(viewport.top),
+                                            width: Math.max(24, ((viewport.right - viewport.left) / boundsWidth) * mapWidth),
+                                            height: Math.max(20, ((viewport.bottom - viewport.top) / boundsHeight) * mapHeight),
+                                        }}
+                                        onMouseDown={(e) => {
+                                            e.stopPropagation();
+                                            setIsMiniMapDragging(true);
+                                        }}
+                                    >
+                                        <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-blue-500/80 bg-white shadow-sm dark:border-sky-300/80 dark:bg-slate-950" />
+                                    </div>
+                                    {miniMapHoveredId && (() => {
+                                        const hoveredNode = nodes.find((node) => node.id === miniMapHoveredId);
+                                        if (!hoveredNode) return null;
+                                        return (
+                                            <div className="absolute left-2 top-2 rounded-lg border border-gray-200/90 bg-white/96 px-2 py-1 text-[10px] text-gray-600 shadow-sm dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-300">
+                                                {hoveredNode.storyboardTitle || hoveredNode.prompt || hoveredNode.type}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                                <div className="mt-2 flex items-center gap-3 px-1 text-[10px] text-gray-400 dark:text-slate-500">
+                                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" />媒体</span>
+                                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-400" />生成器</span>
+                                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-400" />其他</span>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    <div className="flex items-center rounded-[20px] border border-gray-200/90 bg-white/94 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/78 dark:shadow-[0_20px_48px_rgba(0,0,0,0.45)]">
+                        <button
+                            onClick={() => setShowMiniMap((prev) => !prev)}
+                            className={`rounded-xl p-2 transition-all ${showMiniMap ? 'bg-sky-100 text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.14)] dark:bg-sky-400/14 dark:text-sky-200 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.16)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
+                            title="切换小地图"
+                        >
+                            <MapIcon size={16} />
+                        </button>
+                        <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-white/10" />
+                        <button onClick={() => zoomOut()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
+                            <Minus size={16} />
+                        </button>
+                        <button
+                            onClick={() => zoomTo(1, { x: viewportSize.width / 2, y: viewportSize.height / 2 })}
+                            className="min-w-[3.4rem] rounded-lg px-2 py-1 text-center text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-white"
+                            title="回到 100%"
+                        >
+                            {Math.round(scale * 100)}%
+                        </button>
+                        <button onClick={() => zoomIn()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
+                            <Plus size={16} />
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

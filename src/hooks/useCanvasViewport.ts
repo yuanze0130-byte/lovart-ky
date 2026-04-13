@@ -5,7 +5,7 @@ export interface CanvasPan {
   y: number;
 }
 
-const MIN_SCALE = 0.1;
+const MIN_SCALE = 0.2;
 const MAX_SCALE = 3;
 
 export function useCanvasViewport() {
