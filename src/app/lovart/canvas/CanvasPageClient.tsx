@@ -144,7 +144,7 @@ function LovartCanvasContent() {
             x: baseX - 24,
             y: baseY - 48,
             width: 280,
-            content: resolvedMode === 'branding' ? 'Strategy Lane' : resolvedMode === 'image-editing' ? 'Edit Lane' : resolvedMode === 'research' ? 'Research Lane' : 'Concept Lane',
+            content: resolvedMode === 'branding' ? 'Brand Agent · Strategy Lane' : resolvedMode === 'image-editing' ? 'Editing Agent · Edit Lane' : resolvedMode === 'research' ? 'Research Agent · Research Lane' : 'Design Agent · Concept Lane',
             fontSize: 14,
             color: '#64748B',
         });
