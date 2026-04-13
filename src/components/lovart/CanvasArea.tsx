@@ -191,6 +191,7 @@ export function CanvasArea({
         panX: number;
         panY: number;
         aspectRatio?: number;
+        preserveAspectRatio?: boolean;
         initialPositions?: { id: string; x: number; y: number; width?: number; height?: number }[];
         selectionBounds?: { left: number; top: number; right: number; bottom: number };
     } | null>(null);
@@ -345,6 +346,7 @@ export function CanvasArea({
             height: selectionBounds.bottom - selectionBounds.top,
             panX: 0,
             panY: 0,
+            preserveAspectRatio: e.shiftKey,
             initialPositions: actionableSelection.map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height })),
             selectionBounds,
         };
@@ -408,10 +410,33 @@ export function CanvasArea({
                     nextBottom = Math.max(bounds.bottom + dy, bounds.top + minSelectionHeight);
                 }
 
-                const nextWidth = Math.max(minSelectionWidth, nextRight - nextLeft);
-                const nextHeight = Math.max(minSelectionHeight, nextBottom - nextTop);
+                let nextWidth = Math.max(minSelectionWidth, nextRight - nextLeft);
+                let nextHeight = Math.max(minSelectionHeight, nextBottom - nextTop);
                 const baseWidth = Math.max(1, bounds.right - bounds.left);
                 const baseHeight = Math.max(1, bounds.bottom - bounds.top);
+
+                if (dragStartRef.current.preserveAspectRatio) {
+                    const uniformScale = Math.max(nextWidth / baseWidth, nextHeight / baseHeight);
+                    nextWidth = Math.max(minSelectionWidth, baseWidth * uniformScale);
+                    nextHeight = Math.max(minSelectionHeight, baseHeight * uniformScale);
+
+                    if (resizeHandleRef.current.includes('w')) {
+                        nextLeft = bounds.right - nextWidth;
+                        nextRight = bounds.right;
+                    } else {
+                        nextRight = bounds.left + nextWidth;
+                        nextLeft = bounds.left;
+                    }
+
+                    if (resizeHandleRef.current.includes('n')) {
+                        nextTop = bounds.bottom - nextHeight;
+                        nextBottom = bounds.bottom;
+                    } else {
+                        nextBottom = bounds.top + nextHeight;
+                        nextTop = bounds.top;
+                    }
+                }
+
                 const scaleX = nextWidth / baseWidth;
                 const scaleY = nextHeight / baseHeight;
 
