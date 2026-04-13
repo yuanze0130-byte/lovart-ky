@@ -512,7 +512,7 @@ export function AssetsPanel({
                 {storyboardAspectSummary.length > 0 && (
                   <div className="space-y-3 rounded-2xl border border-gray-200/80 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Batch frame preset</span>
+                      <span className="text-[11px] font-medium uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">批量画幅预设</span>
                       <span className="text-[11px] text-gray-500 dark:text-gray-400">一键统一全部镜头画幅与节奏</span>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -577,7 +577,7 @@ export function AssetsPanel({
                       <div className="col-span-2 rounded-2xl border border-gray-200/80 bg-white/80 p-3 dark:border-white/10 dark:bg-white/6">
                         <div className="mb-2 flex items-center justify-between gap-2">
                           <span className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Render rails</span>
-                          <span className="text-[10px] text-gray-400 dark:text-gray-500">adaptive node sizing</span>
+                          <span className="text-[10px] text-gray-400 dark:text-gray-500">自适应节点尺寸</span>
                         </div>
                         <div className="grid grid-cols-2 gap-2 text-[11px] leading-5 text-gray-600 dark:text-gray-300">
                           <div>• 9:16：720×1280 / 1024×1792</div>
@@ -613,7 +613,7 @@ export function AssetsPanel({
                 {storyboardOrientationSummary.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-                      <span className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">Orientation mix</span>
+                      <span className="uppercase tracking-[0.14em] text-gray-400 dark:text-gray-500">朝向组合</span>
                       {storyboardOrientationSummary.map((label) => (
                         <span
                           key={label}
