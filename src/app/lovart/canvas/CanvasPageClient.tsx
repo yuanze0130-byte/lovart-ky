@@ -40,7 +40,7 @@ function LovartCanvasContent() {
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
     const [miniMapHoveredId, setMiniMapHoveredId] = useState<string | null>(null);
     const [viewportSize, setViewportSize] = useState({ width: 1440, height: 900 });
-    const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building'>('idle');
+    const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building' | 'done'>('idle');
     const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
     const [storyboardLayout, setStoryboardLayout] = useState<StoryboardLayoutMode>('vertical');
     const historyRef = useRef<CanvasElement[][]>([]);
@@ -350,7 +350,8 @@ function LovartCanvasContent() {
             });
         }
 
-        setAgentStage('idle');
+        setAgentStage('done');
+        window.setTimeout(() => setAgentStage('idle'), 1200);
         return result.reply;
     }, [createImageGeneratorElement, createVideoGeneratorElement, handleAiChat, pan.x, pan.y, scale, setElements, setPan, setSelectedIds, setTitle, viewportSize.height, viewportSize.width]);
 
@@ -1522,7 +1523,7 @@ function LovartCanvasContent() {
 
             {agentStage !== 'idle' && (
                 <div className="absolute top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-sky-200 bg-white/92 px-4 py-2 text-sm font-medium text-sky-700 shadow-[0_14px_34px_rgba(14,165,233,0.14)] backdrop-blur-xl dark:border-sky-400/20 dark:bg-slate-950/86 dark:text-sky-200">
-                    {agentStage === 'analyzing' ? 'Agent 正在分析需求…' : agentStage === 'planning' ? 'Agent 正在规划工作区…' : 'Agent 正在搭建节点…'}
+                    {agentStage === 'analyzing' ? 'Agent 正在分析需求…' : agentStage === 'planning' ? 'Agent 正在规划工作区…' : agentStage === 'building' ? 'Agent 正在搭建节点…' : 'Agent 已完成初始工作区'}
                 </div>
             )}
 
