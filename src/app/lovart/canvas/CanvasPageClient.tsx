@@ -33,12 +33,14 @@ function LovartCanvasContent() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
+    const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as 'design' | 'branding' | 'image-editing' | 'research' | null) || 'design', [searchParams]);
     const [showChat, setShowChat] = useState(Boolean(promptFromUrl));
     const [assetsCollapsed, setAssetsCollapsed] = useState(false);
     const [showMiniMap, setShowMiniMap] = useState(false);
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
     const [miniMapHoveredId, setMiniMapHoveredId] = useState<string | null>(null);
     const [viewportSize, setViewportSize] = useState({ width: 1440, height: 900 });
+    const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building'>('idle');
     const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
     const [storyboardLayout, setStoryboardLayout] = useState<StoryboardLayoutMode>('vertical');
     const historyRef = useRef<CanvasElement[][]>([]);
@@ -103,6 +105,234 @@ function LovartCanvasContent() {
     const { handleRemoveBackground, handleUpscale, handleCrop } = useCanvasImageActions({
         setElements,
     });
+
+    const handleAgentGenerate = useCallback(async (prompt: string, options?: { mode?: 'design' | 'branding' | 'image-editing' | 'research' }) => {
+        const resolvedMode = options?.mode || 'design';
+        setAgentStage('analyzing');
+        const result = await handleAiChat(prompt, options);
+        setAgentStage('planning');
+        const plan = result.plan || {};
+
+        if (plan.recommendedTitle && typeof plan.recommendedTitle === 'string') {
+            setTitle(plan.recommendedTitle);
+        }
+
+        const baseX = 140 - pan.x;
+        const baseY = 140 - pan.y;
+        const nextNodes: CanvasElement[] = [];
+        const layoutPresets = {
+            design: { textX: baseX, textY: baseY + 120, cardWidth: 440, cardGapY: 126, generatorX: baseX + 620, generatorY: baseY + 80, boardWidth: 1160, boardHeight: 760 },
+            branding: { textX: baseX, textY: baseY + 120, cardWidth: 460, cardGapY: 126, generatorX: baseX + 640, generatorY: baseY + 100, boardWidth: 1180, boardHeight: 760 },
+            'image-editing': { textX: baseX, textY: baseY + 120, cardWidth: 420, cardGapY: 120, generatorX: baseX + 560, generatorY: baseY + 100, boardWidth: 1080, boardHeight: 720 },
+            research: { textX: baseX, textY: baseY + 140, cardWidth: 320, cardGapY: 190, generatorX: baseX + 760, generatorY: baseY + 420, boardWidth: 1260, boardHeight: 900 },
+        } as const;
+        const preset = layoutPresets[resolvedMode];
+
+        nextNodes.push({
+            id: uuidv4(),
+            type: 'shape',
+            shapeType: 'square',
+            x: baseX - 56,
+            y: baseY - 72,
+            width: preset.boardWidth,
+            height: preset.boardHeight,
+            color: resolvedMode === 'branding' ? '#FFFBEB' : resolvedMode === 'image-editing' ? '#F0FDF4' : resolvedMode === 'research' ? '#F8FAFC' : '#F8FBFF',
+        });
+        nextNodes.push({
+            id: uuidv4(),
+            type: 'text',
+            x: baseX - 24,
+            y: baseY - 48,
+            width: 280,
+            content: resolvedMode === 'branding' ? 'Strategy Lane' : resolvedMode === 'image-editing' ? 'Edit Lane' : resolvedMode === 'research' ? 'Research Lane' : 'Concept Lane',
+            fontSize: 14,
+            color: '#64748B',
+        });
+        nextNodes.push({
+            id: uuidv4(),
+            type: 'text',
+            x: preset.generatorX,
+            y: baseY - 48,
+            width: 260,
+            content: resolvedMode === 'branding' ? 'Visual Direction Lane' : resolvedMode === 'image-editing' ? 'Output Lane' : resolvedMode === 'research' ? 'Exploration Lane' : 'Generation Lane',
+            fontSize: 14,
+            color: '#64748B',
+        });
+
+        const sectionCards = Array.isArray(plan.sections)
+            ? plan.sections.flatMap((section, index) => {
+                const cardX = resolvedMode === 'research' ? preset.textX + (index % 2) * 360 : preset.textX;
+                const cardY = resolvedMode === 'research' ? preset.textY + Math.floor(index / 2) * preset.cardGapY : preset.textY + index * preset.cardGapY;
+                return [
+                    {
+                        id: uuidv4(),
+                        type: 'text' as const,
+                        x: cardX,
+                        y: cardY - 44,
+                        width: preset.cardWidth - 36,
+                        content: resolvedMode === 'branding'
+                            ? index === 0 ? '品牌定位' : index === 1 ? '语气与调性' : index === 2 ? '视觉系统' : '品牌延展'
+                            : resolvedMode === 'image-editing'
+                                ? index === 0 ? '编辑目标' : index === 1 ? '问题诊断' : index === 2 ? '修改策略' : '输出建议'
+                                : resolvedMode === 'research'
+                                    ? index === 0 ? '参考样本' : index === 1 ? '风格关键词' : index === 2 ? '竞品观察' : '可借鉴方向'
+                                    : index === 0 ? '核心概念' : index === 1 ? '视觉语言' : index === 2 ? '版式建议' : '执行建议',
+                        fontSize: 14,
+                        color: '#6B7280',
+                    },
+                    {
+                        id: uuidv4(),
+                        type: 'shape' as const,
+                        shapeType: 'square' as const,
+                        x: cardX - 18,
+                        y: cardY - 18,
+                        width: preset.cardWidth,
+                        height: resolvedMode === 'research' ? 150 : 96,
+                        color: resolvedMode === 'branding' ? '#FEF3C7' : resolvedMode === 'image-editing' ? '#DCFCE7' : resolvedMode === 'research' ? '#E0E7FF' : '#EFF6FF',
+                    },
+                    {
+                        id: uuidv4(),
+                        type: 'text' as const,
+                        x: cardX,
+                        y: cardY,
+                        width: preset.cardWidth - 36,
+                        content: `${typeof section?.title === 'string' ? section.title : `Section ${index + 1}`}\n${typeof section?.body === 'string' ? section.body : ''}`,
+                        fontSize: 16,
+                    },
+                ];
+            })
+            : [];
+
+        if (sectionCards.length > 0) {
+            nextNodes.push({
+                id: uuidv4(),
+                type: 'shape',
+                shapeType: 'square',
+                x: baseX - 28,
+                y: baseY - 28,
+                width: resolvedMode === 'research' ? 760 : 520,
+                height: 92,
+                color: resolvedMode === 'branding' ? '#FFF7ED' : resolvedMode === 'image-editing' ? '#ECFDF5' : resolvedMode === 'research' ? '#F5F3FF' : '#F8FAFC',
+            });
+            nextNodes.push({
+                id: uuidv4(),
+                type: 'text',
+                x: baseX,
+                y: baseY,
+                width: 560,
+                content: typeof plan.recommendedTitle === 'string' ? plan.recommendedTitle : prompt,
+                fontSize: 34,
+            });
+            nextNodes.push({
+                id: uuidv4(),
+                type: 'text',
+                x: baseX,
+                y: baseY + 56,
+                width: 620,
+                content: typeof result.summary === 'string' ? result.summary : result.reply,
+                fontSize: 18,
+                color: '#6B7280',
+            });
+            nextNodes.push(...sectionCards);
+        } else if (Array.isArray(plan.createTextNodes)) {
+            nextNodes.push(...plan.createTextNodes.map((item, index) => ({
+                id: uuidv4(),
+                type: 'text' as const,
+                x: typeof item?.x === 'number' ? item.x : baseX,
+                y: typeof item?.y === 'number' ? item.y : baseY + index * 120,
+                content: typeof item?.content === 'string' ? item.content : 'New text',
+                fontSize: typeof item?.fontSize === 'number' ? item.fontSize : index === 0 ? 32 : 18,
+            })));
+        }
+
+        let imageGeneratorId: string | null = null;
+        if (plan.createImageGenerator || resolvedMode === 'design' || resolvedMode === 'image-editing') {
+            const imageNode = createImageGeneratorElement();
+            imageGeneratorId = imageNode.id;
+            nextNodes.push({
+                ...imageNode,
+                x: preset.generatorX,
+                y: preset.generatorY,
+                initialPrompt: prompt,
+                prompt,
+            });
+        }
+
+        let videoGeneratorId: string | null = null;
+        if (plan.createVideoGenerator || resolvedMode === 'research') {
+            const videoNode = createVideoGeneratorElement();
+            videoGeneratorId = videoNode.id;
+            nextNodes.push({
+                ...videoNode,
+                x: resolvedMode === 'research' ? preset.generatorX : preset.generatorX,
+                y: resolvedMode === 'research' ? preset.generatorY : preset.generatorY + 360,
+                initialPrompt: prompt,
+                prompt,
+            });
+        }
+
+        if (resolvedMode === 'branding' && !nextNodes.some((node) => node.type === 'image-generator')) {
+            const imageNode = createImageGeneratorElement();
+            imageGeneratorId = imageNode.id;
+            nextNodes.push({
+                ...imageNode,
+                x: preset.generatorX,
+                y: preset.generatorY,
+                initialPrompt: prompt,
+                prompt,
+            });
+        }
+
+        setAgentStage('building');
+
+        const firstTextNode = nextNodes.find((node) => node.type === 'text');
+        const sectionTextNodes = nextNodes.filter((node) => node.type === 'text').slice(2);
+        if (firstTextNode && sectionTextNodes.length > 0) {
+            nextNodes.push({
+                id: uuidv4(),
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: firstTextNode.id,
+                connectorTo: sectionTextNodes[0].id,
+                connectorStyle: 'dashed',
+                color: '#94A3B8',
+            });
+        }
+        if (sectionTextNodes.length > 0 && imageGeneratorId) {
+            nextNodes.push({
+                id: uuidv4(),
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: sectionTextNodes[Math.min(1, sectionTextNodes.length - 1)].id,
+                connectorTo: imageGeneratorId,
+                connectorStyle: 'dashed',
+                color: '#94A3B8',
+            });
+        }
+        if (sectionTextNodes.length > 0 && videoGeneratorId) {
+            nextNodes.push({
+                id: uuidv4(),
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: sectionTextNodes[sectionTextNodes.length - 1].id,
+                connectorTo: videoGeneratorId,
+                connectorStyle: 'dashed',
+                color: '#94A3B8',
+            });
+        }
+
+        if (nextNodes.length > 0) {
+            setElements((prev) => [...prev, ...nextNodes]);
+            const preferredSelection = nextNodes.find((node) => node.type !== 'shape' && node.type !== 'connector') || nextNodes[0];
+            setSelectedIds([preferredSelection.id]);
+        }
+
+        setAgentStage('idle');
+        return result.reply;
+    }, [createImageGeneratorElement, createVideoGeneratorElement, handleAiChat, pan.x, pan.y, setElements, setSelectedIds, setTitle]);
 
     const handleOpenImageEditMode = useCallback((element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => {
         if (!element.content) return;
@@ -1270,13 +1500,20 @@ function LovartCanvasContent() {
                 </div>
             </header>
 
+            {agentStage !== 'idle' && (
+                <div className="absolute top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-sky-200 bg-white/92 px-4 py-2 text-sm font-medium text-sky-700 shadow-[0_14px_34px_rgba(14,165,233,0.14)] backdrop-blur-xl dark:border-sky-400/20 dark:bg-slate-950/86 dark:text-sky-200">
+                    {agentStage === 'analyzing' ? 'Agent 正在分析需求…' : agentStage === 'planning' ? 'Agent 正在规划工作区…' : 'Agent 正在搭建节点…'}
+                </div>
+            )}
+
             {showChat && (
                 <div className="absolute right-4 top-20 bottom-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300">
                     <AiDesignerPanel
-                        onGenerate={handleAiChat}
+                        onGenerate={handleAgentGenerate}
                         isGenerating={isGenerating}
                         onClose={() => setShowChat(false)}
                         initialPrompt={promptFromUrl}
+                        initialMode={agentModeFromUrl}
                     />
                 </div>
             )}

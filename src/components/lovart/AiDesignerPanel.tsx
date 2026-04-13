@@ -4,11 +4,14 @@ import {
     RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X
 } from 'lucide-react';
 
+type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
+
 interface AiDesignerPanelProps {
-    onGenerate: (prompt: string) => Promise<string>;
+    onGenerate: (prompt: string, options?: { mode?: AgentMode }) => Promise<{ reply: string; summary?: string; plan?: Record<string, unknown> } | string>;
     isGenerating: boolean;
     onClose?: () => void;
     initialPrompt?: string;
+    initialMode?: AgentMode;
 }
 
 interface Message {
@@ -16,58 +19,107 @@ interface Message {
     content: string;
 }
 
-export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt }: AiDesignerPanelProps) {
+export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
     const [inputValue, setInputValue] = useState(initialPrompt || '');
     const [messages, setMessages] = useState<Message[]>([]);
     const [hasAutoSent, setHasAutoSent] = useState(false);
+    const [agentMode, setAgentMode] = useState<AgentMode>(initialMode);
 
-    const suggestions = [
-        {
-            title: 'Wine List',
-            description: 'Mimic this effect to generate a poster of ...',
-            color: 'bg-blue-50',
-            imageColor: 'bg-blue-200'
+    const modeConfig: Record<AgentMode, { label: string; greeting: string; subtitle: string; placeholder: string }> = {
+        design: {
+            label: 'Design',
+            greeting: 'Hi，我是你的AI设计师',
+            subtitle: '我会帮你拆解需求、生成版式方向与视觉方案',
+            placeholder: '描述你想做的设计内容、风格和用途',
         },
-        {
-            title: 'Coffee Shop Branding',
-            description: 'you are a brand design expert, generate ...',
-            color: 'bg-orange-50',
-            imageColor: 'bg-orange-200'
+        branding: {
+            label: 'Branding',
+            greeting: 'Hi，我是你的品牌设计顾问',
+            subtitle: '我会帮你梳理品牌气质、视觉语言和系统延展',
+            placeholder: '描述你的品牌、受众、调性与使用场景',
         },
-        {
-            title: 'Story Board',
-            description: 'I NEED A STORY BOARD FOR THIS...',
-            color: 'bg-purple-50',
-            imageColor: 'bg-purple-200'
-        }
-    ];
+        'image-editing': {
+            label: 'Image Editing',
+            greeting: 'Hi，我是你的图像编辑助手',
+            subtitle: '我会帮你拆解修图目标、修改方向与执行步骤',
+            placeholder: '描述你想对图片做什么修改',
+        },
+        research: {
+            label: 'Research',
+            greeting: 'Hi，我是你的创意研究员',
+            subtitle: '我会帮你梳理参考方向、风格关键词与创意线索',
+            placeholder: '描述你想研究的风格、竞品或参考方向',
+        },
+    };
+
+    const suggestionsByMode: Record<AgentMode, Array<{ title: string; description: string; imageColor: string }>> = {
+        design: [
+            { title: '海报设计', description: '为新品发布会生成一张极简高级感海报，黑金配色，主标题突出。', imageColor: 'bg-blue-200' },
+            { title: '产品 KV', description: '做一张护肤品主视觉，偏干净通透，带柔和高光和留白。', imageColor: 'bg-cyan-200' },
+            { title: '故事板', description: '为 15 秒品牌短片生成三镜头故事板，强调节奏和转场。', imageColor: 'bg-purple-200' },
+        ],
+        branding: [
+            { title: '咖啡品牌', description: '帮我定义一个精品咖啡品牌的视觉基调、Logo 方向和包装语言。', imageColor: 'bg-orange-200' },
+            { title: '美妆品牌', description: '梳理一个年轻女性护肤品牌的品牌语气、主色和营销视觉。', imageColor: 'bg-pink-200' },
+            { title: '科技品牌', description: '为 AI SaaS 产品构建一套理性、可信、现代的品牌视觉方向。', imageColor: 'bg-indigo-200' },
+        ],
+        'image-editing': [
+            { title: '去杂物', description: '把产品图背景里的杂物清干净，保留自然光感和台面质感。', imageColor: 'bg-emerald-200' },
+            { title: '改场景', description: '把这张鞋子图改到更高级的展陈空间里，保持主体不变。', imageColor: 'bg-lime-200' },
+            { title: '统一风格', description: '把这组商品图统一成奶油白电商风，修正色温和阴影。', imageColor: 'bg-teal-200' },
+        ],
+        research: [
+            { title: '竞品研究', description: '分析 3 个头部护肤品牌首页视觉的共同点与可借鉴策略。', imageColor: 'bg-violet-200' },
+            { title: '风格关键词', description: '帮我整理“未来感科技发布会”的关键词、材质和镜头语言。', imageColor: 'bg-fuchsia-200' },
+            { title: '参考拆解', description: '从时尚杂志封面里提炼可用于海报设计的版式套路。', imageColor: 'bg-slate-200' },
+        ],
+    };
+
+    const suggestions = suggestionsByMode[agentMode];
 
     const handleSend = useCallback(async () => {
         if (inputValue.trim() && !isGenerating) {
             const prompt = inputValue;
             setInputValue('');
 
-            // Add user message
             setMessages(prev => [...prev, { role: 'user', content: prompt }]);
 
             try {
-                const response = await onGenerate(prompt);
-                // Add assistant message
-                setMessages(prev => [...prev, { role: 'assistant', content: response }]);
+                const response = await onGenerate(prompt, { mode: agentMode });
+                const reply = typeof response === 'string' ? response : response.reply;
+                setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
-                // Optionally add an error message
             }
         }
-    }, [inputValue, isGenerating, onGenerate]);
+    }, [agentMode, inputValue, isGenerating, onGenerate]);
 
     // 自动发送 initialPrompt（如果提供）
     React.useEffect(() => {
+        setAgentMode(initialMode);
+    }, [initialMode]);
+
+    React.useEffect(() => {
+        if (typeof initialPrompt === 'string') {
+            setInputValue(initialPrompt);
+        }
+    }, [initialPrompt]);
+
+    React.useEffect(() => {
         if (initialPrompt && !hasAutoSent && !isGenerating) {
             setHasAutoSent(true);
-            handleSend();
+            void onGenerate(initialPrompt, { mode: initialMode }).then((response) => {
+                const reply = typeof response === 'string' ? response : response.reply;
+                setMessages([
+                    { role: 'user', content: initialPrompt },
+                    { role: 'assistant', content: reply },
+                ]);
+                setInputValue('');
+            }).catch((error) => {
+                console.error('Failed to auto-start agent:', error);
+            });
         }
-    }, [initialPrompt, hasAutoSent, isGenerating, handleSend]);
+    }, [hasAutoSent, initialMode, initialPrompt, isGenerating, onGenerate]);
 
     return (
         <div className="flex flex-col h-full bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
@@ -97,8 +149,8 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                                 </div>
                             </div>
-                            <h1 className="text-3xl font-bold text-gray-900 mb-2">Hi，我是你的AI设计师</h1>
-                            <p className="text-xl text-gray-400 font-light">让我们开始今天的创作吧！</p>
+                            <h1 className="text-3xl font-bold text-gray-900 mb-2">{modeConfig[agentMode].greeting}</h1>
+                            <p className="text-lg text-gray-400 font-light">{modeConfig[agentMode].subtitle}</p>
                         </div>
 
                         {/* Suggestions Cards */}
@@ -160,7 +212,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                     <textarea
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
-                        placeholder="请输入你的设计需求"
+                        placeholder={modeConfig[agentMode].placeholder}
                         className="w-full h-24 p-4 resize-none outline-none text-gray-700 placeholder-gray-300 bg-transparent rounded-t-2xl"
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -182,18 +234,21 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
 
                         <div className="flex items-center gap-2">
                             <div className="flex items-center bg-gray-50 rounded-full p-1 border border-gray-100">
-                                <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-full transition-all">
-                                    <Lightbulb size={16} />
-                                </button>
-                                <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-full transition-all">
-                                    <Zap size={16} />
-                                </button>
-                                <button className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-white rounded-full transition-all">
-                                    <Globe size={16} />
-                                </button>
-                                <button className="p-1.5 text-blue-500 bg-white shadow-sm rounded-full transition-all">
-                                    <Box size={16} />
-                                </button>
+                                {([
+                                    { mode: 'design', icon: Lightbulb, title: '设计方向' },
+                                    { mode: 'branding', icon: Zap, title: '品牌策略' },
+                                    { mode: 'research', icon: Globe, title: '参考研究' },
+                                    { mode: 'image-editing', icon: Box, title: '图像编辑' },
+                                ] as const).map(({ mode, icon: Icon, title }) => (
+                                    <button
+                                        key={mode}
+                                        onClick={() => setAgentMode(mode)}
+                                        title={title}
+                                        className={`p-1.5 rounded-full transition-all ${agentMode === mode ? 'text-blue-500 bg-white shadow-sm' : 'text-gray-400 hover:text-gray-600 hover:bg-white'}`}
+                                    >
+                                        <Icon size={16} />
+                                    </button>
+                                ))}
                             </div>
 
                             <button

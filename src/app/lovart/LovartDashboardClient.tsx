@@ -12,6 +12,8 @@ import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
 import Link from 'next/link';
 import { v4 as uuidv4 } from 'uuid';
 
+type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
+
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
 
 type CanvasElementThumbnailRow = {
@@ -42,6 +44,7 @@ export default function LovartDashboard() {
     const [placeholder, setPlaceholder] = useState('');
     const [placeholderIndex, setPlaceholderIndex] = useState(0);
     const [inputValue, setInputValue] = useState('');
+    const [agentMode, setAgentMode] = useState<AgentMode>('design');
     const [isGenerating, setIsGenerating] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
     const notificationRef = useRef<HTMLDivElement>(null);
@@ -252,7 +255,7 @@ export default function LovartDashboard() {
 
             // 2. Redirect to canvas page with the new project and prompt
             // Don't wait for API call, let the canvas page handle it
-            window.location.href = `/canvas?id=${newProjectId}&prompt=${encodeURIComponent(inputValue.trim())}`;
+            window.location.href = `/canvas?id=${newProjectId}&prompt=${encodeURIComponent(inputValue.trim())}&mode=${encodeURIComponent(agentMode)}`;
         } catch (error) {
             console.error('Generation failed:', error);
             alert(error instanceof Error ? error.message : '生成失败，请重试');
@@ -394,7 +397,7 @@ export default function LovartDashboard() {
                                 <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">D</div>
                                 <h1 className="text-4xl font-bold text-gray-900">Doodleverse让设计更简单</h1>
                             </div>
-                            <p className="text-gray-500 mb-8">输入想法即可生成，帮你完成一切</p>
+                            <p className="text-gray-500 mb-8">输入目标，Agent 会为你创建项目、进入画布并启动对应工作流</p>
 
                             {/* Search Input */}
                             <div className="relative max-w-2xl mx-auto mb-6">
@@ -413,9 +416,10 @@ export default function LovartDashboard() {
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
                                     <button 
                                         className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                                        onClick={() => setInputValue('')}
+                                        onClick={() => setAgentMode('design')}
+                                        title="切换到设计 Agent"
                                     >
-                                        <Sparkles size={20} className="text-gray-400" />
+                                        <Sparkles size={20} className={`${agentMode === 'design' ? 'text-black' : 'text-gray-400'}`} />
                                     </button>
                                     <button 
                                         onClick={handleGenerate}
@@ -429,18 +433,20 @@ export default function LovartDashboard() {
 
                             {/* Quick Tags */}
                             <div className="flex items-center justify-center gap-3 flex-wrap">
-                                <button className="px-4 py-2 rounded-full bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm">
-                                    🎨 Design
-                                </button>
-                                <button className="px-4 py-2 rounded-full bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm">
-                                    🏷️ Branding
-                                </button>
-                                <button className="px-4 py-2 rounded-full bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm">
-                                    ✂️ Image Editing
-                                </button>
-                                <button className="px-4 py-2 rounded-full bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm">
-                                    More
-                                </button>
+                                {[
+                                    { key: 'design', label: '🎨 Design' },
+                                    { key: 'branding', label: '🏷️ Branding' },
+                                    { key: 'image-editing', label: '✂️ Image Editing' },
+                                    { key: 'research', label: '🔎 Research' },
+                                ].map((item) => (
+                                    <button
+                                        key={item.key}
+                                        onClick={() => setAgentMode(item.key as AgentMode)}
+                                        className={`px-4 py-2 rounded-full text-sm font-medium transition-colors shadow-sm ${agentMode === item.key ? 'bg-black text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}`}
+                                    >
+                                        {item.label}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 

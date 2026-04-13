@@ -446,7 +446,7 @@ export function useCanvasGeneration({
   );
 
   const handleAiChat = useCallback(
-    async (prompt: string): Promise<string> => {
+    async (prompt: string, options?: { mode?: 'design' | 'branding' | 'image-editing' | 'research' }): Promise<{ reply: string; summary?: string; plan?: Record<string, any> }> => {
       setIsGenerating(true);
       try {
         const response = await fetch('/api/generate-design', {
@@ -454,7 +454,7 @@ export function useCanvasGeneration({
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ prompt }),
+          body: JSON.stringify({ prompt, mode: options?.mode || 'design' }),
         });
 
         const data = await readResponsePayload(response);
@@ -469,7 +469,11 @@ export function useCanvasGeneration({
           );
         }
 
-        return typeof data.suggestion === 'string' ? data.suggestion : '未收到回复';
+        return {
+          reply: typeof data.suggestion === 'string' ? data.suggestion : '未收到回复',
+          summary: typeof data.summary === 'string' ? data.summary : undefined,
+          plan: data.plan && typeof data.plan === 'object' ? (data.plan as Record<string, any>) : {},
+        };
       } catch (error) {
         console.error('Chat generation failed:', error);
         throw error;
