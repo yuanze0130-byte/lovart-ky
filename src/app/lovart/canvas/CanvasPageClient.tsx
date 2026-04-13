@@ -117,8 +117,12 @@ function LovartCanvasContent() {
             setTitle(plan.recommendedTitle);
         }
 
+        const existingPlacedElements = elements.filter((element) => element.type !== 'connector');
+        const offsetY = existingPlacedElements.length > 0
+            ? Math.max(...existingPlacedElements.map((element) => element.y + (element.height || 120))) + 120
+            : 140 - pan.y;
         const baseX = 140 - pan.x;
-        const baseY = 140 - pan.y;
+        const baseY = offsetY;
         const workspaceGroupId = uuidv4();
         const nextNodes: CanvasElement[] = [];
         const layoutPresets = {
