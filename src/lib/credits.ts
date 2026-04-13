@@ -1,4 +1,4 @@
-import { createServerSupabaseClient } from '@/lib/supabase';
+import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import type { UserCreditsRow } from '@/lib/supabase';
 
 export const DEFAULT_SIGNUP_CREDITS = 80;
@@ -20,7 +20,7 @@ type CreditAction =
   | 'manual_adjust';
 
 export async function ensureUserCredits(userId: string): Promise<UserCreditsRow> {
-  const supabase = createServerSupabaseClient();
+  const supabase = createServiceRoleSupabaseClient();
   const { data, error } = await supabase
     .from('user_credits')
     .select('*')
@@ -68,7 +68,7 @@ export async function consumeCredits(params: {
   referenceId?: string;
 }) {
   const { userId, amount, type, description, referenceId } = params;
-  const supabase = createServerSupabaseClient();
+  const supabase = createServiceRoleSupabaseClient();
 
   const current = await ensureUserCredits(userId);
   if (current.credits < amount) {
@@ -115,7 +115,7 @@ async function logCreditTransaction(params: {
   description: string;
   referenceId?: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = createServiceRoleSupabaseClient();
 
   try {
     await supabase.from('credit_transactions' as never).insert({

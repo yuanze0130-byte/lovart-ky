@@ -112,6 +112,7 @@ export default function LovartDashboard() {
                     supabase
                         .from('projects')
                         .select('*')
+                        .eq('user_id', user.id)
                         .order('updated_at', { ascending: false }),
                     supabase
                         .from('user_credits')
@@ -128,7 +129,7 @@ export default function LovartDashboard() {
                     .filter((project) => !project.thumbnail)
                     .map((project) => project.id);
 
-                let derivedThumbnailMap = new Map<string, string>();
+                const derivedThumbnailMap = new Map<string, string>();
 
                 if (missingThumbnailProjectIds.length > 0) {
                     const { data: canvasRows, error: canvasError } = await supabase

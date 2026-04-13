@@ -36,7 +36,7 @@ export default function ProjectsPage() {
 
             try {
                 const [projectsResult, creditsResult] = await Promise.all([
-                    supabase.from('projects').select('*').order('updated_at', { ascending: false }),
+                    supabase.from('projects').select('*').eq('user_id', user.id).order('updated_at', { ascending: false }),
                     supabase.from('user_credits').select('credits').eq('user_id', user.id).single(),
                 ]);
 
@@ -47,7 +47,7 @@ export default function ProjectsPage() {
                     .filter((project) => !project.thumbnail)
                     .map((project) => project.id);
 
-                let derivedThumbnailMap = new Map<string, string>();
+                const derivedThumbnailMap = new Map<string, string>();
 
                 if (missingThumbnailProjectIds.length > 0) {
                     const { data: canvasRows, error: canvasError } = await supabase
@@ -113,7 +113,7 @@ export default function ProjectsPage() {
     };
 
     const handleRenameProject = async (project: Project) => {
-        if (!supabase) return;
+        if (!supabase || !user) return;
 
         const nextTitle = window.prompt('输入新的项目名称', project.title)?.trim();
         if (!nextTitle || nextTitle === project.title) return;
@@ -136,7 +136,7 @@ export default function ProjectsPage() {
     };
 
     const handleDeleteProject = async (project: Project) => {
-        if (!supabase) return;
+        if (!supabase || !user) return;
 
         const confirmed = window.confirm(`确定删除项目“${project.title}”吗？删除后无法恢复。`);
         if (!confirmed) return;
@@ -154,7 +154,8 @@ export default function ProjectsPage() {
         const { error: projectError } = await supabase
             .from('projects')
             .delete()
-            .eq('id', project.id);
+            .eq('id', project.id)
+            .eq('user_id', user.id);
 
         if (projectError) {
             alert(`删除项目失败：${projectError.message}`);

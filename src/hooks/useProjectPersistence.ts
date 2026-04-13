@@ -172,7 +172,7 @@ export function useProjectPersistence({
         setIsLoading(true);
 
         const [projectResult, elementsResult] = await Promise.all([
-          supabase.from('projects').select('*').eq('id', projectId).single(),
+          supabase.from('projects').select('*').eq('id', projectId).eq('user_id', user.id).single(),
           supabase.from('canvas_elements').select('*').eq('project_id', projectId),
         ]);
 
