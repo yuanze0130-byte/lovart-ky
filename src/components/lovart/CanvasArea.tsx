@@ -127,6 +127,7 @@ interface CanvasAreaProps {
     selectedIds: string[];
     onSelect: (ids: string[]) => void;
     onElementChange: (id: string, newAttrs: Partial<CanvasElement>) => void;
+    onElementsChange?: (changes: Array<{ id: string; newAttrs: Partial<CanvasElement> }>) => void;
     onDelete: (id: string) => void;
     onAddElement: (element: CanvasElement) => void;
     onCreateNodeAt?: (x: number, y: number) => void;
@@ -154,6 +155,7 @@ export function CanvasArea({
     selectedIds,
     onSelect,
     onElementChange,
+    onElementsChange,
     onDelete,
     onAddElement,
     onCreateNodeAt,
@@ -598,6 +600,11 @@ export function CanvasArea({
     };
 
     const applyElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
+        if (updates.length === 0) return;
+        if (onElementsChange) {
+            onElementsChange(updates.map(({ id, updates: nextUpdates }) => ({ id, newAttrs: nextUpdates })));
+            return;
+        }
         updates.forEach(({ id, updates: nextUpdates }) => {
             onElementChange(id, nextUpdates);
         });

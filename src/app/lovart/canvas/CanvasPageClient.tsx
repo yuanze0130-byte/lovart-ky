@@ -64,6 +64,7 @@ function LovartCanvasContent() {
         handleAddText,
         handleAddShape,
         handleElementChange,
+        handleElementsChange,
         handleDelete,
         handleOpenImageGenerator,
         handleOpenVideoGenerator,
@@ -1179,6 +1180,7 @@ function LovartCanvasContent() {
                     selectedIds={selectedIds}
                     onSelect={setSelectedIds}
                     onElementChange={handleElementChange}
+                    onElementsChange={handleElementsChange}
                     onDelete={handleDelete}
                     onAddElement={appendElement}
                     onCreateNodeAt={(x, y) => {

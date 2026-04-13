@@ -100,6 +100,18 @@ export function useCanvasElements({
     [setElements]
   );
 
+  const handleElementsChange = useCallback(
+    (changes: Array<{ id: string; newAttrs: Partial<CanvasElement> }>) => {
+      if (changes.length === 0) return;
+      const changeMap = new Map(changes.map((change) => [change.id, change.newAttrs]));
+      setElements((prev) => prev.map((el) => {
+        const nextAttrs = changeMap.get(el.id);
+        return nextAttrs ? { ...el, ...nextAttrs } : el;
+      }));
+    },
+    [setElements]
+  );
+
   const handleDelete = useCallback(
     (id: string) => {
       setElements((prev) => prev.filter((el) => el.id !== id));
@@ -141,6 +153,7 @@ export function useCanvasElements({
     handleAddText,
     handleAddShape,
     handleElementChange,
+    handleElementsChange,
     handleDelete,
     handleOpenImageGenerator,
     handleOpenVideoGenerator,
