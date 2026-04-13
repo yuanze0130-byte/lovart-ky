@@ -119,6 +119,7 @@ function LovartCanvasContent() {
 
         const baseX = 140 - pan.x;
         const baseY = 140 - pan.y;
+        const workspaceGroupId = uuidv4();
         const nextNodes: CanvasElement[] = [];
         const layoutPresets = {
             design: { textX: baseX, textY: baseY + 120, cardWidth: 440, cardGapY: 126, generatorX: baseX + 620, generatorY: baseY + 80, boardWidth: 1160, boardHeight: 760 },
@@ -331,8 +332,9 @@ function LovartCanvasContent() {
         }
 
         if (nextNodes.length > 0) {
-            setElements((prev) => [...prev, ...nextNodes]);
-            const preferredSelection = nextNodes.find((node) => node.type !== 'shape' && node.type !== 'connector') || nextNodes[0];
+            const groupedNodes = nextNodes.map((node) => node.type === 'connector' ? node : { ...node, groupId: workspaceGroupId });
+            setElements((prev) => [...prev, ...groupedNodes]);
+            const preferredSelection = groupedNodes.find((node) => node.type !== 'shape' && node.type !== 'connector') || groupedNodes[0];
             setSelectedIds([preferredSelection.id]);
         }
 
