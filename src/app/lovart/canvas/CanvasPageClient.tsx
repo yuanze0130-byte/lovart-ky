@@ -336,11 +336,23 @@ function LovartCanvasContent() {
             setElements((prev) => [...prev, ...groupedNodes]);
             const preferredSelection = groupedNodes.find((node) => node.type !== 'shape' && node.type !== 'connector') || groupedNodes[0];
             setSelectedIds([preferredSelection.id]);
+
+            const placedNodes = groupedNodes.filter((node) => node.type !== 'connector');
+            const left = Math.min(...placedNodes.map((node) => node.x));
+            const top = Math.min(...placedNodes.map((node) => node.y));
+            const right = Math.max(...placedNodes.map((node) => node.x + (node.width || 180)));
+            const bottom = Math.max(...placedNodes.map((node) => node.y + (node.height || 100)));
+            const centerX = (left + right) / 2;
+            const centerY = (top + bottom) / 2;
+            setPan({
+                x: viewportSize.width / 2 - centerX * scale,
+                y: viewportSize.height / 2 - centerY * scale,
+            });
         }
 
         setAgentStage('idle');
         return result.reply;
-    }, [createImageGeneratorElement, createVideoGeneratorElement, handleAiChat, pan.x, pan.y, setElements, setSelectedIds, setTitle]);
+    }, [createImageGeneratorElement, createVideoGeneratorElement, handleAiChat, pan.x, pan.y, scale, setElements, setPan, setSelectedIds, setTitle, viewportSize.height, viewportSize.width]);
 
     const handleOpenImageEditMode = useCallback((element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => {
         if (!element.content) return;
