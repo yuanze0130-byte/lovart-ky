@@ -229,7 +229,13 @@ function LovartCanvasContent() {
                 x: baseX,
                 y: baseY + 56,
                 width: 620,
-                content: typeof result.summary === 'string' ? result.summary : result.reply,
+                content: resolvedMode === 'branding'
+                    ? `品牌工作区 · 从定位、调性到视觉方向\n${typeof result.summary === 'string' ? result.summary : result.reply}`
+                    : resolvedMode === 'image-editing'
+                        ? `图像编辑工作区 · 从问题诊断到修改执行\n${typeof result.summary === 'string' ? result.summary : result.reply}`
+                        : resolvedMode === 'research'
+                            ? `研究工作区 · 从参考采样到创意线索\n${typeof result.summary === 'string' ? result.summary : result.reply}`
+                            : `设计工作区 · 从概念到生成执行\n${typeof result.summary === 'string' ? result.summary : result.reply}`,
                 fontSize: 18,
                 color: '#6B7280',
             });
