@@ -329,8 +329,8 @@ export function ContextToolbar({
                         onClick={handleRemoveBackgroundClick}
                         className={`p-2 rounded-lg transition-colors relative ${
                             element.type === 'image' && onRemoveBackground
-                                ? 'hover:bg-gray-50 text-gray-700'
-                                : 'text-gray-300 cursor-not-allowed'
+                                ? 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
+                                : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
                         title={element.type === 'image' ? (isRemovingBg ? '去背景处理中...' : '去背景') : '仅图片支持去背景'}
                         disabled={element.type !== 'image' || !onRemoveBackground || isRemovingBg}
@@ -350,9 +350,9 @@ export function ContextToolbar({
                         className={`rounded-lg p-2 transition-colors ${
                             element.type === 'image' && onCrop
                                 ? showCropPanel
-                                    ? 'bg-sky-400/14 text-sky-200'
-                                    : 'text-slate-200 hover:bg-white/8'
-                                : 'cursor-not-allowed text-slate-600'
+                                    ? 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-400/14 dark:text-sky-200 dark:hover:bg-sky-400/20'
+                                    : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'
+                                : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
                         }`}
                         title={element.type === 'image' ? '裁切' : '仅图片支持裁切'}
                         disabled={element.type !== 'image' || !onCrop || isCropping}
@@ -368,9 +368,9 @@ export function ContextToolbar({
                         className={`p-2 rounded-lg transition-colors ${
                             element.type === 'image' && onUpscale
                                 ? showUpscalePanel
-                                    ? 'bg-gray-100 text-gray-900'
-                                    : 'hover:bg-gray-50 text-gray-700'
-                                : 'text-gray-300 cursor-not-allowed'
+                                    ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white'
+                                    : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
+                                : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
                         title={element.type === 'image' ? '超分' : '仅图片支持超分'}
                         disabled={element.type !== 'image' || !onUpscale || isUpscaling}
@@ -390,21 +390,21 @@ export function ContextToolbar({
                         <>
                             <button
                                 onClick={() => onOpenImageEditMode(element, 'relight', element.prompt || '保留主体，仅重打光，增强光影氛围与层次。')}
-                                className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50"
+                                className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
                                 title="重打光"
                             >
                                 <Lightbulb size={18} />
                             </button>
                             <button
                                 onClick={() => onOpenImageEditMode(element, 'angle', element.prompt || '保留主体身份与材质，仅调整视角与透视关系。')}
-                                className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50"
+                                className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
                                 title="调整角度"
                             >
                                 <RotateCcw size={18} />
                             </button>
                             <button
                                 onClick={handleReversePrompt}
-                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'text-purple-500' : 'text-gray-700 hover:bg-gray-50'}`}
+                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'text-purple-500' : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'}`}
                                 title="反推提示词"
                                 disabled={isReversingPrompt}
                             >
@@ -421,8 +421,8 @@ export function ContextToolbar({
                             }}
                             className={`p-2 rounded-lg transition-colors ${
                                 showEditPanel
-                                    ? 'bg-purple-100 text-purple-600'
-                                    : 'hover:bg-gray-50 text-gray-700'
+                                    ? 'bg-purple-100 text-purple-600 dark:bg-purple-500/18 dark:text-purple-200'
+                                    : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                             }`}
                             title="编辑 / 重新生成"
                         >
@@ -454,7 +454,7 @@ export function ContextToolbar({
 
                     <button
                         onClick={handleDownload}
-                        className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors"
+                        className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors dark:text-slate-200 dark:hover:bg-white/8"
                         title="下载图片"
                     >
                         <Download size={18} />

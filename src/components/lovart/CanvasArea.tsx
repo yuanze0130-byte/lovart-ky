@@ -1,4 +1,5 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
+import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -190,7 +191,8 @@ export function CanvasArea({
         panX: number;
         panY: number;
         aspectRatio?: number;
-        initialPositions?: { id: string; x: number; y: number }[];
+        initialPositions?: { id: string; x: number; y: number; width?: number; height?: number }[];
+        selectionBounds?: { left: number; top: number; right: number; bottom: number };
     } | null>(null);
     const draggedElementIdRef = useRef<string | null>(null);
     const resizeHandleRef = useRef<string | null>(null);
@@ -200,6 +202,16 @@ export function CanvasArea({
         x: (clientX - pan.x) / scale,
         y: (clientY - 56 - pan.y) / scale,
     });
+
+    const getGroupedSelectionIds = (elementId: string | null) => {
+        if (!elementId) return [] as string[];
+        const element = elements.find((el) => el.id === elementId);
+        if (!element) return [] as string[];
+        if (!element.groupId) return [element.id];
+        return elements
+            .filter((el) => el.type !== 'connector' && el.groupId === element.groupId)
+            .map((el) => el.id);
+    };
 
     const handleMouseDown = (
         e: React.MouseEvent,
@@ -251,20 +263,22 @@ export function CanvasArea({
 
         e.stopPropagation();
 
+        const groupedIds = getGroupedSelectionIds(elementId);
         let dragSelectedIds = selectedIds;
         const isToggleSelect = e.ctrlKey || e.metaKey || e.shiftKey;
+        const isGroupAlreadySelected = groupedIds.length > 0 && groupedIds.every((id) => selectedIds.includes(id));
 
         if (isToggleSelect) {
-            if (selectedIds.includes(elementId)) {
-                dragSelectedIds = selectedIds.filter((id) => id !== elementId);
+            if (isGroupAlreadySelected) {
+                dragSelectedIds = selectedIds.filter((id) => !groupedIds.includes(id));
                 onSelect(dragSelectedIds);
             } else {
-                dragSelectedIds = [...selectedIds, elementId];
+                dragSelectedIds = Array.from(new Set([...selectedIds, ...groupedIds]));
                 onSelect(dragSelectedIds);
             }
         } else {
-            if (!selectedIds.includes(elementId)) {
-                dragSelectedIds = [elementId];
+            if (!isGroupAlreadySelected || groupedIds.length !== selectedIds.length) {
+                dragSelectedIds = groupedIds;
                 onSelect(dragSelectedIds);
             }
         }
@@ -277,7 +291,7 @@ export function CanvasArea({
 
         const initialPositions = elements
             .filter((el) => dragSelectedIds.includes(el.id))
-            .map((el) => ({ id: el.id, x: el.x, y: el.y }));
+            .map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height }));
 
         dragStartRef.current = {
             x: e.clientX,
@@ -316,6 +330,26 @@ export function CanvasArea({
         };
     };
 
+    const handleSelectionResizeStart = (e: React.MouseEvent, handle: 'nw' | 'ne' | 'sw' | 'se') => {
+        if (!selectionBounds || actionableSelection.length < 2) return;
+        e.stopPropagation();
+        setIsResizing(true);
+        draggedElementIdRef.current = '__selection__';
+        resizeHandleRef.current = handle;
+        dragStartRef.current = {
+            x: e.clientX,
+            y: e.clientY,
+            elementX: selectionBounds.left,
+            elementY: selectionBounds.top,
+            width: selectionBounds.right - selectionBounds.left,
+            height: selectionBounds.bottom - selectionBounds.top,
+            panX: 0,
+            panY: 0,
+            initialPositions: actionableSelection.map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height })),
+            selectionBounds,
+        };
+    };
+
     const handleMouseMove = (e: React.MouseEvent) => {
         const point = getCanvasPoint(e.clientX, e.clientY);
 
@@ -347,10 +381,65 @@ export function CanvasArea({
         const dy = (e.clientY - dragStartRef.current.y) / scale;
 
         if (isDragging && dragStartRef.current.initialPositions) {
-            dragStartRef.current.initialPositions.forEach((pos) => {
-                onElementChange(pos.id, { x: pos.x + dx, y: pos.y + dy });
-            });
+            applyElementUpdates(dragStartRef.current.initialPositions.map((pos) => ({
+                id: pos.id,
+                updates: { x: pos.x + dx, y: pos.y + dy },
+            })));
         } else if (isResizing && resizeHandleRef.current) {
+            if (draggedElementIdRef.current === '__selection__' && dragStartRef.current.selectionBounds && dragStartRef.current.initialPositions) {
+                const bounds = dragStartRef.current.selectionBounds;
+                const minSelectionWidth = 40;
+                const minSelectionHeight = 40;
+                let nextLeft = bounds.left;
+                let nextTop = bounds.top;
+                let nextRight = bounds.right;
+                let nextBottom = bounds.bottom;
+
+                if (resizeHandleRef.current.includes('w')) {
+                    nextLeft = Math.min(bounds.left + dx, bounds.right - minSelectionWidth);
+                }
+                if (resizeHandleRef.current.includes('e')) {
+                    nextRight = Math.max(bounds.right + dx, bounds.left + minSelectionWidth);
+                }
+                if (resizeHandleRef.current.includes('n')) {
+                    nextTop = Math.min(bounds.top + dy, bounds.bottom - minSelectionHeight);
+                }
+                if (resizeHandleRef.current.includes('s')) {
+                    nextBottom = Math.max(bounds.bottom + dy, bounds.top + minSelectionHeight);
+                }
+
+                const nextWidth = Math.max(minSelectionWidth, nextRight - nextLeft);
+                const nextHeight = Math.max(minSelectionHeight, nextBottom - nextTop);
+                const baseWidth = Math.max(1, bounds.right - bounds.left);
+                const baseHeight = Math.max(1, bounds.bottom - bounds.top);
+                const scaleX = nextWidth / baseWidth;
+                const scaleY = nextHeight / baseHeight;
+
+                applyElementUpdates(dragStartRef.current.initialPositions.map((pos) => {
+                    const relX = (pos.x - bounds.left) / baseWidth;
+                    const relY = (pos.y - bounds.top) / baseHeight;
+                    const relRight = ((pos.x + (pos.width || 0)) - bounds.left) / baseWidth;
+                    const relBottom = ((pos.y + (pos.height || 0)) - bounds.top) / baseHeight;
+                    const scaledX = nextLeft + relX * nextWidth;
+                    const scaledY = nextTop + relY * nextHeight;
+                    const scaledRight = nextLeft + relRight * nextWidth;
+                    const scaledBottom = nextTop + relBottom * nextHeight;
+                    const nextElementWidth = scaledRight - scaledX;
+                    const nextElementHeight = scaledBottom - scaledY;
+
+                    return {
+                        id: pos.id,
+                        updates: {
+                            x: scaledX,
+                            y: scaledY,
+                            width: pos.width !== undefined ? Math.max(10, nextElementWidth) : pos.width,
+                            height: pos.height !== undefined ? Math.max(10, nextElementHeight) : pos.height,
+                        },
+                    };
+                }));
+                return;
+            }
+
             const { elementX, elementY, width, height, aspectRatio } = dragStartRef.current;
             const element = elements.find((el) => el.id === draggedElementIdRef.current);
             const isImage = element?.type === 'image';
@@ -404,15 +493,15 @@ export function CanvasArea({
             const x2 = Math.max(selectionBox.startX, selectionBox.currentX);
             const y2 = Math.max(selectionBox.startY, selectionBox.currentY);
 
-            const newSelectedIds = elements
-                .filter((el) => {
-                    const elRight = el.x + (el.width || 0);
-                    const elBottom = el.y + (el.height || 0);
-                    return el.x < x2 && elRight > x1 && el.y < y2 && elBottom > y1;
-                })
-                .map((el) => el.id);
+            const directlySelected = elements.filter((el) => {
+                const elRight = el.x + (el.width || 0);
+                const elBottom = el.y + (el.height || 0);
+                return el.x < x2 && elRight > x1 && el.y < y2 && elBottom > y1;
+            });
 
-            onSelect(newSelectedIds);
+            const expandedSelectedIds = Array.from(new Set(directlySelected.flatMap((el) => getGroupedSelectionIds(el.id))));
+
+            onSelect(expandedSelectedIds);
         }
 
         if (isDrawing && currentPath) {
@@ -483,6 +572,170 @@ export function CanvasArea({
         });
     };
 
+    const applyElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
+        updates.forEach(({ id, updates: nextUpdates }) => {
+            onElementChange(id, nextUpdates);
+        });
+    };
+
+    const handleDuplicateSelection = () => {
+        if (selectedIds.length === 0) return;
+
+        const selectedElements = elements.filter((el) => selectedIds.includes(el.id));
+        if (selectedElements.length === 0) return;
+
+        const idMap = new Map<string, string>();
+        const groupIdMap = new Map<string, string>();
+        selectedElements.forEach((el) => {
+            idMap.set(el.id, uuidv4());
+            if (el.groupId && !groupIdMap.has(el.groupId)) {
+                groupIdMap.set(el.groupId, uuidv4());
+            }
+        });
+
+        const duplicatedElements = selectedElements.map((el) => {
+            const nextId = idMap.get(el.id) || uuidv4();
+            return {
+                ...el,
+                id: nextId,
+                x: el.x + 20,
+                y: el.y + 20,
+                groupId: el.groupId ? (groupIdMap.get(el.groupId) || el.groupId) : undefined,
+                linkedElements: el.linkedElements
+                    ?.map((linkedId) => idMap.get(linkedId) || linkedId),
+                connectorFrom: el.connectorFrom ? (idMap.get(el.connectorFrom) || el.connectorFrom) : undefined,
+                connectorTo: el.connectorTo ? (idMap.get(el.connectorTo) || el.connectorTo) : undefined,
+            } satisfies CanvasElement;
+        });
+
+        duplicatedElements.forEach((el) => onAddElement(el));
+        onSelect(duplicatedElements.map((el) => el.id));
+    };
+
+    const handleAlignSelection = (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
+        const selectedElements = elements.filter((el) => selectedIds.includes(el.id) && el.type !== 'connector');
+        if (selectedElements.length < 2) return;
+
+        const left = Math.min(...selectedElements.map((el) => el.x));
+        const right = Math.max(...selectedElements.map((el) => el.x + (el.width || 0)));
+        const top = Math.min(...selectedElements.map((el) => el.y));
+        const bottom = Math.max(...selectedElements.map((el) => el.y + (el.height || 0)));
+        const centerX = (left + right) / 2;
+        const centerY = (top + bottom) / 2;
+
+        applyElementUpdates(selectedElements.map((el) => {
+            const width = el.width || 0;
+            const height = el.height || 0;
+
+            if (alignment === 'left') {
+                return { id: el.id, updates: { x: left } };
+            }
+            if (alignment === 'center') {
+                return { id: el.id, updates: { x: centerX - width / 2 } };
+            }
+            if (alignment === 'right') {
+                return { id: el.id, updates: { x: right - width } };
+            }
+            if (alignment === 'top') {
+                return { id: el.id, updates: { y: top } };
+            }
+            if (alignment === 'middle') {
+                return { id: el.id, updates: { y: centerY - height / 2 } };
+            }
+            return { id: el.id, updates: { y: bottom - height } };
+        }));
+    };
+
+    const handleDistributeSelection = (direction: 'horizontal' | 'vertical') => {
+        const selectedElements = elements
+            .filter((el) => selectedIds.includes(el.id) && el.type !== 'connector')
+            .filter((el) => (direction === 'horizontal' ? (el.width || 0) > 0 : (el.height || 0) > 0));
+
+        if (selectedElements.length < 3) return;
+
+        if (direction === 'horizontal') {
+            const sorted = [...selectedElements].sort((a, b) => a.x - b.x);
+            const first = sorted[0];
+            const last = sorted[sorted.length - 1];
+            const totalWidth = sorted.reduce((sum, el) => sum + (el.width || 0), 0);
+            const span = (last.x + (last.width || 0)) - first.x;
+            const gap = (span - totalWidth) / (sorted.length - 1);
+
+            let currentX = first.x;
+            const updates: Array<{ id: string; updates: Partial<CanvasElement> }> = [];
+            sorted.forEach((el, index) => {
+                if (index === 0) {
+                    currentX = el.x + (el.width || 0) + gap;
+                    return;
+                }
+                if (index === sorted.length - 1) return;
+
+                updates.push({ id: el.id, updates: { x: currentX } });
+                currentX += (el.width || 0) + gap;
+            });
+            applyElementUpdates(updates);
+            return;
+        }
+
+        const sorted = [...selectedElements].sort((a, b) => a.y - b.y);
+        const first = sorted[0];
+        const last = sorted[sorted.length - 1];
+        const totalHeight = sorted.reduce((sum, el) => sum + (el.height || 0), 0);
+        const span = (last.y + (last.height || 0)) - first.y;
+        const gap = (span - totalHeight) / (sorted.length - 1);
+
+        let currentY = first.y;
+        const updates: Array<{ id: string; updates: Partial<CanvasElement> }> = [];
+        sorted.forEach((el, index) => {
+            if (index === 0) {
+                currentY = el.y + (el.height || 0) + gap;
+                return;
+            }
+            if (index === sorted.length - 1) return;
+
+            updates.push({ id: el.id, updates: { y: currentY } });
+            currentY += (el.height || 0) + gap;
+        });
+        applyElementUpdates(updates);
+    };
+
+    const actionableSelection = elements.filter((el) => selectedIds.includes(el.id) && el.type !== 'connector');
+    const canAlignSelection = actionableSelection.length >= 2;
+    const canDistributeHorizontally = actionableSelection.filter((el) => (el.width || 0) > 0).length >= 3;
+    const canDistributeVertically = actionableSelection.filter((el) => (el.height || 0) > 0).length >= 3;
+    const multiSelectionGroupIds = Array.from(new Set(actionableSelection.map((el) => el.groupId).filter(Boolean))) as string[];
+    const selectedGroupMemberCount = actionableSelection.filter((el) => el.groupId && multiSelectionGroupIds.includes(el.groupId)).length;
+    const canGroupSelection = actionableSelection.length >= 2;
+    const canUngroupSelection = actionableSelection.length > 0 && multiSelectionGroupIds.length > 0;
+    const selectionBounds = actionableSelection.length > 0
+        ? {
+            left: Math.min(...actionableSelection.map((el) => el.x)),
+            top: Math.min(...actionableSelection.map((el) => el.y)),
+            right: Math.max(...actionableSelection.map((el) => el.x + (el.width || 0))),
+            bottom: Math.max(...actionableSelection.map((el) => el.y + (el.height || 0))),
+          }
+        : null;
+    const selectedSingleGroupId = multiSelectionGroupIds.length === 1 ? multiSelectionGroupIds[0] : null;
+
+    const handleGroupSelection = () => {
+        if (!canGroupSelection) return;
+        const nextGroupId = uuidv4();
+        applyElementUpdates(actionableSelection.map((el) => ({
+            id: el.id,
+            updates: { groupId: nextGroupId },
+        })));
+    };
+
+    const handleUngroupSelection = () => {
+        if (!canUngroupSelection) return;
+        applyElementUpdates(actionableSelection
+            .filter((el) => Boolean(el.groupId))
+            .map((el) => ({
+                id: el.id,
+                updates: { groupId: undefined },
+            })));
+    };
+
     const handleWheel = (e: React.WheelEvent) => {
         e.preventDefault();
         const center = { x: e.clientX, y: e.clientY };
@@ -538,20 +791,205 @@ export function CanvasArea({
                 </div>
             )}
 
-            {selectedIds.length > 1 && !isDragging && (
+            {selectedIds.length > 1 && selectionBounds && !isDragging && (
                 <div
-                    className="absolute z-50 rounded-2xl border border-white/10 bg-slate-950/72 p-2.5 flex items-center gap-3 shadow-[0_20px_60px_rgba(2,6,23,0.45)] backdrop-blur-xl"
-                    style={{ left: '50%', top: 20, transform: 'translateX(-50%)' }}
+                    className="absolute z-50 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white/94 p-2 shadow-[0_20px_60px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/72 dark:shadow-[0_20px_60px_rgba(2,6,23,0.45)]"
+                    style={{
+                        left: ((selectionBounds.left + selectionBounds.right) / 2) * scale + pan.x,
+                        top: Math.max(20, selectionBounds.top * scale + pan.y - 56),
+                        transform: 'translateX(-50%)'
+                    }}
                     onMouseDown={(e) => e.stopPropagation()}
                 >
-                    <span className="px-2 text-sm font-medium text-slate-200">{selectedIds.length} items selected</span>
-                    <div className="h-6 w-px bg-white/10" />
+                    <span className="px-2 text-sm font-medium text-gray-700 dark:text-slate-200">
+                        已选中 {selectedIds.length} 项{multiSelectionGroupIds.length > 0 ? ` · ${multiSelectionGroupIds.length} 组 / ${selectedGroupMemberCount} 个组内元素` : ''}{selectedSingleGroupId ? ' · 当前为单组选择' : ''}
+                    </span>
+                    <div className="h-6 w-px bg-gray-200 dark:bg-white/10" />
+
+                    <button
+                        onClick={handleDuplicateSelection}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-slate-200 dark:hover:bg-white/8 dark:hover:text-white"
+                        title="复制"
+                    >
+                        <Copy size={16} />
+                    </button>
+
+                    <div className="flex items-center gap-1 rounded-xl border border-gray-200/90 bg-gray-50/90 px-1 py-1 dark:border-white/10 dark:bg-white/6">
+                        <button
+                            onClick={() => handleAlignSelection('left')}
+                            disabled={!canAlignSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canAlignSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canAlignSelection ? '左对齐' : '至少选择 2 个元素才能左对齐'}
+                        >
+                            <AlignStartHorizontal size={15} />
+                        </button>
+                        <button
+                            onClick={() => handleAlignSelection('center')}
+                            disabled={!canAlignSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canAlignSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canAlignSelection ? '水平居中对齐' : '至少选择 2 个元素才能水平居中对齐'}
+                        >
+                            <AlignCenter size={15} />
+                        </button>
+                        <button
+                            onClick={() => handleAlignSelection('right')}
+                            disabled={!canAlignSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canAlignSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canAlignSelection ? '右对齐' : '至少选择 2 个元素才能右对齐'}
+                        >
+                            <AlignEndHorizontal size={15} />
+                        </button>
+                        <div className="mx-0.5 h-4 w-px bg-gray-200 dark:bg-white/10" />
+                        <button
+                            onClick={() => handleAlignSelection('top')}
+                            disabled={!canAlignSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canAlignSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canAlignSelection ? '顶对齐' : '至少选择 2 个元素才能顶对齐'}
+                        >
+                            <AlignStartVertical size={15} />
+                        </button>
+                        <button
+                            onClick={() => handleAlignSelection('middle')}
+                            disabled={!canAlignSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canAlignSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canAlignSelection ? '垂直居中对齐' : '至少选择 2 个元素才能垂直居中对齐'}
+                        >
+                            <AlignVerticalJustifyCenter size={15} />
+                        </button>
+                        <button
+                            onClick={() => handleAlignSelection('bottom')}
+                            disabled={!canAlignSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canAlignSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canAlignSelection ? '底对齐' : '至少选择 2 个元素才能底对齐'}
+                        >
+                            <AlignEndVertical size={15} />
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-1 rounded-xl border border-gray-200/90 bg-gray-50/90 px-1 py-1 dark:border-white/10 dark:bg-white/6">
+                        <button
+                            onClick={() => handleDistributeSelection('horizontal')}
+                            disabled={!canDistributeHorizontally}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canDistributeHorizontally
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canDistributeHorizontally ? '水平平均分布' : '至少选择 3 个可参与布局的元素才能水平平均分布'}
+                        >
+                            <AlignHorizontalJustifyCenter size={15} />
+                        </button>
+                        <button
+                            onClick={() => handleDistributeSelection('vertical')}
+                            disabled={!canDistributeVertically}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canDistributeVertically
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canDistributeVertically ? '垂直平均分布' : '至少选择 3 个可参与布局的元素才能垂直平均分布'}
+                        >
+                            <AlignVerticalJustifyCenter size={15} />
+                        </button>
+                    </div>
+
+                    <div className="flex items-center gap-1 rounded-xl border border-gray-200/90 bg-gray-50/90 px-1 py-1 dark:border-white/10 dark:bg-white/6">
+                        <button
+                            onClick={handleGroupSelection}
+                            disabled={!canGroupSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canGroupSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canGroupSelection ? '编组' : '至少选择 2 个元素才能编组'}
+                        >
+                            <Link2 size={15} />
+                        </button>
+                        <button
+                            onClick={handleUngroupSelection}
+                            disabled={!canUngroupSelection}
+                            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
+                                canUngroupSelection
+                                    ? 'text-gray-600 hover:bg-white hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white'
+                                    : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
+                            }`}
+                            title={canUngroupSelection ? '解组' : '当前选择中没有可解组的元素'}
+                        >
+                            <Unlink2 size={15} />
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={() => onSelect([])}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-slate-300 dark:hover:bg-white/8 dark:hover:text-white"
+                        title="取消选择"
+                    >
+                        <X size={16} />
+                    </button>
                     <button
                         onClick={() => selectedIds.forEach((id) => onDelete(id))}
-                        className="rounded-md px-2.5 py-1.5 text-red-300 transition-colors hover:bg-red-500/12 hover:text-red-200"
+                        className="flex h-9 w-9 items-center justify-center rounded-xl text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-red-300 dark:hover:bg-red-500/12 dark:hover:text-red-200"
+                        title="删除全部"
                     >
-                        Delete All
+                        <Trash2 size={16} />
                     </button>
+                </div>
+            )}
+
+            {selectedIds.length > 1 && selectionBounds && !isDrawing && (
+                <div
+                    className="absolute pointer-events-none z-30 rounded-[22px] border border-blue-400/80 shadow-[0_0_0_1px_rgba(59,130,246,0.12),0_10px_30px_rgba(37,99,235,0.12)] dark:border-sky-300/80 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.2),0_0_28px_rgba(56,189,248,0.14)]"
+                    style={{
+                        left: selectionBounds.left * scale + pan.x - 6,
+                        top: selectionBounds.top * scale + pan.y - 6,
+                        width: (selectionBounds.right - selectionBounds.left) * scale + 12,
+                        height: (selectionBounds.bottom - selectionBounds.top) * scale + 12,
+                    }}
+                >
+                    {selectedSingleGroupId && (
+                        <div className="absolute -top-7 left-0 rounded-full border border-blue-200 bg-white/95 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-600 shadow-sm dark:border-sky-400/20 dark:bg-slate-950/90 dark:text-sky-200">
+                            Group
+                        </div>
+                    )}
+                    {([
+                        { handle: 'nw', position: 'top-0 left-0', cursor: 'cursor-nwse-resize' },
+                        { handle: 'ne', position: 'top-0 right-0', cursor: 'cursor-nesw-resize' },
+                        { handle: 'sw', position: 'bottom-0 left-0', cursor: 'cursor-nesw-resize' },
+                        { handle: 'se', position: 'bottom-0 right-0', cursor: 'cursor-nwse-resize' },
+                    ] as const).map(({ handle, position, cursor }) => (
+                        <button
+                            key={handle}
+                            type="button"
+                            data-handle={handle}
+                            onMouseDown={(e) => handleSelectionResizeStart(e, handle)}
+                            className={`pointer-events-auto absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-blue-500 bg-white shadow-sm dark:border-sky-300 dark:bg-slate-950 ${position} ${cursor}`}
+                        />
+                    ))}
                 </div>
             )}
 
@@ -839,6 +1277,15 @@ export function CanvasArea({
                                         const selectedEl = elements.find((e) => e.id === selectedId);
                                         return selectedEl?.linkedElements?.includes(el.id) || el.linkedElements?.includes(selectedId);
                                     });
+                                    const isInSelectedGroup = selectedIds.some((selectedId) => {
+                                        const selectedEl = elements.find((e) => e.id === selectedId);
+                                        return Boolean(selectedEl?.groupId && el.groupId && selectedEl.groupId === el.groupId);
+                                    });
+
+                                    if (isInSelectedGroup) {
+                                        return <div className="absolute inset-0 rounded-[inherit] border border-blue-300/90 pointer-events-none opacity-60 dark:border-sky-300/60" />;
+                                    }
+
                                     return isLinked ? <div className="absolute inset-0 border-2 border-dashed border-purple-400 pointer-events-none opacity-60" /> : null;
                                 })()}
 
