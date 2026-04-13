@@ -120,6 +120,16 @@ export function useCanvasElements({
     [setElements, setSelectedIds]
   );
 
+  const handleDeleteMany = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      setElements((prev) => prev.filter((el) => !idSet.has(el.id)));
+      setSelectedIds((prev) => prev.filter((selectedId) => !idSet.has(selectedId)));
+    },
+    [setElements, setSelectedIds]
+  );
+
   const createImageGeneratorElement = useCallback((): CanvasElement => ({
     id: uuidv4(),
     type: 'image-generator',
@@ -155,6 +165,7 @@ export function useCanvasElements({
     handleElementChange,
     handleElementsChange,
     handleDelete,
+    handleDeleteMany,
     handleOpenImageGenerator,
     handleOpenVideoGenerator,
     createImageGeneratorElement,

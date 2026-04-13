@@ -129,6 +129,7 @@ interface CanvasAreaProps {
     onElementChange: (id: string, newAttrs: Partial<CanvasElement>) => void;
     onElementsChange?: (changes: Array<{ id: string; newAttrs: Partial<CanvasElement> }>) => void;
     onDelete: (id: string) => void;
+    onDeleteMany?: (ids: string[]) => void;
     onAddElement: (element: CanvasElement) => void;
     onCreateNodeAt?: (x: number, y: number) => void;
     activeTool: string;
@@ -157,6 +158,7 @@ export function CanvasArea({
     onElementChange,
     onElementsChange,
     onDelete,
+    onDeleteMany,
     onAddElement,
     onCreateNodeAt,
     activeTool,
@@ -984,7 +986,7 @@ export function CanvasArea({
                         <X size={16} />
                     </button>
                     <button
-                        onClick={() => selectedIds.forEach((id) => onDelete(id))}
+                        onClick={() => onDeleteMany ? onDeleteMany(selectedIds) : selectedIds.forEach((id) => onDelete(id))}
                         className="flex h-9 w-9 items-center justify-center rounded-xl text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:text-red-300 dark:hover:bg-red-500/12 dark:hover:text-red-200"
                         title="删除全部"
                     >
