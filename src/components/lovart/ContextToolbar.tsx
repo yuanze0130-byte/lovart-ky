@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Download, Trash2, Wand2, Eraser, Shirt, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, ScanSearch } from 'lucide-react';
+import { Download, Trash2, Wand2, Eraser, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, ScanSearch } from 'lucide-react';
 import { CanvasElement } from './CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 
@@ -376,14 +376,6 @@ export function ContextToolbar({
                         disabled={element.type !== 'image' || !onUpscale || isUpscaling}
                     >
                         <UpscaleIcon className="w-4 h-4" />
-                    </button>
-
-                    <button
-                        className="p-2 rounded-lg text-gray-300 cursor-not-allowed"
-                        title="Mockup（即将推出）"
-                        disabled
-                    >
-                        <Shirt size={18} />
                     </button>
 
                     {onOpenImageEditMode && element.type === 'image' && (
