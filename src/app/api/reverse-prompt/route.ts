@@ -8,7 +8,19 @@ interface ReversePromptPayload {
 
 function normalizeReferenceImage(referenceImage?: string) {
   if (!referenceImage) return undefined;
-  return referenceImage.replace(/^data:image\/\w+;base64,/, '');
+
+  const trimmed = referenceImage.trim();
+  if (!trimmed) return undefined;
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^data:image\/[\w.+-]+;base64,/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  return `data:image/jpeg;base64,${trimmed.replace(/^data:image\/[\w.+-]+;base64,/i, '')}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -45,7 +57,7 @@ export async function POST(request: NextRequest) {
           content: [
             {
               type: 'image_url',
-              image_url: { url: `data:image/jpeg;base64,${normalized}` },
+              image_url: { url: normalized },
             },
             {
               type: 'text',
