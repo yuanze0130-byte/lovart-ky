@@ -100,10 +100,14 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     }, [initialMode]);
 
     React.useEffect(() => {
+        setHasAutoSent(false);
+        setMessages([]);
         if (typeof initialPrompt === 'string') {
             setInputValue(initialPrompt);
+        } else {
+            setInputValue('');
         }
-    }, [initialPrompt]);
+    }, [initialMode, initialPrompt]);
 
     React.useEffect(() => {
         if (initialPrompt && !hasAutoSent && !isGenerating) {
