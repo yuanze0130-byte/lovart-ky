@@ -103,9 +103,21 @@ npm run start
 - `src/lib`：Supabase、积分、图像处理等基础能力
 - `sql` / `*.sql`：数据库脚本
 
+## 标记编辑（第一版）
+- 已支持图片元素的 `标记编辑` 入口
+- 支持点击对象 → 后端识别 → 返回 bbox / polygon / maskUrl 协议
+- 当前支持三种检测 provider：
+  - `vision`
+  - `stub`
+  - `sam`
+- `sam` 模式下，若配置 `OBJECT_SEGMENTATION_ENDPOINT`，会调用外部分割服务
+- 相关文档：
+  - `docs/object-segmentation-api.md`
+  - `docs/object-segmentation-mock-example.md`
+
 ## 已知问题
 - 部分页面仍存在历史中文乱码与品牌命名不统一的问题
-- 积分扣减目前是接口前置扣费，上游失败时仍需补充退款/补偿逻辑
+- 标记编辑当前仍以 bbox + prompt 局部编辑为主，尚未接入真实 mask inpainting
 - 某些旧文档仍保留历史接入方案说明，需继续清理
 
 ## License

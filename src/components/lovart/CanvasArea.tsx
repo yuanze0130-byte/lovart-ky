@@ -1,6 +1,8 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
+import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
+import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
 import { v4 as uuidv4 } from 'uuid';
@@ -62,6 +64,11 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardLaneOrientation?: 'portrait' | 'landscape' | 'square';
     prompt?: string;
     generationMetadata?: GenerationMetadata;
+    previousContent?: string;
+    annotationLabel?: string;
+    annotationScore?: number;
+    annotationPolygon?: { x: number; y: number }[];
+    annotationMaskUrl?: string;
     color?: string;
     shapeType?: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right';
     fontSize?: number;
@@ -144,6 +151,12 @@ interface CanvasAreaProps {
         element: CanvasElement,
         options: { x: number; y: number; width: number; height: number }
     ) => Promise<void>;
+    annotationImageId?: string | null;
+    annotationObject?: DetectedObject | null;
+    isDetectingObject?: boolean;
+    onStartObjectAnnotation?: (element: CanvasElement) => void;
+    onExitObjectAnnotation?: () => void;
+    onDetectObjectAt?: (element: CanvasElement, point: { x: number; y: number }) => void;
 }
 
 export function CanvasArea({
@@ -170,6 +183,12 @@ export function CanvasArea({
     onRemoveBackground,
     onUpscale,
     onCrop,
+    annotationImageId,
+    annotationObject,
+    isDetectingObject,
+    onStartObjectAnnotation,
+    onExitObjectAnnotation,
+    onDetectObjectAt,
 }: CanvasAreaProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
@@ -267,6 +286,16 @@ export function CanvasArea({
         }
 
         e.stopPropagation();
+
+        const clickedElement = elements.find((el) => el.id === elementId);
+        if (annotationImageId && clickedElement?.id === annotationImageId && clickedElement.type === 'image') {
+            const point = getCanvasPoint(e.clientX, e.clientY);
+            onDetectObjectAt?.(clickedElement, {
+                x: Math.max(0, Math.min(point.x - clickedElement.x, clickedElement.width || 1)),
+                y: Math.max(0, Math.min(point.y - clickedElement.y, clickedElement.height || 1)),
+            });
+            return;
+        }
 
         const groupedIds = getGroupedSelectionIds(elementId);
         let dragSelectedIds = selectedIds;
@@ -821,6 +850,7 @@ export function CanvasArea({
                         onRemoveBackground={onRemoveBackground}
                         onUpscale={onUpscale}
                         onCrop={onCrop}
+                        onStartObjectAnnotation={onStartObjectAnnotation}
                     />
                 </div>
             )}
@@ -1669,6 +1699,24 @@ export function CanvasArea({
                         </svg>
                     </div>
                 )}
+
+                {annotationImageId && (() => {
+                    const imageElement = elements.find((el) => el.id === annotationImageId && el.type === 'image');
+                    if (!imageElement) return null;
+                    return (
+                        <ObjectAnnotationOverlay
+                            imageBounds={{
+                                left: imageElement.x,
+                                top: imageElement.y,
+                                width: imageElement.width || 1,
+                                height: imageElement.height || 1,
+                            }}
+                            object={annotationObject || null}
+                            isDetecting={isDetectingObject}
+                            onClose={() => onExitObjectAnnotation?.()}
+                        />
+                    );
+                })()}
 
                 {selectionBox && (
                     <div

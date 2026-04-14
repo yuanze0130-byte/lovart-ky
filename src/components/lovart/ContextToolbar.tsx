@@ -17,6 +17,7 @@ interface ContextToolbarProps {
         element: CanvasElement,
         options: { x: number; y: number; width: number; height: number }
     ) => Promise<void>;
+    onStartObjectAnnotation?: (element: CanvasElement) => void;
 }
 
 function UpscaleIcon({ className = 'w-4 h-4' }: { className?: string }) {
@@ -59,6 +60,7 @@ export function ContextToolbar({
     onRemoveBackground,
     onUpscale,
     onCrop,
+    onStartObjectAnnotation,
 }: ContextToolbarProps) {
     const [showEditPanel, setShowEditPanel] = useState(false);
     const [showReversePromptPanel, setShowReversePromptPanel] = useState(false);
@@ -403,6 +405,16 @@ export function ContextToolbar({
                                 {isReversingPrompt ? <Loader2 size={18} className="animate-spin" /> : <ScanSearch size={18} />}
                             </button>
                         </>
+                    )}
+
+                    {element.type === 'image' && onStartObjectAnnotation && (
+                        <button
+                            onClick={() => onStartObjectAnnotation(element)}
+                            className="p-2 rounded-lg text-fuchsia-600 transition-colors hover:bg-fuchsia-50 dark:text-fuchsia-200 dark:hover:bg-fuchsia-400/12"
+                            title="标记编辑"
+                        >
+                            <ScanSearch size={18} />
+                        </button>
                     )}
 
                     {onGenerateFromImage && (

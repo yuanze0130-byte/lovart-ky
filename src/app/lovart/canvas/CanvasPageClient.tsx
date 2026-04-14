@@ -18,6 +18,7 @@ import { useCanvasElements } from '@/hooks/useCanvasElements';
 import { useProjectAssets, type ProjectAsset, type StoryboardItem, type StoryboardAspectRatio, type StoryboardLayoutMode, type StoryboardVideoSize, type StoryboardRenderProfile, inferStoryboardAspectRatio, normalizeStoryboardItems, getStoryboardAspectMeta, inferStoryboardAspectRatioFromVideoSize, getStoryboardNodeDimensions, getStoryboardRenderProfile, getPreferredStoryboardVideoSize, formatStoryboardMeta, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getRecommendedStoryboardLayout, summarizeProductionBoard } from '@/hooks/useProjectAssets';
 import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
+import { useObjectAnnotation } from '@/hooks/useObjectAnnotation';
 import { v4 as uuidv4 } from 'uuid';
 
 function LovartCanvasContent() {
@@ -43,6 +44,8 @@ function LovartCanvasContent() {
     const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building' | 'done'>('idle');
     const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
     const [storyboardLayout, setStoryboardLayout] = useState<StoryboardLayoutMode>('vertical');
+    const [annotationSubject, setAnnotationSubject] = useState('');
+    const [objectEditPrompt, setObjectEditPrompt] = useState('');
     const historyRef = useRef<CanvasElement[][]>([]);
     const futureRef = useRef<CanvasElement[][]>([]);
     const clipboardRef = useRef<CanvasElement[]>([]);
@@ -105,6 +108,17 @@ function LovartCanvasContent() {
     const { handleRemoveBackground, handleUpscale, handleCrop } = useCanvasImageActions({
         setElements,
     });
+
+    const {
+        activeImageId: annotationImageId,
+        selectedObject: annotationObject,
+        isDetecting: isDetectingObject,
+        isEditing: isEditingObject,
+        enterAnnotationMode,
+        exitAnnotationMode,
+        detectObject,
+        editObject,
+    } = useObjectAnnotation();
 
     const handleAgentGenerate = useCallback(async (prompt: string, options?: { mode?: 'design' | 'branding' | 'image-editing' | 'research' }) => {
         const resolvedMode = options?.mode || 'design';
@@ -358,6 +372,63 @@ function LovartCanvasContent() {
         window.setTimeout(() => setAgentStage('idle'), 1200);
         return result.reply;
     }, [createImageGeneratorElement, createVideoGeneratorElement, elements, handleAiChat, pan.x, pan.y, scale, setElements, setPan, setSelectedIds, setTitle, viewportSize.height, viewportSize.width]);
+
+    const handleDetectObjectAt = useCallback((element: CanvasElement, point: { x: number; y: number }) => {
+        void detectObject({ image: element, point })
+            .then((detected) => {
+                if (detected?.label) {
+                    setAnnotationSubject(detected.label);
+                }
+            })
+            .catch(() => {
+                setAnnotationSubject('');
+            });
+    }, [detectObject]);
+
+    const handleApplyObjectEdit = useCallback(async () => {
+        if (!annotationImageId || !annotationObject || !objectEditPrompt.trim()) return;
+        const imageElement = elements.find((element) => element.id === annotationImageId);
+        if (!imageElement) return;
+
+        try {
+            const result = await editObject({
+                image: imageElement,
+                object: {
+                    ...annotationObject,
+                    label: annotationSubject.trim() || annotationObject.label || '已标记区域',
+                },
+                prompt: objectEditPrompt.trim(),
+            });
+
+            if (typeof result.imageData === 'string') {
+                setElements((prev) => prev.map((element) => element.id === imageElement.id ? {
+                    ...element,
+                    previousContent: element.content,
+                    content: result.imageData,
+                    annotationLabel: annotationObject.label,
+                    annotationScore: annotationObject.score,
+                    annotationPolygon: annotationObject.polygon,
+                    annotationMaskUrl: annotationObject.maskUrl,
+                } : element));
+            }
+
+            setObjectEditPrompt('');
+        } catch (error) {
+            alert(error instanceof Error ? error.message : '对象编辑失败');
+        }
+    }, [annotationImageId, annotationObject, annotationSubject, editObject, elements, objectEditPrompt, setElements]);
+
+    const handleRevertObjectEdit = useCallback(() => {
+        if (!annotationImageId) return;
+        setElements((prev) => prev.map((element) => {
+            if (element.id !== annotationImageId || !element.previousContent) return element;
+            return {
+                ...element,
+                content: element.previousContent,
+                previousContent: undefined,
+            };
+        }));
+    }, [annotationImageId, setElements]);
 
     const handleOpenImageEditMode = useCallback((element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => {
         if (!element.content) return;
@@ -1575,7 +1646,106 @@ function LovartCanvasContent() {
                     onRemoveBackground={handleRemoveBackground}
                     onUpscale={handleUpscale}
                     onCrop={handleCrop}
+                    annotationImageId={annotationImageId}
+                    annotationObject={annotationObject}
+                    isDetectingObject={isDetectingObject}
+                    onStartObjectAnnotation={enterAnnotationMode}
+                    onExitObjectAnnotation={exitAnnotationMode}
+                    onDetectObjectAt={handleDetectObjectAt}
                 />
+                {annotationImageId && annotationObject && (() => {
+                    const imageElement = elements.find((element) => element.id === annotationImageId);
+                    if (!imageElement) return null;
+                    return (
+                        <div
+                            className="absolute z-[90] w-80 rounded-2xl border border-fuchsia-200 bg-white/96 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl"
+                            style={{
+                                left: `${(imageElement.x + (imageElement.width || 0)) * scale + pan.x + 18}px`,
+                                top: `${imageElement.y * scale + pan.y}px`,
+                            }}
+                        >
+                            <div className="mb-3 flex items-start justify-between gap-3">
+                                <div>
+                                    <div className="text-sm font-semibold text-gray-900">手动标记编辑</div>
+                                    <div className="mt-1 text-xs text-gray-500">先点选一个区域，再自己告诉系统这里是什么</div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        exitAnnotationMode();
+                                        setAnnotationSubject('');
+                                        setObjectEditPrompt('');
+                                    }}
+                                    className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+                                >
+                                    关闭
+                                </button>
+                            </div>
+                            <div className="mb-3">
+                                <div className="mb-1 text-xs font-medium text-gray-600">对象名称</div>
+                                <input
+                                    value={annotationSubject}
+                                    onChange={(event) => setAnnotationSubject(event.target.value)}
+                                    placeholder="例如：帽子、logo、包、路牌"
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-fuchsia-300 focus:bg-white"
+                                />
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    {['人物', '服饰', 'logo'].map((item) => (
+                                        <button
+                                            key={item}
+                                            type="button"
+                                            onClick={() => setAnnotationSubject(item)}
+                                            className="rounded-full border border-gray-200 px-3 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                                        >
+                                            {item}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                            <textarea
+                                value={objectEditPrompt}
+                                onChange={(event) => setObjectEditPrompt(event.target.value)}
+                                placeholder="描述你想怎么修改这个对象，比如：改成红色帽子、删掉这个 logo、把它换成金属材质"
+                                className="h-24 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-fuchsia-300 focus:bg-white"
+                            />
+                            <div className="mt-2 flex flex-wrap gap-2">
+                                {['删除', '换颜色', '替换'].map((item) => (
+                                    <button
+                                        key={item}
+                                        type="button"
+                                        onClick={() => setObjectEditPrompt((prev) => prev ? `${prev}，${item}` : item)}
+                                        className="rounded-full border border-gray-200 px-3 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                                    >
+                                        {item}
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-2">
+                                <div className="text-[11px] text-gray-400">当前为手动标记版：你定义对象名称，系统只改这块区域</div>
+                                <div className="flex items-center gap-2">
+                                    {!!imageElement.previousContent && (
+                                        <button
+                                            type="button"
+                                            onClick={handleRevertObjectEdit}
+                                            className="rounded-full border border-gray-200 px-4 py-2 text-xs font-medium text-gray-700"
+                                        >
+                                            回退
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleApplyObjectEdit()}
+                                        disabled={!annotationSubject.trim() || !objectEditPrompt.trim() || isEditingObject}
+                                        className="rounded-full bg-fuchsia-600 px-4 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {isEditingObject ? '处理中...' : '应用修改'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 <FloatingToolbar
                     activeTool={activeTool}
                     onToolChange={setActiveTool}
