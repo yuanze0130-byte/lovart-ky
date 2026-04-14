@@ -1,45 +1,37 @@
 # Lovart-KY 🎨
 
-一个基于 Next.js + Clerk + Supabase 的 AI 设计画布项目，支持 AI 对话、图片生成、视频生成与项目持久化。
+一个基于 `Next.js 16 + Supabase + AI API` 的设计画布项目，支持 AI 设计建议、图片生成、视频生成、项目持久化和积分系统。
 
 ## 功能特性
-
 - AI 设计建议生成
 - 画布编辑与元素管理
-- 图片生成（Gemini）
+- 图片生成（Gemini 兼容接口 / 官方接口）
 - 视频生成（外部视频 API）
-- Clerk 用户登录
-- Supabase 项目与积分存储
+- Supabase OTP 登录
+- Supabase 项目、素材与积分存储
 
 ## 技术栈
-
 - Next.js 16
 - React 19
 - TypeScript
 - Tailwind CSS 4
-- Clerk
 - Supabase
-- OpenAI SDK（兼容 Gemini / XAI 网关）
+- OpenAI SDK（用于兼容 Gemini / XAI 网关）
+
+## 当前状态
+- 已具备可演示的产品骨架
+- 认证方案已切换为 `Supabase Auth`
+- 文档中旧的 `Clerk` 说明已不再适用
 
 ## 本地启动
 
-### 1. 克隆仓库
-
-```bash
-git clone https://github.com/yuanze0130-byte/lovart-ky.git
-cd lovart-ky
-```
-
-### 2. 安装依赖
-
+### 1. 安装依赖
 ```bash
 npm install
 ```
 
-### 3. 配置环境变量
-
+### 2. 配置环境变量
 复制环境模板：
-
 ```bash
 cp .env.example .env.local
 ```
@@ -47,16 +39,13 @@ cp .env.example .env.local
 然后填写 `.env.local`。
 
 最少需要：
-
 ```env
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=...
-CLERK_SECRET_KEY=...
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-如果要完整使用 AI 能力，再补：
-
+如果要完整启用 AI 能力，再补充：
 ```env
 GEMINI_API_KEY=...
 GEMINI_BASE_URL=https://ai.t8star.cn/v1
@@ -66,50 +55,58 @@ XAI_BASE_URL=https://ai.t8star.cn/v1
 XAI_MODEL=gpt-4o
 
 VIDEO_API_KEY=...
-VIDEO_API_BASE_URL=https://www.clockapi.fun/v1
+VIDEO_API_BASE_URL=https://ai.t8star.cn
 ```
 
-## 开发命令
+### 3. 准备数据库
+请先在 Supabase 中执行项目附带的 SQL：
+- `supabase-schema.sql`
+- `add-user-credits.sql`
 
+如果使用视频参考图上传，还需要创建对应 Storage Bucket：
+- 默认 bucket：`video-references`
+
+### 4. 启动开发环境
 ```bash
 npm run dev
+```
+
+常用命令：
+```bash
 npm run lint
 npm run build
 npm run start
 ```
 
-## 部署到 Vercel
-
-在 Vercel 中配置与 `.env.local` 相同的环境变量即可。
-
-当前项目依赖以下变量：
-
-- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
+## 主要环境变量
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `ADMIN_EMAILS`
+- `NEXT_PUBLIC_ADMIN_EMAILS`
+- `GEMINI_PROVIDER`
 - `GEMINI_API_KEY`
 - `GEMINI_BASE_URL`
+- `GOOGLE_GEMINI_API_KEY`
 - `XAI_API_KEY`
 - `XAI_BASE_URL`
 - `XAI_MODEL`
 - `VIDEO_API_KEY`
 - `VIDEO_API_BASE_URL`
 
-## 当前已完成的工程优化
+完整列表见 `.env.example`。
 
-- 清理并修复了一批 TypeScript / ESLint 问题
-- 重构了 `useSupabase` 初始化逻辑
-- 补齐了 Supabase `Database` 类型定义
-- 修复了多个页面的查询结果类型收口问题
-- 加强了图片 / 视频 / 设计生成 API 的错误处理
-- 将 Next 16 的 `middleware` 迁移为 `proxy`
-- 补充 `.env.example`
+## 项目结构
+- `src/app`：页面与 API 路由
+- `src/components/lovart`：画布与工作台组件
+- `src/hooks`：项目保存、画布操作、生成逻辑
+- `src/lib`：Supabase、积分、图像处理等基础能力
+- `sql` / `*.sql`：数据库脚本
 
-## 当前仍需注意
-
-如果本地 `npm run build` 报错缺少 Clerk key，通常不是代码问题，而是本地没有提供 `.env.local`。
+## 已知问题
+- 部分页面仍存在历史中文乱码与品牌命名不统一的问题
+- 积分扣减目前是接口前置扣费，上游失败时仍需补充退款/补偿逻辑
+- 某些旧文档仍保留历史接入方案说明，需继续清理
 
 ## License
-
 MIT

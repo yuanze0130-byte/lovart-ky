@@ -42,7 +42,6 @@ const FAST_MODEL_DEFAULT_SIZE_BY_ASPECT: Partial<Record<StoryboardAspectRatio, V
     '1:1': '1024x1024',
 };
 
-const FAST_MODEL_ALLOWED_ASPECTS: StoryboardAspectRatio[] = ['1:1', '16:9', '9:16'];
 
 interface VideoGeneratorPanelProps {
     elementId: string;

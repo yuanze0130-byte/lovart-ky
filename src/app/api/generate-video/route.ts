@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
-import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
+import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
 
 type VideoModelMode = 'standard' | 'fast';
 type SupportedVideoRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3' | '4:5';
@@ -95,8 +95,12 @@ async function uploadReferenceImage(userId: string, referenceImage: string) {
 }
 
 export async function POST(request: NextRequest) {
+  let chargedUserId: string | null = null;
+  let creditsConsumed = false;
+
   try {
     const user = await requireUser(request);
+    chargedUserId = user.id;
 
     const creditResult = await consumeCredits({
       userId: user.id,
@@ -109,11 +113,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: '积分不足',
-          details: `当前积分 ${creditResult.currentCredits}，生成视频需要 ${creditResult.requiredCredits} 积分`,
+          details: `当前积分 ${creditResult.currentCredits}，生成视频需 ${creditResult.requiredCredits} 积分`,
         },
         { status: 402 }
       );
     }
+
+    creditsConsumed = true;
 
     const { prompt, size, referenceImage, modelMode } = (await request.json()) as {
       prompt?: string;
@@ -124,14 +130,14 @@ export async function POST(request: NextRequest) {
     };
 
     if (!prompt || typeof prompt !== 'string') {
-      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+      throw new Error('Prompt is required');
     }
 
     const apiKey = process.env.VIDEO_API_KEY;
     const baseUrl = process.env.VIDEO_API_BASE_URL || 'https://ai.t8star.cn';
 
     if (!apiKey) {
-      return NextResponse.json({ error: 'VIDEO_API_KEY not configured' }, { status: 500 });
+      throw new Error('VIDEO_API_KEY not configured');
     }
 
     const selectedMode: VideoModelMode = modelMode === 'fast' ? 'fast' : 'standard';
@@ -188,6 +194,19 @@ export async function POST(request: NextRequest) {
       ratio,
     });
   } catch (error: unknown) {
+    if (creditsConsumed && chargedUserId) {
+      try {
+        await refundCredits({
+          userId: chargedUserId,
+          amount: CREDIT_COSTS.generateVideo,
+          type: 'manual_adjust',
+          description: '视频生成失败，自动退回积分',
+        });
+      } catch (refundError) {
+        console.error('Failed to refund credits after video generation error:', refundError);
+      }
+    }
+
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Failed to generate video', details: message },

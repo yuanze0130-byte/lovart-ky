@@ -94,7 +94,7 @@ export default function ProjectsPage() {
             }
         }
 
-        loadData();
+        void loadData();
     }, [user, supabase]);
 
     const formatDate = (dateString: string) => {
@@ -171,8 +171,8 @@ export default function ProjectsPage() {
                 <div className="flex-1 overflow-y-auto">
                     <div className="flex items-center justify-between px-8 py-4">
                         <Link href="/" className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-gray-100">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
-                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
+                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
+                            <span className="text-lg font-semibold text-gray-900">Lovart</span>
                         </Link>
 
                         <div className="flex items-center gap-2">
@@ -184,7 +184,7 @@ export default function ProjectsPage() {
 
                             {user && credits !== null && (
                                 <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
-                                    <span className="text-sm">⚡</span>
+                                    <span className="text-sm">✨</span>
                                     <span>{credits.toLocaleString()}</span>
                                 </div>
                             )}
@@ -212,70 +212,70 @@ export default function ProjectsPage() {
                     </div>
 
                     <div className="px-8 pb-8">
-                    {!user ? (
-                        <div className="flex flex-col items-center justify-center h-full">
-                            <div className="text-center max-w-md">
-                                <h2 className="text-2xl font-bold mb-4">欢迎来到 Doodleverse</h2>
-                                <p className="text-gray-600 mb-6">登录以查看和管理您的项目</p>
-                                <button
-                                    onClick={() => setShowLoginModal(true)}
-                                    className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors"
-                                >
-                                    立即登录
-                                </button>
-                            </div>
-                        </div>
-                    ) : isLoading ? (
-                        <div className="flex items-center justify-center h-full">
-                            <div className="text-gray-400">加载中...</div>
-                        </div>
-                    ) : (
-                        <div>
-                            <div className="flex items-center justify-between mb-6">
-                                <h2 className="text-lg font-semibold text-gray-800">
-                                    所有项目
-                                    <span className="ml-2 text-sm font-normal text-gray-500">({projects.length})</span>
-                                </h2>
-                                <Link
-                                    href="/canvas"
-                                    className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors"
-                                >
-                                    <Plus size={18} />
-                                    新建项目
-                                </Link>
-                            </div>
-
-                            {projects.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-20">
-                                    <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                                        <Plus size={32} className="text-gray-400 dark:text-gray-500" />
-                                    </div>
-                                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">还没有项目</h3>
-                                    <p className="text-gray-500 dark:text-gray-400 mb-6">创建您的第一个项目开始设计</p>
-                                    <Link
-                                        href="/canvas"
+                        {!user ? (
+                            <div className="flex flex-col items-center justify-center h-full">
+                                <div className="text-center max-w-md">
+                                    <h2 className="text-2xl font-bold mb-4">欢迎来到 Lovart</h2>
+                                    <p className="text-gray-600 mb-6">登录以查看和管理你的项目</p>
+                                    <button
+                                        onClick={() => setShowLoginModal(true)}
                                         className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors"
                                     >
-                                        创建项目
+                                        立即登录
+                                    </button>
+                                </div>
+                            </div>
+                        ) : isLoading ? (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-gray-400">加载中...</div>
+                            </div>
+                        ) : (
+                            <div>
+                                <div className="flex items-center justify-between mb-6">
+                                    <h2 className="text-lg font-semibold text-gray-800">
+                                        所有项目
+                                        <span className="ml-2 text-sm font-normal text-gray-500">({projects.length})</span>
+                                    </h2>
+                                    <Link
+                                        href="/canvas"
+                                        className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors"
+                                    >
+                                        <Plus size={18} />
+                                        新建项目
                                     </Link>
                                 </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                    {projects.map((project) => (
-                                        <Link key={project.id} href={`/canvas?id=${project.id}`}>
-                                            <ProjectCard
-                                                title={project.title}
-                                                date={formatDate(project.updated_at)}
-                                                imageUrl={project.thumbnail || undefined}
-                                                onRename={() => void handleRenameProject(project)}
-                                                onDelete={() => void handleDeleteProject(project)}
-                                            />
+
+                                {projects.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                                            <Plus size={32} className="text-gray-400" />
+                                        </div>
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">还没有项目</h3>
+                                        <p className="text-gray-500 mb-6">创建你的第一个项目开始设计吧。</p>
+                                        <Link
+                                            href="/canvas"
+                                            className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors"
+                                        >
+                                            创建项目
                                         </Link>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                        {projects.map((project) => (
+                                            <Link key={project.id} href={`/canvas?id=${project.id}`}>
+                                                <ProjectCard
+                                                    title={project.title}
+                                                    date={formatDate(project.updated_at)}
+                                                    imageUrl={project.thumbnail || undefined}
+                                                    onRename={() => void handleRenameProject(project)}
+                                                    onDelete={() => void handleDeleteProject(project)}
+                                                />
+                                            </Link>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             </main>

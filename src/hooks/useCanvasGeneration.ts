@@ -8,9 +8,18 @@ import { authedFetch } from '@/lib/authed-fetch';
 
 type BananaVariant = 'standard' | 'pro';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
+type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
+
+type DesignPlan = Record<string, unknown>;
+
+type AiChatResult = {
+  reply: string;
+  summary?: string;
+  plan?: DesignPlan;
+};
 
 function isResolution(value: unknown): value is Resolution {
   return value === '1K' || value === '2K' || value === '4K';
@@ -446,7 +455,7 @@ export function useCanvasGeneration({
   );
 
   const handleAiChat = useCallback(
-    async (prompt: string, options?: { mode?: 'design' | 'branding' | 'image-editing' | 'research' }): Promise<{ reply: string; summary?: string; plan?: Record<string, any> }> => {
+    async (prompt: string, options?: { mode?: AgentMode }): Promise<AiChatResult> => {
       setIsGenerating(true);
       try {
         const response = await fetch('/api/generate-design', {
@@ -472,7 +481,7 @@ export function useCanvasGeneration({
         return {
           reply: typeof data.suggestion === 'string' ? data.suggestion : '未收到回复',
           summary: typeof data.summary === 'string' ? data.summary : undefined,
-          plan: data.plan && typeof data.plan === 'object' ? (data.plan as Record<string, any>) : {},
+          plan: data.plan && typeof data.plan === 'object' ? (data.plan as DesignPlan) : {},
         };
       } catch (error) {
         console.error('Chat generation failed:', error);

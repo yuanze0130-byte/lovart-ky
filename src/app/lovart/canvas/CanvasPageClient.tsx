@@ -15,7 +15,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
 import { useCanvasElements } from '@/hooks/useCanvasElements';
-import { useProjectAssets, type ProjectAsset, type StoryboardItem, type StoryboardAspectRatio, type StoryboardLayoutMode, type StoryboardVideoSize, type StoryboardRenderProfile, inferStoryboardAspectRatio, normalizeStoryboardItems, getStoryboardAspectMeta, inferStoryboardAspectRatioFromVideoSize, getStoryboardNodeDimensions, getStoryboardRenderProfile, getPreferredStoryboardVideoSize, getStoryboardRenderProfileLabel, formatStoryboardMeta, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getRecommendedStoryboardLayout, summarizeProductionBoard } from '@/hooks/useProjectAssets';
+import { useProjectAssets, type ProjectAsset, type StoryboardItem, type StoryboardAspectRatio, type StoryboardLayoutMode, type StoryboardVideoSize, type StoryboardRenderProfile, inferStoryboardAspectRatio, normalizeStoryboardItems, getStoryboardAspectMeta, inferStoryboardAspectRatioFromVideoSize, getStoryboardNodeDimensions, getStoryboardRenderProfile, getPreferredStoryboardVideoSize, formatStoryboardMeta, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getRecommendedStoryboardLayout, summarizeProductionBoard } from '@/hooks/useProjectAssets';
 import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { v4 as uuidv4 } from 'uuid';
@@ -357,7 +357,7 @@ function LovartCanvasContent() {
         setAgentStage('done');
         window.setTimeout(() => setAgentStage('idle'), 1200);
         return result.reply;
-    }, [createImageGeneratorElement, createVideoGeneratorElement, handleAiChat, pan.x, pan.y, scale, setElements, setPan, setSelectedIds, setTitle, viewportSize.height, viewportSize.width]);
+    }, [createImageGeneratorElement, createVideoGeneratorElement, elements, handleAiChat, pan.x, pan.y, scale, setElements, setPan, setSelectedIds, setTitle, viewportSize.height, viewportSize.width]);
 
     const handleOpenImageEditMode = useCallback((element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => {
         if (!element.content) return;

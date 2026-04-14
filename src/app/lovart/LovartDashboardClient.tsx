@@ -49,7 +49,6 @@ export default function LovartDashboard() {
     const [showNotifications, setShowNotifications] = useState(false);
     const notificationRef = useRef<HTMLDivElement>(null);
 
-    // 点击外部关闭通知弹窗
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             if (notificationRef.current && !notificationRef.current.contains(event.target as Node)) {
@@ -69,39 +68,36 @@ export default function LovartDashboard() {
     const notifications: Notification[] = [
         {
             id: '1',
-            title: '🎉 OpenLovart 开源啦！',
-            content: '欢迎访问我们的 GitHub 仓库，给我们一个 Star ⭐',
-            link: 'https://github.com/xiaoju111a/OpenLovart',
-            linkText: '访问 GitHub',
+            title: '项目说明已更新',
+            content: '认证方案已统一为 Supabase Auth，文档正在持续整理中。',
             time: '置顶',
             isNew: true,
             isPinned: true,
         },
         {
             id: '2',
-            title: 'Sora 2 视频生成已上线',
-            content: '现在可以使用 AI 生成高质量视频了',
+            title: '视频生成功能可用',
+            content: '现在可以通过外部视频接口发起视频生成任务。',
             time: '1 小时前',
             isNew: true,
         },
         {
             id: '3',
             title: '系统更新',
-            content: '优化了画布性能和用户体验',
+            content: '优化了画布性能和基础交互体验。',
             time: '昨天',
             isNew: false,
         },
     ];
 
     const placeholders = useMemo(() => [
-        '让 Lovart 为你自动生成内容或效果图吧',
+        '让 Lovart 为你自动生成方案和效果图',
         '设计一个现代简约的 Logo',
         '创建一张社交媒体海报',
         '生成一个产品展示图',
         '制作一个品牌宣传图',
     ], []);
 
-    // Load user's projects and credits
     useEffect(() => {
         async function loadData() {
             if (!user || !supabase) {
@@ -110,7 +106,6 @@ export default function LovartDashboard() {
             }
 
             try {
-                // 并行加载项目和积分，提升性能
                 const [projectsResult, creditsResult] = await Promise.all([
                     supabase
                         .from('projects')
@@ -121,10 +116,9 @@ export default function LovartDashboard() {
                         .from('user_credits')
                         .select('credits')
                         .eq('user_id', user.id)
-                        .single()
+                        .single(),
                 ]);
 
-                // 处理项目数据
                 if (projectsResult.error) throw projectsResult.error;
                 const projectRows = (projectsResult.data || []) as ProjectRow[];
 
@@ -158,9 +152,7 @@ export default function LovartDashboard() {
                     updated_at: project.updated_at,
                 })));
 
-                // 处理积分数据
                 if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
-                    // 用户积分记录不存在，创建新记录
                     const { data: newData } = await supabase
                         .from('user_credits')
                         .insert({ user_id: user.id, credits: 80 })
@@ -179,10 +171,9 @@ export default function LovartDashboard() {
             }
         }
 
-        loadData();
+        void loadData();
     }, [user, supabase]);
 
-    // Typing effect for placeholder
     useEffect(() => {
         const currentText = placeholders[placeholderIndex];
         let currentIndex = 0;
@@ -230,12 +221,9 @@ export default function LovartDashboard() {
         setIsGenerating(true);
 
         try {
-            // 1. Create a new project
             const newProjectId = uuidv4();
             const projectTitle = inputValue.trim().slice(0, 50) || '未命名项目';
-            
-            console.log('Creating project:', { id: newProjectId, title: projectTitle });
-            
+
             const { data: projectData, error: projectError } = await supabase
                 .from('projects')
                 .insert({
@@ -252,9 +240,6 @@ export default function LovartDashboard() {
             }
 
             console.log('Project created successfully:', projectData);
-
-            // 2. Redirect to canvas page with the new project and prompt
-            // Don't wait for API call, let the canvas page handle it
             window.location.href = `/canvas?id=${newProjectId}&prompt=${encodeURIComponent(inputValue.trim())}&mode=${encodeURIComponent(agentMode)}`;
         } catch (error) {
             console.error('Generation failed:', error);
@@ -283,20 +268,17 @@ export default function LovartDashboard() {
             <DashboardSidebar />
 
             <main className="h-full flex flex-col overflow-hidden">
-                {/* Content */}
                 <div className="flex-1 overflow-y-auto">
-                    {/* Top Bar */}
                     <div className="flex items-center justify-between px-8 py-4">
                         <Link href="/" className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-gray-100">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
-                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
+                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
+                            <span className="text-lg font-semibold text-gray-900">Lovart</span>
                         </Link>
 
                         <div className="flex items-center gap-2">
                             <ThemeToggle />
-                            {/* Notification Bell */}
                             <div className="relative" ref={notificationRef}>
-                                <button 
+                                <button
                                     onClick={() => setShowNotifications(!showNotifications)}
                                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative"
                                 >
@@ -304,26 +286,25 @@ export default function LovartDashboard() {
                                     <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
                                 </button>
 
-                                {/* Notifications Dropdown */}
                                 {showNotifications && (
-                                    <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 z-50 overflow-hidden">
-                                        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-                                            <h3 className="font-semibold text-gray-900 dark:text-gray-100">通知</h3>
-                                            <button 
+                                    <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden">
+                                        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+                                            <h3 className="font-semibold text-gray-900">通知</h3>
+                                            <button
                                                 onClick={() => setShowNotifications(false)}
-                                                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                                                className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
                                             >
-                                                <X size={16} className="text-gray-500 dark:text-gray-400" />
+                                                <X size={16} className="text-gray-500" />
                                             </button>
                                         </div>
                                         <div className="max-h-80 overflow-y-auto">
                                             {notifications.map((notification) => (
-                                                <div 
+                                                <div
                                                     key={notification.id}
                                                     className={`px-4 py-3 border-b border-gray-50 last:border-b-0 hover:bg-gray-50 transition-colors ${notification.isPinned ? 'bg-orange-50/50' : ''}`}
                                                 >
                                                     <div className="flex items-start gap-3">
-                                                                <div className="shrink-0 pt-0.5">
+                                                        <div className="shrink-0 pt-0.5">
                                                             {notification.isPinned ? (
                                                                 <span className="inline-block px-1.5 py-0.5 bg-orange-400 text-white rounded text-xs font-medium">置顶</span>
                                                             ) : notification.isNew ? (
@@ -336,15 +317,12 @@ export default function LovartDashboard() {
                                                             <p className="font-medium text-gray-900 text-sm leading-tight">{notification.title}</p>
                                                             <p className="text-gray-500 text-xs mt-1 leading-relaxed">{notification.content}</p>
                                                             {notification.link && (
-                                                                <a 
+                                                                <a
                                                                     href={notification.link}
                                                                     target="_blank"
                                                                     rel="noopener noreferrer"
                                                                     className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 bg-gray-900 text-white rounded-lg text-xs font-medium hover:bg-gray-800 transition-colors"
                                                                 >
-                                                                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-                                                                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                                                                    </svg>
                                                                     {notification.linkText}
                                                                     <Star size={12} />
                                                                 </a>
@@ -361,10 +339,9 @@ export default function LovartDashboard() {
                                 )}
                             </div>
 
-                            {/* Credits Display */}
                             {user && credits !== null && (
                                 <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
-                                    <span className="text-sm">⚡</span>
+                                    <span className="text-sm">✨</span>
                                     <span>{credits.toLocaleString()}</span>
                                 </div>
                             )}
@@ -391,15 +368,13 @@ export default function LovartDashboard() {
                         </div>
                     </div>
                     <div className="px-8 py-12">
-                        {/* Hero Section */}
                         <div className="max-w-3xl mx-auto text-center mb-16">
                             <div className="flex items-center justify-center gap-3 mb-4">
-                                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">D</div>
-                                <h1 className="text-4xl font-bold text-gray-900">Doodleverse让设计更简单</h1>
+                                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">L</div>
+                                <h1 className="text-4xl font-bold text-gray-900">Lovart，让设计更简单</h1>
                             </div>
-                            <p className="text-gray-500 mb-8">输入目标，Agent 会为你创建项目、进入画布并启动对应工作流</p>
+                            <p className="text-gray-500 mb-8">输入目标，Agent 会为你创建项目、进入画布并启动对应工作流。</p>
 
-                            {/* Search Input */}
                             <div className="relative max-w-2xl mx-auto mb-6">
                                 <input
                                     type="text"
@@ -409,20 +384,20 @@ export default function LovartDashboard() {
                                     className="w-full px-6 py-4 pr-32 rounded-full bg-white shadow-sm focus:shadow-md outline-none transition-all text-base"
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && inputValue.trim()) {
-                                            handleGenerate();
+                                            void handleGenerate();
                                         }
                                     }}
                                 />
                                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                                    <button 
+                                    <button
                                         className="p-2 hover:bg-gray-100 rounded-full transition-colors"
                                         onClick={() => setAgentMode('design')}
                                         title="切换到设计 Agent"
                                     >
                                         <Sparkles size={20} className={`${agentMode === 'design' ? 'text-black' : 'text-gray-400'}`} />
                                     </button>
-                                    <button 
-                                        onClick={handleGenerate}
+                                    <button
+                                        onClick={() => void handleGenerate()}
                                         disabled={!inputValue.trim() || isGenerating}
                                         className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
@@ -431,7 +406,6 @@ export default function LovartDashboard() {
                                 </div>
                             </div>
 
-                            {/* Quick Tags */}
                             <div className="flex items-center justify-center gap-3 flex-wrap">
                                 {[
                                     { key: 'design', label: '🎨 Design' },
@@ -450,14 +424,13 @@ export default function LovartDashboard() {
                             </div>
                         </div>
 
-                        {/* Recent Projects */}
                         <div className="max-w-7xl mx-auto">
                             <div className="flex items-center justify-between mb-6">
                                 <h2 className="text-lg font-semibold text-gray-900">
                                     最近项目
                                     {user && !isLoading && <span className="ml-2 text-sm font-normal text-gray-500">({projects.length})</span>}
                                 </h2>
-                                <Link href="/projects" className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">
+                                <Link href="/projects" className="text-sm text-gray-600 hover:text-gray-900">
                                     查看全部 →
                                 </Link>
                             </div>
@@ -468,15 +441,13 @@ export default function LovartDashboard() {
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                                    {/* New Project Card */}
-                                    <Link href="/canvas" className="group flex flex-col items-center justify-center aspect-[4/3] bg-white dark:bg-gray-900 rounded-2xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all cursor-pointer shadow-sm border border-gray-100 dark:border-gray-800">
-                                        <div className="w-12 h-12 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3 group-hover:bg-gray-200 dark:group-hover:bg-gray-700 transition-colors">
-                                            <Plus size={24} className="text-gray-600 dark:text-gray-300" />
+                                    <Link href="/canvas" className="group flex flex-col items-center justify-center aspect-[4/3] bg-white rounded-2xl hover:bg-gray-50 transition-all cursor-pointer shadow-sm border border-gray-100">
+                                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-3 group-hover:bg-gray-200 transition-colors">
+                                            <Plus size={24} className="text-gray-600" />
                                         </div>
-                                        <span className="font-medium text-gray-600 dark:text-gray-300">新建项目</span>
+                                        <span className="font-medium text-gray-600">新建项目</span>
                                     </Link>
 
-                                    {/* User's Projects */}
                                     {user && projects.slice(0, 3).map((project) => (
                                         <Link
                                             key={project.id}
@@ -490,7 +461,6 @@ export default function LovartDashboard() {
                                         </Link>
                                     ))}
 
-                                    {/* Show sample projects if not signed in */}
                                     {!user && (
                                         <>
                                             <ProjectCard title="示例项目" date="2 分钟前编辑" />
@@ -504,7 +474,7 @@ export default function LovartDashboard() {
                             {user && projects.length === 0 && !isLoading && (
                                 <div className="text-center py-12 text-gray-400">
                                     <p className="mb-2">还没有项目</p>
-                                    <p className="text-sm">点击“新建项目”开始创作！</p>
+                                    <p className="text-sm">点击“新建项目”开始创作。</p>
                                 </div>
                             )}
                         </div>

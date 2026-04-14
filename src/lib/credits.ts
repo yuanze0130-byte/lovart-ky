@@ -3,7 +3,7 @@ import type { UserCreditsRow } from '@/lib/supabase';
 
 export const DEFAULT_SIGNUP_CREDITS = 80;
 
-// 10 积分 = 1 元，以下是偏保守、可覆盖成本的建议档位
+// 10 积分约等于 1 元，以下是偏保守、可覆盖成本的建议档位。
 export const CREDIT_COSTS = {
   generateImage: 5,
   generateVideo: 30,
@@ -108,6 +108,47 @@ export async function consumeCredits(params: {
   };
 }
 
+export async function refundCredits(params: {
+  userId: string;
+  amount: number;
+  type: CreditAction;
+  description: string;
+  referenceId?: string;
+}) {
+  const { userId, amount, type, description, referenceId } = params;
+  const supabase = createServiceRoleSupabaseClient();
+
+  const current = await ensureUserCredits(userId);
+  const nextCredits = current.credits + amount;
+
+  const { data, error } = await supabase
+    .from('user_credits')
+    .update({ credits: nextCredits })
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const updatedRow = data as UserCreditsRow;
+
+  await logCreditTransaction({
+    userId,
+    amount,
+    type,
+    description,
+    referenceId,
+  });
+
+  return {
+    ok: true as const,
+    currentCredits: updatedRow.credits,
+    refundedCredits: amount,
+  };
+}
+
 async function logCreditTransaction(params: {
   userId: string;
   amount: number;
@@ -126,6 +167,6 @@ async function logCreditTransaction(params: {
       reference_id: params.referenceId || null,
     } as never);
   } catch {
-    // 流水表尚未创建时忽略，不阻塞主流程
+    // 流水表尚未创建时忽略，不阻塞主流程。
   }
 }

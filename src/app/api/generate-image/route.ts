@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
-import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
+import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = 'standard' | 'pro';
@@ -340,8 +340,12 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 }
 
 export async function POST(request: NextRequest) {
+  let chargedUserId: string | null = null;
+  let creditsConsumed = false;
+
   try {
     const user = await requireUser(request);
+    chargedUserId = user.id;
 
     const creditResult = await consumeCredits({
       userId: user.id,
@@ -354,11 +358,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: '积分不足',
-          details: `当前积分 ${creditResult.currentCredits}，生成图片需要 ${creditResult.requiredCredits} 积分`,
+          details: `当前积分 ${creditResult.currentCredits}，生成图片需 ${creditResult.requiredCredits} 积分`,
         },
         { status: 402 }
       );
     }
+
+    creditsConsumed = true;
 
     const {
       prompt,
@@ -371,7 +377,7 @@ export async function POST(request: NextRequest) {
     } = (await request.json()) as GenerateImagePayload;
 
     if (!prompt || typeof prompt !== 'string') {
-      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+      throw new Error('Prompt is required');
     }
 
     const payload: GenerateImagePayload = {
@@ -411,6 +417,19 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error: unknown) {
+    if (creditsConsumed && chargedUserId) {
+      try {
+        await refundCredits({
+          userId: chargedUserId,
+          amount: CREDIT_COSTS.generateImage,
+          type: 'manual_adjust',
+          description: '图片生成失败，自动退回积分',
+        });
+      } catch (refundError) {
+        console.error('Failed to refund credits after image generation error:', refundError);
+      }
+    }
+
     console.error('Error generating image:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
 

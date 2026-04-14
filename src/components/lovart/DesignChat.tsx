@@ -22,17 +22,17 @@ interface DesignChatProps {
 const exampleProjects = [
     {
         title: 'Wine List',
-        description: 'Mimic this effect to generate a poster of ...',
+        description: 'Mimic this effect to generate a poster of a curated wine list.',
         image: '🍷',
     },
     {
         title: 'Coffee Shop Branding',
-        description: 'you are a brand design expert, generate ...',
+        description: 'You are a brand design expert, generate a full coffee shop branding direction.',
         image: '☕',
     },
     {
         title: 'Story Board',
-        description: 'I NEED A STORY BOARD FOR THIS...',
+        description: 'I need a storyboard for this product launch concept.',
         image: '📱',
     },
 ];
@@ -62,7 +62,7 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
             timestamp: new Date(),
         };
 
-        setMessages(prev => [...prev, userMessage]);
+        setMessages((prev) => [...prev, userMessage]);
         setInput('');
         setIsLoading(true);
 
@@ -90,22 +90,21 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
                 timestamp: new Date(),
             };
 
-            setMessages(prev => [...prev, assistantMessage]);
+            setMessages((prev) => [...prev, assistantMessage]);
         } catch (error) {
             console.error('Failed to send message:', error);
             const errorMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: '抱歉，我遇到了一些问题。请稍后再试。',
+                content: '抱歉，我刚刚出了点问题，请稍后再试。',
                 timestamp: new Date(),
             };
-            setMessages(prev => [...prev, errorMessage]);
+            setMessages((prev) => [...prev, errorMessage]);
         } finally {
             setIsLoading(false);
         }
     }, [input, isLoading]);
 
-    // Load initial message if prompt is provided
     useEffect(() => {
         if (initialPrompt && messages.length === 0) {
             void handleSendMessage(initialPrompt);
@@ -118,22 +117,19 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
 
     return (
         <div className="flex flex-col h-full bg-white rounded-3xl shadow-lg border border-gray-100">
-            {/* Chat Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {messages.length === 0 && (
                     <div className="flex flex-col space-y-6">
-                        {/* Welcome Message */}
                         <div className="flex items-start gap-3">
                             <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center flex-shrink-0">
-                                <span className="text-white text-sm font-bold">D</span>
+                                <span className="text-white text-sm font-bold">AI</span>
                             </div>
                             <div className="flex-1 space-y-2">
-                                <h3 className="text-base font-semibold text-gray-900">Hi，我是你的AI设计师</h3>
-                                <p className="text-sm text-gray-500">让我们开始今天的创作吧！</p>
+                                <h3 className="text-base font-semibold text-gray-900">Hi，我是你的 AI 设计助手</h3>
+                                <p className="text-sm text-gray-500">告诉我你的想法，我来帮你拆解方向、生成方案和画布内容。</p>
                             </div>
                         </div>
 
-                        {/* Example Cards */}
                         <div className="space-y-3">
                             {exampleProjects.map((example, index) => (
                                 <button
@@ -149,20 +145,11 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
                                 </button>
                             ))}
                         </div>
-
-                        {/* Cut Button */}
-                        <button className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-600 transition-colors">
-                            <span className="w-4 h-4 border border-gray-300 rounded-full flex items-center justify-center">
-                                <span className="w-2 h-2 border-t border-l border-gray-400"></span>
-                            </span>
-                            <span>切换</span>
-                        </button>
                     </div>
                 )}
 
                 {messages.map((message, index) => (
                     <div key={message.id} className="space-y-4">
-                        {/* Show date separator */}
                         {(index === 0 || formatDate(messages[index - 1].timestamp) !== formatDate(message.timestamp)) && (
                             <div className="text-center my-4">
                                 <span className="text-xs text-gray-400">{formatDate(message.timestamp)}</span>
@@ -193,7 +180,6 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
                 <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Area */}
             <div className="border-t border-gray-100 p-4">
                 <div className="flex items-center gap-2">
                     <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
@@ -211,10 +197,10 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                     e.preventDefault();
-                                    handleSendMessage();
+                                    void handleSendMessage();
                                 }
                             }}
-                            placeholder="输入你的设计需求"
+                            placeholder="输入你的设计需求，比如：做一套咖啡品牌海报"
                             className="w-full px-4 py-2.5 rounded-full border border-gray-200 focus:border-gray-300 focus:outline-none text-sm bg-gray-50"
                             disabled={isLoading}
                         />
@@ -230,7 +216,7 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
                         <Globe size={20} className="text-gray-400" />
                     </button>
                     <button
-                        onClick={() => handleSendMessage()}
+                        onClick={() => void handleSendMessage()}
                         disabled={!input.trim() || isLoading}
                         className="p-2.5 bg-blue-500 hover:bg-blue-600 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
