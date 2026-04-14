@@ -86,7 +86,7 @@ export default function UserPage() {
             }
         }
 
-        loadUserCredits();
+        void loadUserCredits();
     }, [user, supabase]);
 
     const formatDate = (dateString: string | undefined) => {
@@ -140,7 +140,7 @@ export default function UserPage() {
             }
 
             setAdminResult(
-                `已更新 ${result.targetEmail || result.targetUserId}：${result.beforeCredits} → ${result.credits}（变化 ${result.delta >= 0 ? '+' : ''}${result.delta}）`
+                `已更新 ${result.targetEmail || result.targetUserId}：${result.beforeCredits} → ${result.credits}（变动 ${result.delta >= 0 ? '+' : ''}${result.delta}）`
             );
             setAdminNote('');
         } catch (error) {
@@ -151,24 +151,24 @@ export default function UserPage() {
     };
 
     return (
-        <div className="h-screen bg-white text-gray-900 font-sans dark:bg-[#0b0f17] dark:text-gray-100">
-            <main className="h-full flex flex-col overflow-hidden">
+        <div className="h-screen bg-white font-sans text-gray-900">
+            <main className="flex h-full flex-col overflow-hidden">
                 <div className="flex-1 overflow-y-auto">
                     <div className="flex items-center justify-between px-8 py-4">
-                        <Link href="/" className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-gray-100 dark:hover:bg-gray-800">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
-                            <span className="text-lg font-semibold text-gray-900 dark:text-gray-100">Doodleverse</span>
+                        <Link href="/" className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-gray-100">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-black text-sm font-bold text-white">D</div>
+                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </Link>
 
                         <div className="flex items-center gap-2">
-                            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative">
+                            <button className="relative rounded-lg p-2 transition-colors hover:bg-gray-100">
                                 <Bell size={18} className="text-gray-600" />
-                                <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-red-500"></span>
                             </button>
 
                             {user && credits !== null && (
-                                <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
-                                    <span className="text-sm">⚡</span>
+                                <div className="flex items-center gap-1.5 rounded-full bg-black px-3 py-1.5 text-xs font-medium text-white">
+                                    <span className="text-sm">✨</span>
                                     <span>{credits.toLocaleString()}</span>
                                 </div>
                             )}
@@ -176,16 +176,16 @@ export default function UserPage() {
                             {!user ? (
                                 <button
                                     onClick={() => setShowLoginModal(true)}
-                                    className="px-4 py-2 bg-black text-white rounded-full text-sm font-medium hover:bg-gray-800 transition-colors"
+                                    className="rounded-full bg-black px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
                                 >
                                     登录
                                 </button>
                             ) : (
                                 <button
                                     onClick={() => void signOut()}
-                                    className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200 hover:bg-gray-50 text-sm text-gray-700"
+                                    className="flex items-center gap-2 rounded-full border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                 >
-                                    <div className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center text-xs font-semibold">
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-black text-xs font-semibold text-white">
                                         {(user.email?.[0] || 'U').toUpperCase()}
                                     </div>
                                     <span className="max-w-[140px] truncate">{user.email}</span>
@@ -196,184 +196,166 @@ export default function UserPage() {
                     </div>
 
                     <div className="px-8 pb-8">
-                    {!user ? (
-                        <div className="flex flex-col items-center justify-center h-full">
-                            <div className="text-center max-w-md">
-                                <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <UserIcon size={32} className="text-gray-400" />
-                                </div>
-                                <h2 className="text-2xl font-bold mb-4">欢迎来到 Doodleverse</h2>
-                                <p className="text-gray-600 mb-6">登录以查看您的账户信息</p>
-                                <button
-                                    onClick={() => setShowLoginModal(true)}
-                                    className="px-6 py-3 bg-black text-white rounded-full font-medium hover:bg-gray-800 transition-colors"
-                                >
-                                    立即登录
-                                </button>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="max-w-4xl mx-auto">
-                            <div className="bg-white rounded-2xl shadow-sm p-8 mb-6">
-                                <div className="flex items-center gap-6 mb-8">
-                                    <div className="w-20 h-20 bg-black rounded-full flex items-center justify-center text-white text-2xl font-bold">
-                                        {(user.email?.[0] || 'U').toUpperCase()}
+                        {!user ? (
+                            <div className="flex h-full flex-col items-center justify-center">
+                                <div className="max-w-md text-center">
+                                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gray-100">
+                                        <UserIcon size={32} className="text-gray-400" />
                                     </div>
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-gray-900 mb-1">
-                                            {user.email?.split('@')[0] || '用户'}
-                                        </h2>
-                                        <p className="text-gray-500">{user.email}</p>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-6">
-                                        <div className="flex items-center gap-3 mb-3">
-                                            <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center">
-                                                <Coins size={20} className="text-white" />
-                                            </div>
-                                            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">我的积分</h3>
-                                        </div>
-                                        {isLoading ? (
-                                            <p className="text-3xl font-bold text-gray-400">加载中...</p>
-                                        ) : (
-                                            <p className="text-4xl font-bold text-gray-900">{credits?.toLocaleString()}</p>
-                                        )}
-                                        <p className="text-sm text-gray-500 mt-2">可用于生成图片和使用 AI 功能</p>
-                                    </div>
-
-                                    <div className="bg-gray-50 rounded-xl p-6">
-                                        <div className="flex items-center gap-3 mb-3">
-                                            <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center">
-                                                <Calendar size={20} className="text-white" />
-                                            </div>
-                                            <h3 className="text-lg font-semibold text-gray-900">加入时间</h3>
-                                        </div>
-                                        <p className="text-2xl font-bold text-gray-900">
-                                            {formatDate(user.created_at)}
-                                        </p>
-                                        <p className="text-sm text-gray-500 mt-2">感谢您使用 Doodleverse</p>
-                                    </div>
+                                    <h2 className="mb-4 text-2xl font-bold">欢迎来到 Doodleverse</h2>
+                                    <p className="mb-6 text-gray-600">登录以查看你的账户信息与积分记录。</p>
+                                    <button
+                                        onClick={() => setShowLoginModal(true)}
+                                        className="rounded-full bg-black px-6 py-3 font-medium text-white transition-colors hover:bg-gray-800"
+                                    >
+                                        立即登录
+                                    </button>
                                 </div>
                             </div>
-
-                            {isAdmin && (
-                                <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-8 mb-6 border border-gray-100 dark:border-gray-800">
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-black rounded-full flex items-center justify-center text-white">
-                                            <Shield size={18} />
+                        ) : (
+                            <div className="mx-auto max-w-4xl">
+                                <div className="mb-6 rounded-2xl bg-white p-8 shadow-sm">
+                                    <div className="mb-8 flex items-center gap-6">
+                                        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-black text-2xl font-bold text-white">
+                                            {(user.email?.[0] || 'U').toUpperCase()}
                                         </div>
                                         <div>
-                                            <h3 className="text-lg font-semibold text-gray-900">管理员调积分</h3>
-                                            <p className="text-sm text-gray-500">按邮箱或用户 ID 直接设置积分余额，并自动记录流水。</p>
+                                            <h2 className="mb-1 text-2xl font-bold text-gray-900">
+                                                {user.email?.split('@')[0] || '用户'}
+                                            </h2>
+                                            <p className="text-gray-500">{user.email}</p>
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">目标用户（邮箱或 user_id）</label>
-                                            <div className="relative">
-                                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                                        <div className="rounded-xl bg-gray-50 p-6">
+                                            <div className="mb-3 flex items-center gap-3">
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black">
+                                                    <Coins size={20} className="text-white" />
+                                                </div>
+                                                <h3 className="text-lg font-semibold text-gray-900">我的积分</h3>
+                                            </div>
+                                            {isLoading ? (
+                                                <p className="text-3xl font-bold text-gray-400">加载中...</p>
+                                            ) : (
+                                                <p className="text-4xl font-bold text-gray-900">{credits?.toLocaleString()}</p>
+                                            )}
+                                            <p className="mt-2 text-sm text-gray-500">可用于生成图片和使用 AI 功能。</p>
+                                        </div>
+
+                                        <div className="rounded-xl bg-gray-50 p-6">
+                                            <div className="mb-3 flex items-center gap-3">
+                                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-800">
+                                                    <Calendar size={20} className="text-white" />
+                                                </div>
+                                                <h3 className="text-lg font-semibold text-gray-900">加入时间</h3>
+                                            </div>
+                                            <p className="text-2xl font-bold text-gray-900">{formatDate(user.created_at)}</p>
+                                            <p className="mt-2 text-sm text-gray-500">感谢你使用 Doodleverse。</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {isAdmin && (
+                                    <div className="mb-6 rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
+                                        <div className="mb-4 flex items-center gap-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black text-white">
+                                                <Shield size={18} />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-lg font-semibold text-gray-900">管理员调积分</h3>
+                                                <p className="text-sm text-gray-500">按邮箱或用户 ID 直接设置积分余额，并自动记录流水。</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-gray-700">目标用户（邮箱或 user_id）</label>
+                                                <div className="relative">
+                                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                                    <input
+                                                        value={adminIdentifier}
+                                                        onChange={(e) => setAdminIdentifier(e.target.value)}
+                                                        placeholder="例如 user@example.com 或 uuid"
+                                                        className="w-full rounded-xl border border-gray-200 py-3 pl-10 pr-4 text-sm outline-none focus:border-gray-400"
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="mb-2 block text-sm font-medium text-gray-700">设置为多少积分</label>
                                                 <input
-                                                    value={adminIdentifier}
-                                                    onChange={(e) => setAdminIdentifier(e.target.value)}
-                                                    placeholder="例如 user@example.com 或 uuid"
-                                                    className="w-full rounded-xl border border-gray-200 pl-10 pr-4 py-3 text-sm outline-none focus:border-gray-400"
+                                                    value={adminCredits}
+                                                    onChange={(e) => setAdminCredits(e.target.value)}
+                                                    type="number"
+                                                    min="0"
+                                                    placeholder="例如 200"
+                                                    className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-400"
                                                 />
                                             </div>
                                         </div>
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">设置为多少积分</label>
+
+                                        <div className="mb-4">
+                                            <label className="mb-2 block text-sm font-medium text-gray-700">备注（可选）</label>
                                             <input
-                                                value={adminCredits}
-                                                onChange={(e) => setAdminCredits(e.target.value)}
-                                                type="number"
-                                                min="0"
-                                                placeholder="例如 200"
+                                                value={adminNote}
+                                                onChange={(e) => setAdminNote(e.target.value)}
+                                                placeholder="例如：补偿测试积分 / 活动赠送"
                                                 className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-400"
                                             />
                                         </div>
-                                    </div>
 
-                                    <div className="mb-4">
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">备注（可选）</label>
-                                        <input
-                                            value={adminNote}
-                                            onChange={(e) => setAdminNote(e.target.value)}
-                                            placeholder="例如：补偿测试积分 / 活动赠送"
-                                            className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-400"
-                                        />
-                                    </div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => void handleAdminAdjustCredits()}
+                                                disabled={adminLoading || !adminIdentifier.trim() || adminCredits === ''}
+                                                className="inline-flex items-center gap-2 rounded-xl bg-black px-5 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                            >
+                                                <Save size={16} />
+                                                {adminLoading ? '保存中...' : '保存积分'}
+                                            </button>
 
-                                    <div className="flex items-center gap-3">
-                                        <button
-                                            onClick={() => void handleAdminAdjustCredits()}
-                                            disabled={adminLoading || !adminIdentifier.trim() || adminCredits === ''}
-                                            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-black text-white text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                                        >
-                                            <Save size={16} />
-                                            {adminLoading ? '保存中...' : '保存积分'}
-                                        </button>
-
-                                        {adminResult && <span className="text-sm text-green-600">{adminResult}</span>}
-                                        {adminError && <span className="text-sm text-red-600">{adminError}</span>}
-                                    </div>
-                                </div>
-                            )}
-
-                            <div className="bg-white rounded-2xl shadow-sm p-8 mb-6">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-4">最近积分流水</h3>
-                                {transactions.length === 0 ? (
-                                    <p className="text-sm text-gray-500">暂无积分变动记录。执行 SQL 建表后，新的消费记录会显示在这里。</p>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {transactions.map((tx) => {
-                                            const isIncome = tx.amount > 0;
-                                            return (
-                                                <div key={tx.id} className="flex items-center justify-between p-4 rounded-xl bg-gray-50 dark:bg-gray-800">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isIncome ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                                            {isIncome ? <Gift size={18} /> : <ArrowDownRight size={18} />}
-                                                        </div>
-                                                        <div>
-                                                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{tx.description || tx.type}</div>
-                                                            <div className="text-xs text-gray-500 dark:text-gray-400">{formatDateTime(tx.created_at)}</div>
-                                                        </div>
-                                                    </div>
-                                                    <div className={`text-sm font-semibold ${isIncome ? 'text-green-600' : 'text-red-600'}`}>
-                                                        {isIncome ? '+' : ''}{tx.amount}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                            {adminResult && <span className="text-sm text-green-600">{adminResult}</span>}
+                                            {adminError && <span className="text-sm text-red-600">{adminError}</span>}
+                                        </div>
                                     </div>
                                 )}
-                            </div>
 
-                            <div className="bg-gray-50 rounded-xl p-6">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-3">关于积分</h3>
-                                <ul className="space-y-2 text-gray-600">
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-gray-400 mt-1">•</span>
-                                        <span>新用户注册即获得 <strong className="text-gray-900">80 积分</strong></span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-gray-400 mt-1">•</span>
-                                        <span>图片生成默认消耗 <strong className="text-gray-900">5 积分</strong>（按 t8star 口径计费）</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-gray-400 mt-1">•</span>
-                                        <span>视频生成默认消耗 <strong className="text-gray-900">30 积分</strong></span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <span className="text-gray-400 mt-1">•</span>
-                                        <span>去背景消耗 2 积分，超分消耗 5 积分</span>
-                                    </li>
-                                </ul>
+                                <div className="rounded-2xl bg-white p-8 shadow-sm">
+                                    <div className="mb-4 flex items-center justify-between">
+                                        <h3 className="text-lg font-semibold text-gray-900">最近积分流水</h3>
+                                        <div className="text-sm text-gray-400">最近 10 条</div>
+                                    </div>
+
+                                    {transactions.length === 0 ? (
+                                        <div className="rounded-xl border border-dashed border-gray-200 px-6 py-10 text-center text-sm text-gray-400">
+                                            暂无积分流水记录
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {transactions.map((item) => {
+                                                const positive = item.amount > 0;
+                                                return (
+                                                    <div key={item.id} className="flex items-center justify-between rounded-xl border border-gray-100 px-4 py-3">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`flex h-10 w-10 items-center justify-center rounded-full ${positive ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-700'}`}>
+                                                                {positive ? <Gift size={18} /> : <ArrowDownRight size={18} />}
+                                                            </div>
+                                                            <div>
+                                                                <div className="text-sm font-medium text-gray-900">{item.description || item.type}</div>
+                                                                <div className="text-xs text-gray-400">{formatDateTime(item.created_at)}</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className={`text-sm font-semibold ${positive ? 'text-green-600' : 'text-gray-700'}`}>
+                                                            {positive ? '+' : ''}{item.amount}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
-                    )}
+                        )}
                     </div>
                 </div>
             </main>

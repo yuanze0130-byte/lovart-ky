@@ -51,12 +51,12 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
     try {
       await signInWithOtp(email.trim());
       setCooldown(RESEND_COOLDOWN_SECONDS);
-      setMessage('邮件已发送，请检查邮箱并在 60 秒内不要重复点击。若没看到，也请先查看垃圾箱。');
+      setMessage('登录邮件已发送，请检查邮箱。60 秒内请勿重复点击；若未看到，也请先检查垃圾邮箱。');
     } catch (err) {
       const rawMessage = err instanceof Error ? err.message : '发送登录邮件失败';
       if (rawMessage.toLowerCase().includes('rate limit')) {
         setCooldown(RESEND_COOLDOWN_SECONDS);
-        setError('发送过于频繁，请稍等 60 秒后再试，不要连续点击。');
+        setError('发送过于频繁，请在 60 秒后再试，不要连续点击。');
       } else {
         setError(rawMessage);
       }
@@ -68,35 +68,35 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
   const buttonText = loading
     ? '发送中...'
     : cooldown > 0
-      ? `请 ${cooldown}s 后重试`
+      ? `${cooldown}s 后重试`
       : '发送登录链接';
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 relative">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+      <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-lg hover:bg-gray-100 text-gray-500"
+          className="absolute right-4 top-4 rounded-lg p-2 text-gray-500 hover:bg-gray-100"
         >
           <X size={18} />
         </button>
 
         <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">登录 Doodleverse</h2>
+          <h2 className="mb-2 text-xl font-semibold text-gray-900">登录 Doodleverse</h2>
           <p className="text-sm text-gray-500">输入邮箱，我们会发送一个免密码登录链接。</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="block">
-            <span className="text-sm text-gray-700 mb-2 block">邮箱</span>
-            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-3 focus-within:border-black">
+            <span className="mb-2 block text-sm text-gray-700">邮箱</span>
+            <div className="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-3 focus-within:border-black">
               <Mail size={16} className="text-gray-400" />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full outline-none text-sm bg-transparent text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                className="w-full bg-transparent text-sm text-gray-900 outline-none placeholder:text-gray-400"
                 required
               />
             </div>
@@ -108,7 +108,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
           <button
             type="submit"
             disabled={loading || cooldown > 0 || !email.trim()}
-            className="w-full px-4 py-3 bg-black text-white rounded-xl text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full rounded-xl bg-black px-4 py-3 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {buttonText}
           </button>

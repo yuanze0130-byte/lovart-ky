@@ -31,8 +31,8 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
     }, [menuOpen]);
 
     return (
-        <div className="group relative bg-white rounded-2xl overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-300 cursor-pointer">
-            <div className="aspect-[4/3] bg-gray-50 relative overflow-hidden">
+        <div className="group relative cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white transition-all duration-300 hover:shadow-lg">
+            <div className="relative aspect-[4/3] overflow-hidden bg-gray-50">
                 {imageUrl ? (
                     <Image
                         src={imageUrl}
@@ -43,12 +43,12 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                         unoptimized={imageUrl.startsWith('data:')}
                     />
                 ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center text-gray-300">
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-100 text-gray-300">
                         <div className="flex flex-col items-center gap-3 text-center">
-                            <div className="w-14 h-14 rounded-full bg-black text-white flex items-center justify-center text-xl font-bold shadow-sm">D</div>
+                            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-xl font-bold text-white shadow-sm">D</div>
                             <div>
                                 <div className="text-sm font-medium text-gray-500">暂无封面</div>
-                                <div className="text-xs text-gray-400 mt-1 truncate max-w-[180px]">{title}</div>
+                                <div className="mt-1 max-w-[180px] truncate text-xs text-gray-400">{title}</div>
                             </div>
                         </div>
                     </div>
@@ -56,7 +56,7 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
 
                 {(onRename || onDelete) && (
                     <div
-                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                        className="absolute right-2 top-2 z-20 opacity-0 transition-opacity group-hover:opacity-100"
                         ref={menuRef}
                         onClick={(e) => e.stopPropagation()}
                     >
@@ -66,13 +66,13 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                                 e.preventDefault();
                                 setMenuOpen((prev) => !prev);
                             }}
-                            className="p-1.5 bg-white/90 backdrop-blur-sm rounded-lg hover:bg-white shadow-sm"
+                            className="rounded-lg bg-white/90 p-1.5 shadow-sm backdrop-blur-sm hover:bg-white"
                         >
                             <MoreHorizontal size={16} className="text-gray-600" />
                         </button>
 
                         {menuOpen && (
-                            <div className="absolute right-0 mt-2 w-40 bg-white dark:bg-gray-900 rounded-xl shadow-xl border border-gray-100 dark:border-gray-800 overflow-hidden">
+                            <div className="absolute right-0 mt-2 w-40 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-xl">
                                 {onRename && (
                                     <button
                                         type="button"
@@ -81,7 +81,7 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                                             setMenuOpen(false);
                                             onRename();
                                         }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                                        className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
                                     >
                                         <Pencil size={14} />
                                         重命名
@@ -95,7 +95,7 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                                             setMenuOpen(false);
                                             onDelete();
                                         }}
-                                        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
+                                        className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50"
                                     >
                                         <Trash2 size={14} />
                                         删除项目
@@ -108,8 +108,8 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
             </div>
 
             <div className="p-4">
-                <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">{title}</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{date}</p>
+                <h3 className="truncate font-medium text-gray-900">{title}</h3>
+                <p className="mt-1 text-xs text-gray-500">{date}</p>
             </div>
         </div>
     );
