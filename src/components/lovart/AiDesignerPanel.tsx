@@ -28,7 +28,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     const modeConfig: Record<AgentMode, { label: string; greeting: string; subtitle: string; placeholder: string }> = {
         design: {
             label: 'Design',
-            greeting: 'Hi，我是你的AI设计师',
+            greeting: 'Hi，我是你的 AI 设计助手',
             subtitle: '我会帮你拆解需求、生成版式方向与视觉方案',
             placeholder: '描述你想做的设计内容、风格和用途',
         },
@@ -82,23 +82,22 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
             const prompt = inputValue;
             setInputValue('');
 
-            setMessages(prev => [...prev, { role: 'user', content: prompt }]);
+            setMessages((prev) => [...prev, { role: 'user', content: prompt }]);
 
             try {
                 const response = await onGenerate(prompt, { mode: agentMode });
                 const reply = typeof response === 'string' ? response : response.reply;
-                setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+                setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
-                setMessages(prev => [...prev, {
+                setMessages((prev) => [...prev, {
                     role: 'assistant',
-                    content: `抱歉，这次 Agent 没有成功响应：${error instanceof Error ? error.message : '未知错误'}`,
+                    content: `抱歉，这个 Agent 没有成功响应：${error instanceof Error ? error.message : '未知错误'}`,
                 }]);
             }
         }
     }, [agentMode, inputValue, isGenerating, onGenerate]);
 
-    // 自动发送 initialPrompt（如果提供）
     React.useEffect(() => {
         setAgentMode(initialMode);
     }, [initialMode]);
@@ -127,7 +126,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 console.error('Failed to auto-start agent:', error);
                 setMessages([
                     { role: 'user', content: initialPrompt },
-                    { role: 'assistant', content: `抱歉，这次 Agent 自动启动失败：${error instanceof Error ? error.message : '未知错误'}` },
+                    { role: 'assistant', content: `抱歉，这个 Agent 自动启动失败：${error instanceof Error ? error.message : '未知错误'}` },
                 ]);
             });
         }
@@ -135,7 +134,6 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
 
     return (
         <div className="flex flex-col h-full bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-            {/* Header Icons */}
             <div className="flex items-center justify-end gap-4 p-4 text-gray-400">
                 <button className="hover:text-gray-600 transition-colors"><MessageSquare size={18} /></button>
                 <button className="hover:text-gray-600 transition-colors"><Clock size={18} /></button>
@@ -149,14 +147,12 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 )}
             </div>
 
-            {/* Main Content */}
             <div className="flex-1 overflow-y-auto px-8 pb-4">
                 {messages.length === 0 ? (
                     <>
-                        {/* Greeting */}
                         <div className="mb-8">
-                            <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold mb-6">
-                                L
+                            <div className="relative w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold mb-6">
+                                D
                                 <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center">
                                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                                 </div>
@@ -165,7 +161,6 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             <p className="text-lg text-gray-400 font-light">{modeConfig[agentMode].subtitle}</p>
                         </div>
 
-                        {/* Suggestions Cards */}
                         <div className="space-y-4 mb-6">
                             {suggestions.map((item, index) => (
                                 <div
@@ -183,10 +178,9 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             ))}
                         </div>
 
-                        {/* Switch Button */}
                         <button className="flex items-center gap-2 text-gray-400 hover:text-gray-600 transition-colors text-sm mb-4">
                             <RefreshCw size={14} />
-                            <span>切换</span>
+                            <span>切换建议</span>
                         </button>
                     </>
                 ) : (
@@ -218,7 +212,6 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 )}
             </div>
 
-            {/* Input Area */}
             <div className="p-6 pt-2">
                 <div className="relative border border-gray-200 rounded-2xl bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all">
                     <textarea
@@ -229,7 +222,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                         onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
-                                handleSend();
+                                void handleSend();
                             }
                         }}
                     />
@@ -264,7 +257,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             </div>
 
                             <button
-                                onClick={handleSend}
+                                onClick={() => void handleSend()}
                                 disabled={!inputValue.trim() || isGenerating}
                                 className={`p-2 rounded-full transition-all ${inputValue.trim() && !isGenerating
                                     ? 'bg-black text-white hover:bg-gray-800 shadow-md'

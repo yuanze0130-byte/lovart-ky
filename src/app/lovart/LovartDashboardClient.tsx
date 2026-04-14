@@ -91,7 +91,7 @@ export default function LovartDashboard() {
     ];
 
     const placeholders = useMemo(() => [
-        '让 Lovart 为你自动生成方案和效果图',
+        '让 Doodleverse 为你自动生成方案和效果图',
         '设计一个现代简约的 Logo',
         '创建一张社交媒体海报',
         '生成一个产品展示图',
@@ -271,8 +271,8 @@ export default function LovartDashboard() {
                 <div className="flex-1 overflow-y-auto">
                     <div className="flex items-center justify-between px-8 py-4">
                         <Link href="/" className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-gray-100">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
-                            <span className="text-lg font-semibold text-gray-900">Lovart</span>
+                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
+                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </Link>
 
                         <div className="flex items-center gap-2">
@@ -370,8 +370,8 @@ export default function LovartDashboard() {
                     <div className="px-8 py-12">
                         <div className="max-w-3xl mx-auto text-center mb-16">
                             <div className="flex items-center justify-center gap-3 mb-4">
-                                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">L</div>
-                                <h1 className="text-4xl font-bold text-gray-900">Lovart，让设计更简单</h1>
+                                <div className="w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold">D</div>
+                                <h1 className="text-4xl font-bold text-gray-900">Doodleverse，让设计更简单</h1>
                             </div>
                             <p className="text-gray-500 mb-8">输入目标，Agent 会为你创建项目、进入画布并启动对应工作流。</p>
 
