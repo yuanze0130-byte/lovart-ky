@@ -118,6 +118,7 @@ function LovartCanvasContent() {
         exitAnnotationMode,
         detectObject,
         editObject,
+        setSelectedObject,
     } = useObjectAnnotation();
 
     const handleAgentGenerate = useCallback(async (prompt: string, options?: { mode?: 'design' | 'branding' | 'image-editing' | 'research' }) => {
@@ -384,6 +385,16 @@ function LovartCanvasContent() {
                 setAnnotationSubject('');
             });
     }, [detectObject]);
+
+    const handleAnnotateRegion = useCallback((element: CanvasElement, region: { x: number; y: number; width: number; height: number }) => {
+        enterAnnotationMode(element);
+        setSelectedObject({
+            id: `manual-${Date.now()}`,
+            label: annotationSubject.trim() || '已标记区域',
+            score: 1,
+            bbox: region,
+        });
+    }, [annotationSubject, enterAnnotationMode, setSelectedObject]);
 
     const handleApplyObjectEdit = useCallback(async () => {
         if (!annotationImageId || !annotationObject || !objectEditPrompt.trim()) return;
@@ -1652,6 +1663,7 @@ function LovartCanvasContent() {
                     onStartObjectAnnotation={enterAnnotationMode}
                     onExitObjectAnnotation={exitAnnotationMode}
                     onDetectObjectAt={handleDetectObjectAt}
+                    onAnnotateRegion={handleAnnotateRegion}
                 />
                 {annotationImageId && annotationObject && (() => {
                     const imageElement = elements.find((element) => element.id === annotationImageId);

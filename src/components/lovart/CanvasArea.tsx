@@ -157,6 +157,7 @@ interface CanvasAreaProps {
     onStartObjectAnnotation?: (element: CanvasElement) => void;
     onExitObjectAnnotation?: () => void;
     onDetectObjectAt?: (element: CanvasElement, point: { x: number; y: number }) => void;
+    onAnnotateRegion?: (element: CanvasElement, region: { x: number; y: number; width: number; height: number }) => void;
 }
 
 export function CanvasArea({
@@ -189,6 +190,7 @@ export function CanvasArea({
     onStartObjectAnnotation,
     onExitObjectAnnotation,
     onDetectObjectAt,
+    onAnnotateRegion,
 }: CanvasAreaProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
@@ -551,15 +553,34 @@ export function CanvasArea({
             const x2 = Math.max(selectionBox.startX, selectionBox.currentX);
             const y2 = Math.max(selectionBox.startY, selectionBox.currentY);
 
-            const directlySelected = elements.filter((el) => {
-                const elRight = el.x + (el.width || 0);
-                const elBottom = el.y + (el.height || 0);
-                return el.x < x2 && elRight > x1 && el.y < y2 && elBottom > y1;
-            });
+            if (annotationImageId) {
+                const imageElement = elements.find((el) => el.id === annotationImageId && el.type === 'image');
+                if (imageElement) {
+                    const localX = Math.max(0, x1 - imageElement.x);
+                    const localY = Math.max(0, y1 - imageElement.y);
+                    const localRight = Math.min(imageElement.width || 0, x2 - imageElement.x);
+                    const localBottom = Math.min(imageElement.height || 0, y2 - imageElement.y);
+                    const width = Math.max(1, localRight - localX);
+                    const height = Math.max(1, localBottom - localY);
 
-            const expandedSelectedIds = Array.from(new Set(directlySelected.flatMap((el) => getGroupedSelectionIds(el.id))));
+                    onAnnotateRegion?.(imageElement, {
+                        x: localX,
+                        y: localY,
+                        width,
+                        height,
+                    });
+                }
+            } else {
+                const directlySelected = elements.filter((el) => {
+                    const elRight = el.x + (el.width || 0);
+                    const elBottom = el.y + (el.height || 0);
+                    return el.x < x2 && elRight > x1 && el.y < y2 && elBottom > y1;
+                });
 
-            onSelect(expandedSelectedIds);
+                const expandedSelectedIds = Array.from(new Set(directlySelected.flatMap((el) => getGroupedSelectionIds(el.id))));
+
+                onSelect(expandedSelectedIds);
+            }
         }
 
         if (isDrawing && currentPath) {

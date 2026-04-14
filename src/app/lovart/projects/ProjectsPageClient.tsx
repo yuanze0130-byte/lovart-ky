@@ -171,8 +171,8 @@ export default function ProjectsPage() {
                 <div className="flex-1 overflow-y-auto">
                     <div className="flex items-center justify-between px-8 py-4">
                         <Link href="/" className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-gray-100">
-                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">L</div>
-                            <span className="text-lg font-semibold text-gray-900">Lovart</span>
+                            <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-sm font-bold">D</div>
+                            <span className="text-lg font-semibold text-gray-900">Doodleverse</span>
                         </Link>
 
                         <div className="flex items-center gap-2">
@@ -215,7 +215,7 @@ export default function ProjectsPage() {
                         {!user ? (
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="text-center max-w-md">
-                                    <h2 className="text-2xl font-bold mb-4">欢迎来到 Lovart</h2>
+                                    <h2 className="text-2xl font-bold mb-4">欢迎来到 Doodleverse</h2>
                                     <p className="text-gray-600 mb-6">登录以查看和管理你的项目</p>
                                     <button
                                         onClick={() => setShowLoginModal(true)}
