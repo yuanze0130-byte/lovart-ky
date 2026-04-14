@@ -3,13 +3,52 @@ import type { UserCreditsRow } from '@/lib/supabase';
 
 export const DEFAULT_SIGNUP_CREDITS = 80;
 
-// 10 积分约等于 1 元，以下是偏保守、可覆盖成本的建议档位。
+export type ImageModelVariant = 'standard' | 'pro';
+export type ImageResolution = '1K' | '2K' | '4K';
+export type VideoModelMode = 'standard' | 'fast';
+export type UpscaleScale = 2 | 4 | 6;
+
 export const CREDIT_COSTS = {
-  generateImage: 5,
-  generateVideo: 30,
+  detectObject: 0,
+  reversePrompt: 0,
   removeBackground: 2,
-  upscale: 5,
+  generateImage: {
+    standard: {
+      '1K': 3,
+      '2K': 3,
+      '4K': 6,
+    },
+    pro: {
+      '1K': 3,
+      '2K': 3,
+      '4K': 6,
+    },
+  },
+  generateVideo: {
+    fast: 18,
+    standard: 28,
+    pro: 45,
+  },
+  upscale: {
+    2: 4,
+    4: 6,
+    6: 22,
+  },
 } as const;
+
+export function getImageCreditCost(modelVariant: ImageModelVariant = 'pro', resolution: ImageResolution = '1K') {
+  return CREDIT_COSTS.generateImage[modelVariant][resolution];
+}
+
+export function getVideoCreditCost(modelMode: VideoModelMode = 'standard') {
+  return CREDIT_COSTS.generateVideo[modelMode] ?? CREDIT_COSTS.generateVideo.standard;
+}
+
+export function getUpscaleCreditCost(scale: number = 2) {
+  if (scale >= 6) return CREDIT_COSTS.upscale[6];
+  if (scale >= 4) return CREDIT_COSTS.upscale[4];
+  return CREDIT_COSTS.upscale[2];
+}
 
 type CreditAction =
   | 'generate_image'

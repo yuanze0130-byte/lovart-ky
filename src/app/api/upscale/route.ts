@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { submitUpscaleTask } from '@/lib/upscale';
 import { requireUser } from '@/lib/require-user';
-import { consumeCredits, CREDIT_COSTS } from '@/lib/credits';
+import { consumeCredits, getUpscaleCreditCost } from '@/lib/credits';
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
 
+    const { image, scale } = await request.json();
+
+    const upscaleScale = typeof scale === 'number' ? scale : Number(scale || 2);
     const creditResult = await consumeCredits({
       userId: user.id,
-      amount: CREDIT_COSTS.upscale,
+      amount: getUpscaleCreditCost(upscaleScale),
       type: 'upscale',
-      description: 'AI 超分',
+      description: `AI 超分 (${upscaleScale}x)`,
     });
 
     if (!creditResult.ok) {
@@ -24,13 +27,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { image, scale } = await request.json();
-
     if (!image || typeof image !== 'string') {
       return NextResponse.json({ error: 'Image is required' }, { status: 400 });
     }
 
-    const upscaleScale = typeof scale === 'number' ? scale : Number(scale || 2);
     if (!Number.isFinite(upscaleScale) || upscaleScale <= 0) {
       return NextResponse.json({ error: 'Scale must be a positive number' }, { status: 400 });
     }

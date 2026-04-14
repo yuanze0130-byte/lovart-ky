@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, ScanSearch } from 'lucide-react';
+import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw } from 'lucide-react';
+import { getUpscaleCreditCost } from '@/lib/credits';
 import { CanvasElement } from './CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 
@@ -25,6 +26,24 @@ function RemoveBackgroundIcon({ className = 'w-4 h-4' }: { className?: string })
         <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" className={className} fill="currentColor" aria-hidden="true">
             <path d="M276.245 370.924c-24.994 24.997-24.99 65.524 0.014 90.512l415.208 415.155 0.755 0.742c25.054 24.24 65.005 23.993 89.75-0.737l99.56-99.55 0.022-0.018c0.347-0.302 0.511-0.483 0.786-0.782 24.994-24.997 24.99-65.524-0.014-90.512L467.118 270.579l-0.754-0.742c-25.054-24.24-65.006-23.993-89.75 0.737l-99.583 99.568c-0.346 0.302-0.51 0.483-0.786 0.782z m45.263 45.252L421.86 315.837l0.012 0.005 415.204 415.152-100.351 100.34-0.011-0.006-415.206-415.152z" />
             <path d="M276.252 370.923c-24.994 24.997-24.99 65.524 0.014 90.512l94.525 94.514 190.87-190.846-94.536-94.525-0.755-0.742c-25.054-24.24-65.005-23.993-89.75 0.737l-99.582 99.568c-0.347 0.302-0.511 0.483-0.786 0.782z m45.263 45.252l100.352-100.339 0.011 0.005 49.267 49.262-100.354 100.342-49.276-49.27zM160.773 669.64c17.497 0 31.714 14.042 31.996 31.471l0.004 0.53v195.193l0.117 0.088c0.549 0.387 1.375 0.672 2.402 0.713l0.261 0.006h351.22c17.674 0 32 14.327 32 32 0 17.496-14.041 31.713-31.47 31.995l-0.53 0.005h-351.22c-35.957 0-66.17-27.497-66.77-62.959l-0.01-1.077V701.641c0-17.673 14.327-32 32-32zM892.143 130c35.987 0 66.246 27.486 66.848 62.967l0.009 1.077V450c0 17.673-14.327 32-32 32-17.496 0-31.713-14.042-31.996-31.47L895 450V194.83l-0.124-0.093c-0.563-0.397-1.412-0.69-2.466-0.732l-0.267-0.005H614c-17.673 0-32-14.327-32-32 0-17.496 14.042-31.713 31.47-31.996L614 130h278.143zM166 321c17.673 0 32 14.327 32 32 0 17.496-14.042 31.713-31.47 31.996L166 385H91c-17.673 0-32-14.327-32-32 0-17.496 14.042-31.713 31.47-31.996L91 321h75z m-15.132-215.384l0.376 0.374 96.5 97.5c12.432 12.56 12.328 32.822-0.234 45.254-12.435 12.308-32.417 12.328-44.878 0.14l-0.376-0.374-96.5-97.5c-12.432-12.56-12.328-32.822 0.234-45.254 12.435-12.308 32.417-12.328 44.878-0.14zM355 64c17.496 0 31.713 14.042 31.996 31.47L387 96v75c0 17.496-14.042 31.713-31.47 31.996L355 203c-17.496 0-31.713-14.042-31.996-31.47L323 171V96c0-17.673 14.327-32 32-32z" />
+        </svg>
+    );
+}
+
+function ReversePromptIcon({ className = 'w-4 h-4' }: { className?: string }) {
+    return (
+        <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" className={className} fill="currentColor" aria-hidden="true">
+            <path d="M739.562667 168.533333c64 0 115.904 51.904 115.904 115.904V512l-2.133334 2.133333h-56.896l-2.133333-2.133333V284.437333a54.762667 54.762667 0 0 0-54.741333-54.741333H284.437333a54.762667 54.762667 0 0 0-54.741333 54.741333v455.125334a54.762667 54.762667 0 0 0 54.741333 54.741333H512l2.133333 2.133333V853.333333l-2.133333 2.133334H284.437333c-64 0-115.904-51.904-115.904-115.904V284.437333c0-64 51.904-115.904 115.904-115.904h455.125334z"></path>
+            <path d="M568.469333 732.501333a20.48 20.48 0 0 1-5.397333-13.44V708.266667a20.48 20.48 0 0 1 5.397333-13.44l137.664-137.152a13.077333 13.077333 0 0 1 18.901334 0l18.901333 18.837333a12.970667 12.970667 0 0 1 0 18.816l-91.797333 91.434667h236.565333c8.106667 0 13.482667 5.376 13.482667 13.44v26.88c0 8.085333-5.397333 13.44-13.482667 13.44H652.138667L743.936 832c8.106667 5.376 8.106667 16.128 2.688 18.816l-18.901333 18.816a13.077333 13.077333 0 0 1-18.88 0l-140.373334-137.130667z"></path>
+            <path d="M688.490667 362.922667v46.933333a10.666667 10.666667 0 0 1-10.666667 10.666667h-341.333333a10.666667 10.666667 0 0 1-10.666667-10.666667v-46.933333a10.666667 10.666667 0 0 1 10.666667-10.666667h341.333333a10.666667 10.666667 0 0 1 10.666667 10.666667zM578.389333 490.922667v46.933333a10.666667 10.666667 0 0 1-10.666666 10.666667h-231.253334a10.666667 10.666667 0 0 1-10.666666-10.666667v-46.933333a10.666667 10.666667 0 0 1 10.666666-10.666667h231.253334a10.666667 10.666667 0 0 1 10.666666 10.666667z"></path>
+        </svg>
+    );
+}
+
+function AnnotationEditIcon({ className = 'w-4 h-4' }: { className?: string }) {
+    return (
+        <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" className={className} fill="currentColor" aria-hidden="true">
+            <path d="M512.434393 66.861804c-0.054235 0-0.109494 0-0.163729 0l-0.541329 0c-0.056282 0-0.109494 0-0.163729 0-191.363376 0.434905-346.930477 156.1115-346.930477 347.637582 0 188.810227 119.553886 338.510714 326.018192 532.535709 0.325411 0.434905 0.434905 0.977257 0.814552 1.302669 3.042289 3.260254 6.735401 5.432733 10.646478 6.843872 0.923022 0.325411 1.954515 0.325411 2.933819 0.543376 2.226714 0.542352 4.399193 1.412163 6.681166 1.412163 0.107447 0 0.161682-0.10847 0.270153-0.10847 0.109494 0 0.163729 0.10847 0.272199 0.10847 2.281973 0 4.455475-0.86981 6.681166-1.412163 0.977257-0.217964 2.010797-0.217964 2.933819-0.543376 3.90903-1.412163 7.605212-3.584642 10.646478-6.843872 0.379647-0.325411 0.488117-0.868787 0.813528-1.302669 206.464305-194.024995 326.019215-343.725482 326.019215-532.535709C859.364871 222.973304 703.796746 67.296709 512.434393 66.861804zM511.998465 596.247776c-101.193727 0-183.541223-82.347496-183.541223-183.596482 0-101.247962 82.347496-183.486988 183.541223-183.486988 101.195773 0 183.541223 82.238003 183.541223 183.486988C695.539688 513.901303 613.194238 596.247776 511.998465 596.247776z"></path>
         </svg>
     );
 }
@@ -411,7 +430,7 @@ export function ContextToolbar({
                                 title="反推提示词"
                                 disabled={isReversingPrompt}
                             >
-                                {isReversingPrompt ? <Loader2 size={18} className="animate-spin" /> : <ScanSearch size={18} />}
+                                {isReversingPrompt ? <Loader2 size={18} className="animate-spin" /> : <ReversePromptIcon className="h-[18px] w-[18px]" />}
                             </button>
                         </>
                     )}
@@ -422,7 +441,7 @@ export function ContextToolbar({
                             className="p-2 rounded-lg text-fuchsia-600 transition-colors hover:bg-fuchsia-50 dark:text-fuchsia-200 dark:hover:bg-fuchsia-400/12"
                             title="标记编辑"
                         >
-                            <ScanSearch size={18} />
+                            <AnnotationEditIcon className="h-[18px] w-[18px]" />
                         </button>
                     )}
 
@@ -457,7 +476,14 @@ export function ContextToolbar({
 
                     {onDuplicate && (
                         <button
-                            onClick={() => onDuplicate(element)}
+                            onClick={async () => {
+                                onDuplicate(element);
+                                try {
+                                    await navigator.clipboard.writeText(element.content || '');
+                                } catch {
+                                    // ignore clipboard failures
+                                }
+                            }}
                             className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors"
                             title="复制"
                         >
@@ -651,7 +677,7 @@ export function ContextToolbar({
                                                 : 'border-gray-200 hover:bg-gray-50 text-gray-700'
                                         }`}
                                     >
-                                        {value}x
+                                        {value}x · {getUpscaleCreditCost(scale)} 积分
                                     </button>
                                 );
                             })}
@@ -662,7 +688,7 @@ export function ContextToolbar({
                             disabled={isUpscaling}
                             className="w-full px-3 py-2 text-sm bg-black text-white rounded-lg hover:bg-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                         >
-                            {isUpscaling ? '超分处理中...' : `开始 ${selectedUpscale}x 超分`}
+                            {isUpscaling ? '超分处理中...' : `开始 ${selectedUpscale}x 超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分`}
                         </button>
                     </div>
                 )}
@@ -671,7 +697,7 @@ export function ContextToolbar({
                     <div className="absolute top-full left-1/2 z-50 mt-2 w-[28rem] -translate-x-1/2 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                         <div className="mb-3 flex items-center justify-between">
                             <span className="flex items-center gap-1.5 text-sm font-semibold text-gray-800">
-                                <ScanSearch size={14} className="text-purple-500" />
+                                <ReversePromptIcon className="h-[14px] w-[14px] text-purple-500" />
                                 反推提示词
                             </span>
                             <button

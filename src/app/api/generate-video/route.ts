@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
-import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
+import { consumeCredits, getVideoCreditCost, refundCredits } from '@/lib/credits';
 
 type VideoModelMode = 'standard' | 'fast';
 type SupportedVideoRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3' | '4:5';
@@ -97,16 +97,28 @@ async function uploadReferenceImage(userId: string, referenceImage: string) {
 export async function POST(request: NextRequest) {
   let chargedUserId: string | null = null;
   let creditsConsumed = false;
+  let chargedAmount = 0;
 
   try {
     const user = await requireUser(request);
     chargedUserId = user.id;
 
+    const body = (await request.json()) as {
+      prompt?: string;
+      seconds?: number;
+      size?: string;
+      referenceImage?: string;
+      modelMode?: VideoModelMode;
+    };
+
+    const selectedMode: VideoModelMode = body.modelMode === 'fast' ? 'fast' : 'standard';
+
+    chargedAmount = getVideoCreditCost(selectedMode);
     const creditResult = await consumeCredits({
       userId: user.id,
-      amount: CREDIT_COSTS.generateVideo,
+      amount: chargedAmount,
       type: 'generate_video',
-      description: '生成视频',
+      description: `生成视频 (${selectedMode})`,
     });
 
     if (!creditResult.ok) {
@@ -121,13 +133,7 @@ export async function POST(request: NextRequest) {
 
     creditsConsumed = true;
 
-    const { prompt, size, referenceImage, modelMode } = (await request.json()) as {
-      prompt?: string;
-      seconds?: number;
-      size?: string;
-      referenceImage?: string;
-      modelMode?: VideoModelMode;
-    };
+    const { prompt, size, referenceImage, modelMode } = body;
 
     if (!prompt || typeof prompt !== 'string') {
       throw new Error('Prompt is required');
@@ -140,7 +146,6 @@ export async function POST(request: NextRequest) {
       throw new Error('VIDEO_API_KEY not configured');
     }
 
-    const selectedMode: VideoModelMode = modelMode === 'fast' ? 'fast' : 'standard';
     const resolvedModel = VIDEO_MODELS[selectedMode] || process.env.VIDEO_MODEL || DEFAULT_VIDEO_MODEL;
     const ratio = inferRatioFromSize(size);
     const promptWithRatio = prompt.includes('--ratio') ? prompt : `${prompt} --ratio ${ratio}`;
@@ -198,7 +203,7 @@ export async function POST(request: NextRequest) {
       try {
         await refundCredits({
           userId: chargedUserId,
-          amount: CREDIT_COSTS.generateVideo,
+          amount: chargedAmount,
           type: 'manual_adjust',
           description: '视频生成失败，自动退回积分',
         });

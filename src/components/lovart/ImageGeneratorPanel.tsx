@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw } from 'lucide-react';
+import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2 } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import { getImageCreditCost } from '@/lib/credits';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
@@ -65,6 +66,11 @@ const MODE_META: Record<ImageEditMode, { title: string; subtitle: string; icon: 
   },
 };
 
+const MODEL_LABELS: Record<BananaVariant, string> = {
+  standard: 'Nanobanana 2',
+  pro: 'Nanobanana Pro',
+};
+
 export function ImageGeneratorPanel({
   elementId,
   initialMode = 'generate',
@@ -81,6 +87,7 @@ export function ImageGeneratorPanel({
   const [modelVariant, setModelVariant] = useState<BananaVariant>('pro');
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [editMode] = useState<ImageEditMode>(initialMode);
+  const [progress, setProgress] = useState(0);
 
   const selectedElement = useMemo(
     () => canvasElements.find((item) => item.id === elementId),
@@ -88,6 +95,7 @@ export function ImageGeneratorPanel({
   );
 
   const activeMeta = MODE_META[editMode];
+  const imageCreditCost = useMemo(() => getImageCreditCost(modelVariant, resolution), [modelVariant, resolution]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -126,18 +134,36 @@ export function ImageGeneratorPanel({
       promptPatch = '尽量保留主体身份、款式、材质和关键构图锚点，重点调整相机视角、朝向、透视关系与可见结构。';
     }
 
-    await onGenerate(
-      prompt.trim(),
-      resolution,
-      aspectRatio,
-      referenceImages,
-      modelVariant,
-      editMode,
-      promptPatch,
-      editMode === 'generate' ? undefined : editMode,
-      editMode === 'generate' ? undefined : activeMeta.title,
-      editMode === 'generate' ? undefined : promptPatch,
-    );
+    setProgress(8);
+    const steps = [18, 36, 54, 72, 88];
+    let index = 0;
+    const timer = window.setInterval(() => {
+      setProgress((prev) => {
+        if (index >= steps.length || prev >= 90) return prev;
+        const next = steps[index] ?? prev;
+        index += 1;
+        return next;
+      });
+    }, 600);
+
+    try {
+      await onGenerate(
+        prompt.trim(),
+        resolution,
+        aspectRatio,
+        referenceImages,
+        modelVariant,
+        editMode,
+        promptPatch,
+        editMode === 'generate' ? undefined : editMode,
+        editMode === 'generate' ? undefined : activeMeta.title,
+        editMode === 'generate' ? undefined : promptPatch,
+      );
+    } finally {
+      window.clearInterval(timer);
+      setProgress(100);
+      window.setTimeout(() => setProgress(0), 800);
+    }
   };
 
   return (
@@ -167,6 +193,19 @@ export function ImageGeneratorPanel({
       </div>
 
       <div className="p-4">
+        {(isGenerating || progress > 0) && (
+          <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/80 p-3 dark:border-violet-400/20 dark:bg-violet-500/10">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-200">
+              <Loader2 size={14} className="animate-spin" />
+              {progress >= 100 ? '生成完成' : '正在生成中'}
+              <span className="ml-auto text-xs">{progress}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-violet-100 dark:bg-white/10">
+              <div className="h-full rounded-full bg-violet-500 transition-all duration-300" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+        )}
+
         <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Prompt</div>
         <textarea
           value={prompt}
@@ -185,6 +224,7 @@ export function ImageGeneratorPanel({
                   type="button"
                   onClick={() => setReferenceImages((prev) => prev.filter((_, idx) => idx !== index))}
                   className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"
+                  disabled={isGenerating}
                 >
                   <X size={10} />
                 </button>
@@ -196,7 +236,7 @@ export function ImageGeneratorPanel({
         <div className="grid grid-cols-3 gap-3">
           <label className="text-xs text-gray-600">
             分辨率
-            <select value={resolution} onChange={(e) => setResolution(e.target.value as Resolution)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
+            <select value={resolution} onChange={(e) => setResolution(e.target.value as Resolution)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
               <option value="1K">1K</option>
               <option value="2K">2K</option>
               <option value="4K">4K</option>
@@ -204,7 +244,7 @@ export function ImageGeneratorPanel({
           </label>
           <label className="text-xs text-gray-600">
             比例
-            <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value as AspectRatio)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
+            <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value as AspectRatio)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
               {ASPECT_RATIO_OPTIONS.map((ratio) => (
                 <option key={ratio} value={ratio}>{ratio === 'auto' ? '自适应' : ratio}</option>
               ))}
@@ -212,11 +252,19 @@ export function ImageGeneratorPanel({
           </label>
           <label className="text-xs text-gray-600">
             模型
-            <select value={modelVariant} onChange={(e) => setModelVariant(e.target.value as BananaVariant)} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">
-              <option value="pro">Pro</option>
-              <option value="standard">Standard</option>
+            <select value={modelVariant} onChange={(e) => setModelVariant(e.target.value as BananaVariant)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+              <option value="pro">Nanobanana Pro</option>
+              <option value="standard">Nanobanana 2</option>
             </select>
           </label>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+          当前：<span className="font-medium text-gray-900 dark:text-white">{MODEL_LABELS[modelVariant]}</span>
+          <span className="mx-2">·</span>
+          分辨率：<span className="font-medium text-gray-900 dark:text-white">{resolution}</span>
+          <span className="mx-2">·</span>
+          消耗：<span className="font-medium text-violet-700 dark:text-violet-300">{imageCreditCost} 积分</span>
         </div>
 
         {selectedElement?.type === 'image-generator' && (
@@ -224,7 +272,8 @@ export function ImageGeneratorPanel({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              disabled={isGenerating}
+              className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Upload size={16} />
               添加参考图
@@ -236,8 +285,12 @@ export function ImageGeneratorPanel({
               disabled={!prompt.trim() || isGenerating}
               className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <activeMeta.icon size={16} />
-              {isGenerating ? '生成中...' : editMode === 'generate' ? '开始生图' : `执行${activeMeta.title}`}
+              {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <activeMeta.icon size={16} />}
+              {isGenerating
+                ? '生成中...'
+                : editMode === 'generate'
+                  ? `开始生图 · ${imageCreditCost} 积分`
+                  : `执行${activeMeta.title} · ${imageCreditCost} 积分`}
             </button>
           </div>
         )}
