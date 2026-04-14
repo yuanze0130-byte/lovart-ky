@@ -11,7 +11,7 @@ type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhanc
 type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
 type Resolution = '1K' | '2K' | '4K';
-type AspectRatio = '1:1' | '4:3' | '16:9';
+type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 
 type DesignPlan = Record<string, unknown>;
 
@@ -26,7 +26,7 @@ function isResolution(value: unknown): value is Resolution {
 }
 
 function isAspectRatio(value: unknown): value is AspectRatio {
-  return value === '1:1' || value === '4:3' || value === '16:9';
+  return value === 'auto' || value === '4:3' || value === '8:1' || value === '1:1' || value === '3:2' || value === '1:8' || value === '9:16' || value === '2:3' || value === '4:1' || value === '16:9' || value === '4:5' || value === '1:4' || value === '3:4' || value === '5:4' || value === '21:9';
 }
 
 function isBananaVariant(value: unknown): value is BananaVariant {

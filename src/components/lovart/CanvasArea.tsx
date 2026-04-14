@@ -26,7 +26,7 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     model?: string;
     referenceCount?: number;
     resolution?: '1K' | '2K' | '4K';
-    aspectRatio?: '1:1' | '4:3' | '16:9';
+    aspectRatio?: 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 }
 
 export interface CanvasElement extends Record<string, Json | undefined> {
@@ -40,7 +40,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     height?: number;
     originalWidth?: number;
     originalHeight?: number;
-    requestedAspectRatio?: '1:1' | '4:3' | '16:9';
+    requestedAspectRatio?: 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
     requestedResolution?: '1K' | '2K' | '4K';
     storyboardItemId?: string;
     storyboardShotLabel?: string;

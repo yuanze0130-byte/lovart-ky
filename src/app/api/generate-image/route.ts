@@ -7,7 +7,7 @@ import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = 'standard' | 'pro';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
-type SupportedAspectRatio = '1:1' | '4:3' | '16:9' | '9:16';
+type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 type SupportedResolution = '1K' | '2K' | '4K';
 
 interface GeminiInlineDataPart {
@@ -52,7 +52,9 @@ function getProvider(): GeminiProvider {
 }
 
 function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRatio: SupportedAspectRatio) {
-  const aspectRatioInstruction = `Generate the image in ${aspectRatio} aspect ratio.`;
+  const aspectRatioInstruction = aspectRatio === 'auto'
+    ? 'Choose the most suitable aspect ratio automatically based on the prompt and composition.'
+    : `Generate the image in ${aspectRatio} aspect ratio.`;
   const resolutionInstruction =
     resolution === '4K'
       ? 'Target a high-detail 4K-style composition.'

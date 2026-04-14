@@ -130,7 +130,7 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
         throw new Error('当前元素没有图片内容');
       }
 
-      const response = await fetch('/api/upscale', {
+      const response = await authedFetch('/api/upscale', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

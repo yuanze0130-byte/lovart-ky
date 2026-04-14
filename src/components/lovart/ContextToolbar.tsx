@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Download, Trash2, Wand2, Eraser, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, ScanSearch } from 'lucide-react';
+import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, ScanSearch } from 'lucide-react';
 import { CanvasElement } from './CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 
@@ -18,6 +18,15 @@ interface ContextToolbarProps {
         options: { x: number; y: number; width: number; height: number }
     ) => Promise<void>;
     onStartObjectAnnotation?: (element: CanvasElement) => void;
+}
+
+function RemoveBackgroundIcon({ className = 'w-4 h-4' }: { className?: string }) {
+    return (
+        <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" className={className} fill="currentColor" aria-hidden="true">
+            <path d="M276.245 370.924c-24.994 24.997-24.99 65.524 0.014 90.512l415.208 415.155 0.755 0.742c25.054 24.24 65.005 23.993 89.75-0.737l99.56-99.55 0.022-0.018c0.347-0.302 0.511-0.483 0.786-0.782 24.994-24.997 24.99-65.524-0.014-90.512L467.118 270.579l-0.754-0.742c-25.054-24.24-65.006-23.993-89.75 0.737l-99.583 99.568c-0.346 0.302-0.51 0.483-0.786 0.782z m45.263 45.252L421.86 315.837l0.012 0.005 415.204 415.152-100.351 100.34-0.011-0.006-415.206-415.152z" />
+            <path d="M276.252 370.923c-24.994 24.997-24.99 65.524 0.014 90.512l94.525 94.514 190.87-190.846-94.536-94.525-0.755-0.742c-25.054-24.24-65.005-23.993-89.75 0.737l-99.582 99.568c-0.347 0.302-0.511 0.483-0.786 0.782z m45.263 45.252l100.352-100.339 0.011 0.005 49.267 49.262-100.354 100.342-49.276-49.27zM160.773 669.64c17.497 0 31.714 14.042 31.996 31.471l0.004 0.53v195.193l0.117 0.088c0.549 0.387 1.375 0.672 2.402 0.713l0.261 0.006h351.22c17.674 0 32 14.327 32 32 0 17.496-14.041 31.713-31.47 31.995l-0.53 0.005h-351.22c-35.957 0-66.17-27.497-66.77-62.959l-0.01-1.077V701.641c0-17.673 14.327-32 32-32zM892.143 130c35.987 0 66.246 27.486 66.848 62.967l0.009 1.077V450c0 17.673-14.327 32-32 32-17.496 0-31.713-14.042-31.996-31.47L895 450V194.83l-0.124-0.093c-0.563-0.397-1.412-0.69-2.466-0.732l-0.267-0.005H614c-17.673 0-32-14.327-32-32 0-17.496 14.042-31.713 31.47-31.996L614 130h278.143zM166 321c17.673 0 32 14.327 32 32 0 17.496-14.042 31.713-31.47 31.996L166 385H91c-17.673 0-32-14.327-32-32 0-17.496 14.042-31.713 31.47-31.996L91 321h75z m-15.132-215.384l0.376 0.374 96.5 97.5c12.432 12.56 12.328 32.822-0.234 45.254-12.435 12.308-32.417 12.328-44.878 0.14l-0.376-0.374-96.5-97.5c-12.432-12.56-12.328-32.822 0.234-45.254 12.435-12.308 32.417-12.328 44.878-0.14zM355 64c17.496 0 31.713 14.042 31.996 31.47L387 96v75c0 17.496-14.042 31.713-31.47 31.996L355 203c-17.496 0-31.713-14.042-31.996-31.47L323 171V96c0-17.673 14.327-32 32-32z" />
+        </svg>
+    );
 }
 
 function UpscaleIcon({ className = 'w-4 h-4' }: { className?: string }) {
@@ -337,7 +346,7 @@ export function ContextToolbar({
                         title={element.type === 'image' ? (isRemovingBg ? '去背景处理中...' : '去背景') : '仅图片支持去背景'}
                         disabled={element.type !== 'image' || !onRemoveBackground || isRemovingBg}
                     >
-                        {isRemovingBg ? <Loader2 size={18} className="animate-spin" /> : <Eraser size={18} />}
+                        {isRemovingBg ? <Loader2 size={18} className="animate-spin" /> : <RemoveBackgroundIcon className="h-[18px] w-[18px]" />}
                     </button>
 
                     <button
