@@ -12,7 +12,7 @@ export function ObjectAnnotationOverlay({ imageBounds, object, isDetecting, onCl
   return (
     <>
       <div
-        className="absolute pointer-events-none rounded-xl border-2 border-dashed border-fuchsia-400/80 bg-fuchsia-400/5 shadow-[0_0_0_1px_rgba(232,121,249,0.12)]"
+        className="absolute pointer-events-none rounded-xl border-2 border-dashed border-gray-400/80 bg-gray-400/5 shadow-[0_0_0_1px_rgba(156,163,175,0.12)]"
         style={{
           left: imageBounds.left,
           top: imageBounds.top,
@@ -25,7 +25,7 @@ export function ObjectAnnotationOverlay({ imageBounds, object, isDetecting, onCl
       {object && (
         <>
           <div
-            className="absolute pointer-events-none rounded-xl border-2 border-fuchsia-500 bg-fuchsia-500/10 shadow-[0_0_0_1px_rgba(217,70,239,0.18),0_10px_30px_rgba(217,70,239,0.15)]"
+            className="absolute pointer-events-none rounded-xl border-2 border-gray-700 bg-gray-500/10 shadow-[0_0_0_1px_rgba(55,65,81,0.16),0_10px_30px_rgba(15,23,42,0.12)]"
             style={{
               left: imageBounds.left + object.bbox.x,
               top: imageBounds.top + object.bbox.y,
@@ -34,7 +34,7 @@ export function ObjectAnnotationOverlay({ imageBounds, object, isDetecting, onCl
               zIndex: 75,
             }}
           >
-            <div className="absolute -top-8 left-0 rounded-full bg-fuchsia-600 px-3 py-1 text-[11px] font-medium text-white shadow-lg">
+            <div className="absolute -top-8 left-0 rounded-full bg-gray-900 px-3 py-1 text-[11px] font-medium text-white shadow-lg">
               {object.label || '对象'}{typeof object.score === 'number' ? ` · ${Math.round(object.score * 100)}%` : ''}
             </div>
           </div>
@@ -53,8 +53,8 @@ export function ObjectAnnotationOverlay({ imageBounds, object, isDetecting, onCl
             >
               <polygon
                 points={object.polygon.map((point) => `${point.x},${point.y}`).join(' ')}
-                fill="rgba(217,70,239,0.14)"
-                stroke="rgba(192,38,211,0.95)"
+                fill="rgba(107,114,128,0.12)"
+                stroke="rgba(55,65,81,0.9)"
                 strokeWidth="2"
                 strokeDasharray="6 4"
               />
@@ -64,7 +64,7 @@ export function ObjectAnnotationOverlay({ imageBounds, object, isDetecting, onCl
       )}
 
       <div
-        className="absolute flex items-center gap-3 rounded-full border border-fuchsia-200 bg-white/95 px-4 py-2 text-xs text-gray-700 shadow-lg"
+        className="absolute flex items-center gap-3 rounded-full border border-gray-200 bg-white/95 px-4 py-2 text-xs text-gray-700 shadow-lg"
         style={{
           left: imageBounds.left,
           top: Math.max(12, imageBounds.top - 52),

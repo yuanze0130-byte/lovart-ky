@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, Suspense, useRef, useCallback, startTransition } from 'react';
-import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff, Map as MapIcon, Palette } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff, Map as MapIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
@@ -41,8 +41,6 @@ function LovartCanvasContent() {
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
     const [miniMapHoveredId, setMiniMapHoveredId] = useState<string | null>(null);
     const [viewportSize, setViewportSize] = useState({ width: 1440, height: 900 });
-    const [boardColor, setBoardColor] = useState('#f5f7fb');
-    const [showBoardColorPicker, setShowBoardColorPicker] = useState(false);
     const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building' | 'done'>('idle');
     const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
     const [storyboardLayout, setStoryboardLayout] = useState<StoryboardLayoutMode>('vertical');
@@ -53,16 +51,6 @@ function LovartCanvasContent() {
     const clipboardRef = useRef<CanvasElement[]>([]);
     const suppressHistoryRef = useRef(false);
     const miniMapRef = useRef<HTMLDivElement | null>(null);
-    const BOARD_COLOR_OPTIONS = ['#ffffff', '#f5f7fb', '#eef2ff', '#fef3c7', '#ecfccb', '#111111'];
-
-    useEffect(() => {
-        const stored = window.localStorage.getItem('lovart-board-color');
-        if (stored) setBoardColor(stored);
-    }, []);
-
-    useEffect(() => {
-        window.localStorage.setItem('lovart-board-color', boardColor);
-    }, [boardColor]);
 
     const {
         saveStatus,
@@ -126,7 +114,6 @@ function LovartCanvasContent() {
         selectedObject: annotationObject,
         isDetecting: isDetectingObject,
         isEditing: isEditingObject,
-        pendingPoint: annotationPendingPoint,
         enterAnnotationMode,
         exitAnnotationMode,
         detectObject,
@@ -420,7 +407,7 @@ function LovartCanvasContent() {
                 image: imageElement,
                 object: {
                     ...annotationObject,
-                    label: annotationSubject.trim() || annotationObject.label || '?????',
+                    label: annotationSubject.trim() || annotationObject.label || '已标记区域',
                 },
                 prompt: objectEditPrompt.trim(),
             });
@@ -1643,7 +1630,10 @@ function LovartCanvasContent() {
                 <CanvasArea
                     scale={scale}
                     pan={pan}
+<<<<<<< HEAD
                     boardColor={boardColor}
+=======
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                     onPanChange={setPan}
                     onZoomIn={zoomIn}
                     onZoomOut={zoomOut}
@@ -1675,7 +1665,10 @@ function LovartCanvasContent() {
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}
                     isDetectingObject={isDetectingObject}
+<<<<<<< HEAD
                     annotationPendingPoint={annotationPendingPoint}
+=======
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                     onStartObjectAnnotation={enterAnnotationMode}
                     onExitObjectAnnotation={exitAnnotationMode}
                     onDetectObjectAt={handleDetectObjectAt}
@@ -1686,7 +1679,11 @@ function LovartCanvasContent() {
                     if (!imageElement) return null;
                     return (
                         <div
+<<<<<<< HEAD
                             className="absolute z-[90] w-80 rounded-2xl border border-fuchsia-200 bg-white/96 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl"
+=======
+                            className="absolute z-[90] w-80 rounded-2xl border border-gray-200 bg-white/96 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl"
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                             style={{
                                 left: `${(imageElement.x + (imageElement.width || 0)) * scale + pan.x + 18}px`,
                                 top: `${imageElement.y * scale + pan.y}px`,
@@ -1694,8 +1691,13 @@ function LovartCanvasContent() {
                         >
                             <div className="mb-3 flex items-start justify-between gap-3">
                                 <div>
+<<<<<<< HEAD
                                     <div className="text-sm font-semibold text-gray-900">局部编辑</div>
                                     <div className="mt-1 text-xs text-gray-500">① 点击图中主体进行识别 ② 确认对象 ③ 输入修改要求 ④ 执行局部编辑（3积分）</div>
+=======
+                                    <div className="text-sm font-semibold text-gray-900">手动标记编辑</div>
+                                    <div className="mt-1 text-xs text-gray-500">先点选一个区域，再自己告诉系统这里是什么</div>
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                                 </div>
                                 <button
                                     type="button"
@@ -1709,19 +1711,26 @@ function LovartCanvasContent() {
                                     关闭
                                 </button>
                             </div>
+<<<<<<< HEAD
                             <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
                                 <div className="font-medium text-gray-700">当前状态</div>
                                 <div className="mt-1">
                                     {annotationObject ? `已识别对象：${annotationObject.label || annotationSubject || '局部区域'}，可以继续输入修改要求。` : '请先在图上点击你想编辑的主体或局部区域。'}
                                 </div>
                             </div>
+=======
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                             <div className="mb-3">
                                 <div className="mb-1 text-xs font-medium text-gray-600">对象名称</div>
                                 <input
                                     value={annotationSubject}
                                     onChange={(event) => setAnnotationSubject(event.target.value)}
                                     placeholder="例如：帽子、logo、包、路牌"
+<<<<<<< HEAD
                                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-fuchsia-300 focus:bg-white"
+=======
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-gray-400 focus:bg-white"
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                                 />
                                 <div className="mt-2 flex flex-wrap gap-2">
                                     {['人物', '服饰', 'logo'].map((item) => (
@@ -1740,7 +1749,11 @@ function LovartCanvasContent() {
                                 value={objectEditPrompt}
                                 onChange={(event) => setObjectEditPrompt(event.target.value)}
                                 placeholder="描述你想怎么修改这个对象，比如：改成红色帽子、删掉这个 logo、把它换成金属材质"
+<<<<<<< HEAD
                                 className="h-24 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-fuchsia-300 focus:bg-white"
+=======
+                                className="h-24 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-gray-400 focus:bg-white"
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                             />
                             <div className="mt-2 flex flex-wrap gap-2">
                                 {['删除', '换颜色', '替换'].map((item) => (
@@ -1770,9 +1783,15 @@ function LovartCanvasContent() {
                                         type="button"
                                         onClick={() => void handleApplyObjectEdit()}
                                         disabled={!annotationSubject.trim() || !objectEditPrompt.trim() || isEditingObject}
+<<<<<<< HEAD
                                         className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black"
                                     >
                                         {isEditingObject ? '处理中...' : '执行局部编辑（3积分）'}
+=======
+                                        className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+                                        {isEditingObject ? '处理中...' : '应用修改'}
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                                     </button>
                                 </div>
                             </div>
@@ -2021,7 +2040,11 @@ function LovartCanvasContent() {
                         );
                     })()}
 
+<<<<<<< HEAD
                     <div className="relative flex items-center rounded-[20px] border border-gray-200/90 bg-white/94 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/78 dark:shadow-[0_20px_48px_rgba(0,0,0,0.45)]">
+=======
+                    <div className="flex items-center rounded-[20px] border border-gray-200/90 bg-white/94 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/78 dark:shadow-[0_20px_48px_rgba(0,0,0,0.45)]">
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                         <button
                             onClick={() => setShowMiniMap((prev) => !prev)}
                             className={`rounded-xl p-2 transition-all ${showMiniMap ? 'bg-sky-100 text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.14)] dark:bg-sky-400/14 dark:text-sky-200 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.16)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
@@ -2030,6 +2053,7 @@ function LovartCanvasContent() {
                             <MapIcon size={16} />
                         </button>
                         <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-white/10" />
+<<<<<<< HEAD
                         <button
                             onClick={() => setShowBoardColorPicker((prev) => !prev)}
                             className={`rounded-xl p-2 transition-colors ${showBoardColorPicker ? 'bg-sky-100 text-sky-700 dark:bg-sky-400/14 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
@@ -2037,6 +2061,8 @@ function LovartCanvasContent() {
                         >
                             <Palette size={16} />
                         </button>
+=======
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                         <button onClick={() => zoomOut()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
                             <Minus size={16} />
                         </button>
@@ -2050,6 +2076,7 @@ function LovartCanvasContent() {
                         <button onClick={() => zoomIn()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
                             <Plus size={16} />
                         </button>
+<<<<<<< HEAD
                         {showBoardColorPicker && (
                             <div className="absolute bottom-[calc(100%+10px)] left-0 rounded-2xl border border-gray-200/90 bg-white/96 p-3 shadow-[0_18px_40px_rgba(15,23,42,0.16)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/92 dark:shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
                                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-slate-400">画板颜色</div>
@@ -2070,6 +2097,8 @@ function LovartCanvasContent() {
                                 </div>
                             </div>
                         )}
+=======
+>>>>>>> 72410a8 (Tone down object annotation UI colors)
                     </div>
                 </div>
             </div>
