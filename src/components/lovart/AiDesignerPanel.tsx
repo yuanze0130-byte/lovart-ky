@@ -90,6 +90,10 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
+                setMessages(prev => [...prev, {
+                    role: 'assistant',
+                    content: `抱歉，这次 Agent 没有成功响应：${error instanceof Error ? error.message : '未知错误'}`,
+                }]);
             }
         }
     }, [agentMode, inputValue, isGenerating, onGenerate]);
@@ -121,6 +125,10 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 setInputValue('');
             }).catch((error) => {
                 console.error('Failed to auto-start agent:', error);
+                setMessages([
+                    { role: 'user', content: initialPrompt },
+                    { role: 'assistant', content: `抱歉，这次 Agent 自动启动失败：${error instanceof Error ? error.message : '未知错误'}` },
+                ]);
             });
         }
     }, [hasAutoSent, initialMode, initialPrompt, isGenerating, onGenerate]);
