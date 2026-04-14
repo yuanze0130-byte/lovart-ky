@@ -1,5 +1,6 @@
-import { auth } from '@clerk/nextjs/server';
-import { createClerkSupabaseClient } from '@/lib/supabase';
+import { createServiceRoleSupabaseClient } from '@/lib/supabase';
+import type { NextRequest } from 'next/server';
+import { requireUser } from '@/lib/require-user';
 
 type AccessControlRow = {
   user_id: string;
@@ -35,52 +36,32 @@ function todayDateKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
-export async function enforceUsageLimit(action: UsageAction) {
-  const { userId, getToken } = await auth();
+export async function enforceUsageLimit(request: NextRequest, action: UsageAction) {
+  const user = await requireUser(request);
+  const userId = user.id;
+  const supabase = createServiceRoleSupabaseClient();
 
-  if (!userId) {
-    throw new Error('UNAUTHENTICATED');
-  }
-
-  const token = await getToken({ template: 'supabase' });
-  if (!token) {
-    throw new Error('SUPABASE_TOKEN_MISSING');
-  }
-
-  const supabase = createClerkSupabaseClient(token);
-
-  const { data: accessRowRaw, error: accessError } = await supabase
+  const { data: accessRow, error: accessError } = await supabase
     .from('user_access_control')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle<AccessControlRow>();
 
-  const accessRow = accessRowRaw as AccessControlRow | null;
-
-  if (accessError && accessError.code !== 'PGRST116') {
+  if (accessError) {
     throw accessError;
   }
 
-  const access: AccessControlRow = accessRow
-    ? {
-        user_id: accessRow.user_id,
-        is_whitelisted: accessRow.is_whitelisted,
-        daily_image_limit: accessRow.daily_image_limit,
-        daily_video_limit: accessRow.daily_video_limit,
-        daily_remove_bg_limit: accessRow.daily_remove_bg_limit,
-        daily_upscale_limit: accessRow.daily_upscale_limit,
-      }
-    : {
-        user_id: userId,
-        is_whitelisted: false,
-        daily_image_limit: DEFAULT_LIMITS.image,
-        daily_video_limit: DEFAULT_LIMITS.video,
-        daily_remove_bg_limit: DEFAULT_LIMITS.remove_bg,
-        daily_upscale_limit: DEFAULT_LIMITS.upscale,
-      };
+  const access: AccessControlRow = accessRow || {
+    user_id: userId,
+    is_whitelisted: false,
+    daily_image_limit: DEFAULT_LIMITS.image,
+    daily_video_limit: DEFAULT_LIMITS.video,
+    daily_remove_bg_limit: DEFAULT_LIMITS.remove_bg,
+    daily_upscale_limit: DEFAULT_LIMITS.upscale,
+  };
 
   if (!accessRow) {
-    await supabase.from('user_access_control').insert({
+    const { error: insertAccessError } = await supabase.from('user_access_control').insert({
       user_id: userId,
       is_whitelisted: false,
       daily_image_limit: DEFAULT_LIMITS.image,
@@ -88,6 +69,10 @@ export async function enforceUsageLimit(action: UsageAction) {
       daily_remove_bg_limit: DEFAULT_LIMITS.remove_bg,
       daily_upscale_limit: DEFAULT_LIMITS.upscale,
     });
+
+    if (insertAccessError) {
+      throw insertAccessError;
+    }
   }
 
   if (!access.is_whitelisted) {
@@ -95,16 +80,14 @@ export async function enforceUsageLimit(action: UsageAction) {
   }
 
   const usageDate = todayDateKey();
-  const { data: usageRowRaw, error: usageError } = await supabase
+  const { data: usageRow, error: usageError } = await supabase
     .from('user_daily_usage')
     .select('*')
     .eq('user_id', userId)
     .eq('usage_date', usageDate)
-    .single();
+    .maybeSingle<DailyUsageRow>();
 
-  const usageRow = usageRowRaw as DailyUsageRow | null;
-
-  if (usageError && usageError.code !== 'PGRST116') {
+  if (usageError) {
     throw usageError;
   }
 
