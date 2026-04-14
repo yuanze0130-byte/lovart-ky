@@ -113,6 +113,75 @@ export interface Database {
         };
         Relationships: [];
       };
+      user_access_control: {
+        Row: {
+          user_id: string;
+          is_whitelisted: boolean;
+          daily_image_limit: number;
+          daily_video_limit: number;
+          daily_remove_bg_limit: number;
+          daily_upscale_limit: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          user_id: string;
+          is_whitelisted?: boolean;
+          daily_image_limit?: number;
+          daily_video_limit?: number;
+          daily_remove_bg_limit?: number;
+          daily_upscale_limit?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          is_whitelisted?: boolean;
+          daily_image_limit?: number;
+          daily_video_limit?: number;
+          daily_remove_bg_limit?: number;
+          daily_upscale_limit?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      user_daily_usage: {
+        Row: {
+          id: string;
+          user_id: string;
+          usage_date: string;
+          image_count: number;
+          video_count: number;
+          remove_bg_count: number;
+          upscale_count: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          usage_date: string;
+          image_count?: number;
+          video_count?: number;
+          remove_bg_count?: number;
+          upscale_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          usage_date?: string;
+          image_count?: number;
+          video_count?: number;
+          remove_bg_count?: number;
+          upscale_count?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
