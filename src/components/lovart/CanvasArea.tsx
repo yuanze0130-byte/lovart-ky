@@ -126,6 +126,7 @@ function getModelLabel(metadata?: GenerationMetadata) {
 interface CanvasAreaProps {
     scale: number;
     pan: { x: number; y: number };
+    boardColor?: string;
     onPanChange: (pan: { x: number; y: number }) => void;
     onZoomIn?: (center?: { x: number; y: number }) => void;
     onZoomOut?: (center?: { x: number; y: number }) => void;
@@ -163,6 +164,7 @@ interface CanvasAreaProps {
 export function CanvasArea({
     scale,
     pan,
+    boardColor = '#f5f7fb',
     onPanChange,
     onZoomIn,
     onZoomOut,
@@ -247,7 +249,7 @@ export function CanvasArea({
         width: number = 0,
         height: number = 0
     ) => {
-        const isPanGesture = activeTool === 'hand' || e.button === 1 || (!elementId && e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey);
+        const isPanGesture = activeTool === 'hand' || e.button === 1;
 
         if (isPanGesture) {
             setIsPanning(true);
@@ -838,13 +840,14 @@ export function CanvasArea({
 
     return (
         <div
-            className={`w-full h-full bg-[#F9FAFB] relative overflow-hidden ${
+            className={`w-full h-full relative overflow-hidden ${
                 activeTool === 'hand'
                     ? 'cursor-grab active:cursor-grabbing'
                     : activeTool === 'draw'
                         ? 'cursor-crosshair'
                         : ''
             }`}
+            style={{ backgroundColor: boardColor }}
             onMouseMove={handleMouseMove}
             onMouseDown={(e) => handleMouseDown(e, null)}
             onWheel={handleWheel}

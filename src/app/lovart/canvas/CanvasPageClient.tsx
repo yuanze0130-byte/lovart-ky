@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, useEffect, Suspense, useRef, useCallback, startTransition } from 'react';
-import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff, Map as MapIcon } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff, Map as MapIcon, Palette } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
@@ -41,6 +41,8 @@ function LovartCanvasContent() {
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
     const [miniMapHoveredId, setMiniMapHoveredId] = useState<string | null>(null);
     const [viewportSize, setViewportSize] = useState({ width: 1440, height: 900 });
+    const [boardColor, setBoardColor] = useState('#f5f7fb');
+    const [showBoardColorPicker, setShowBoardColorPicker] = useState(false);
     const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building' | 'done'>('idle');
     const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
     const [storyboardLayout, setStoryboardLayout] = useState<StoryboardLayoutMode>('vertical');
@@ -51,6 +53,16 @@ function LovartCanvasContent() {
     const clipboardRef = useRef<CanvasElement[]>([]);
     const suppressHistoryRef = useRef(false);
     const miniMapRef = useRef<HTMLDivElement | null>(null);
+    const BOARD_COLOR_OPTIONS = ['#ffffff', '#f5f7fb', '#eef2ff', '#fef3c7', '#ecfccb', '#111111'];
+
+    useEffect(() => {
+        const stored = window.localStorage.getItem('lovart-board-color');
+        if (stored) setBoardColor(stored);
+    }, []);
+
+    useEffect(() => {
+        window.localStorage.setItem('lovart-board-color', boardColor);
+    }, [boardColor]);
 
     const {
         saveStatus,
@@ -1629,6 +1641,7 @@ function LovartCanvasContent() {
                 <CanvasArea
                     scale={scale}
                     pan={pan}
+                    boardColor={boardColor}
                     onPanChange={setPan}
                     onZoomIn={zoomIn}
                     onZoomOut={zoomOut}
@@ -1999,7 +2012,7 @@ function LovartCanvasContent() {
                         );
                     })()}
 
-                    <div className="flex items-center rounded-[20px] border border-gray-200/90 bg-white/94 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/78 dark:shadow-[0_20px_48px_rgba(0,0,0,0.45)]">
+                    <div className="relative flex items-center rounded-[20px] border border-gray-200/90 bg-white/94 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/78 dark:shadow-[0_20px_48px_rgba(0,0,0,0.45)]">
                         <button
                             onClick={() => setShowMiniMap((prev) => !prev)}
                             className={`rounded-xl p-2 transition-all ${showMiniMap ? 'bg-sky-100 text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.14)] dark:bg-sky-400/14 dark:text-sky-200 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.16)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
@@ -2008,6 +2021,13 @@ function LovartCanvasContent() {
                             <MapIcon size={16} />
                         </button>
                         <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-white/10" />
+                        <button
+                            onClick={() => setShowBoardColorPicker((prev) => !prev)}
+                            className={`rounded-xl p-2 transition-colors ${showBoardColorPicker ? 'bg-sky-100 text-sky-700 dark:bg-sky-400/14 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
+                            title="画板颜色"
+                        >
+                            <Palette size={16} />
+                        </button>
                         <button onClick={() => zoomOut()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
                             <Minus size={16} />
                         </button>
@@ -2021,6 +2041,26 @@ function LovartCanvasContent() {
                         <button onClick={() => zoomIn()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
                             <Plus size={16} />
                         </button>
+                        {showBoardColorPicker && (
+                            <div className="absolute bottom-[calc(100%+10px)] left-0 rounded-2xl border border-gray-200/90 bg-white/96 p-3 shadow-[0_18px_40px_rgba(15,23,42,0.16)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/92 dark:shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
+                                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-slate-400">画板颜色</div>
+                                <div className="flex items-center gap-2">
+                                    {BOARD_COLOR_OPTIONS.map((color) => {
+                                        const active = boardColor.toLowerCase() === color.toLowerCase();
+                                        return (
+                                            <button
+                                                key={color}
+                                                type="button"
+                                                onClick={() => setBoardColor(color)}
+                                                className={`h-7 w-7 rounded-full border transition-transform hover:scale-105 ${active ? 'border-sky-500 ring-2 ring-sky-300/40 dark:ring-sky-400/30' : 'border-gray-200 dark:border-white/10'}`}
+                                                style={{ backgroundColor: color }}
+                                                title={color}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>

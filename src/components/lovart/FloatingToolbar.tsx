@@ -64,8 +64,8 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                 >
                     <button
                         className={`p-2.5 rounded-xl transition-all flex items-center justify-center ${['select', 'hand', 'mark'].includes(activeTool)
-                            ? 'bg-gray-100 text-gray-900'
-                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'
+                            ? 'bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-white'
+                            : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/8 dark:hover:text-white'
                             }`}
                         title="Select / Hand"
                     >
@@ -75,10 +75,10 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     {/* Select Submenu */}
                     {showSelectMenu && (
                         <div className="absolute left-full top-0 pl-3 z-50">
-                            <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-2 min-w-[160px] flex flex-col gap-1">
+                            <div className="min-w-[160px] flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                                 <button
                                     onClick={() => { onToolChange('select'); setShowSelectMenu(false); }}
-                                    className={`flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 text-sm transition-colors text-left ${activeTool === 'select' ? 'bg-gray-50 text-black font-medium' : 'text-gray-700'}`}
+                                    className={`flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm transition-colors text-left ${activeTool === 'select' ? 'bg-gray-50 text-black font-medium dark:bg-white/10 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}
                                 >
                                     <div className="flex items-center gap-3">
                                         <MousePointer2 size={16} />
@@ -88,7 +88,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                                 </button>
                                 <button
                                     onClick={() => { onToolChange('hand'); setShowSelectMenu(false); }}
-                                    className={`flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 text-sm transition-colors text-left ${activeTool === 'hand' ? 'bg-gray-50 text-black font-medium' : 'text-gray-700'}`}
+                                    className={`flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm transition-colors text-left ${activeTool === 'hand' ? 'bg-gray-50 text-black font-medium dark:bg-white/10 dark:text-white' : 'text-gray-700 dark:text-gray-200'}`}
                                 >
                                     <div className="flex items-center gap-3">
                                         <Hand size={16} />
@@ -98,7 +98,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                                 </button>
                                 <button
                                     onClick={() => { onToolChange('mark'); setShowSelectMenu(false); }}
-                                    className={`flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 text-sm transition-colors text-left ${activeTool === 'mark' ? 'bg-gray-50 text-black font-medium' : 'text-gray-700'} opacity-50 cursor-not-allowed`}
+                                    className={`flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm transition-colors text-left ${activeTool === 'mark' ? 'bg-gray-50 text-black font-medium dark:bg-white/10 dark:text-white' : 'text-gray-700 dark:text-gray-200'} opacity-50 cursor-not-allowed`}
                                     disabled
                                     title="Temporarily disabled"
                                 >
@@ -130,17 +130,17 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                     {/* Upload Menu */}
                     {showUploadMenu && (
                         <div className="absolute left-full top-0 pl-3 z-50">
-                            <div className="bg-white rounded-xl shadow-xl border border-gray-100 p-2 min-w-[160px] flex flex-col gap-1">
+                            <div className="min-w-[160px] flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                                 <button
                                     onClick={handleImageUploadClick}
-                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors text-left"
+                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm text-gray-700 dark:text-gray-200 transition-colors text-left"
                                 >
                                     <ImageIcon size={16} />
                                     <span>上传图片</span>
                                 </button>
                                 <button
                                     onClick={handleVideoUploadClick}
-                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors text-left"
+                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm text-gray-700 dark:text-gray-200 transition-colors text-left"
                                 >
                                     <Video size={16} />
                                     <span>上传视频</span>
@@ -151,7 +151,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                                         onOpenImageGenerator();
                                         setShowUploadMenu(false);
                                     }}
-                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors text-left"
+                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm text-gray-700 dark:text-gray-200 transition-colors text-left"
                                 >
                                     <Sparkles size={16} />
                                     <span>图像生成器</span>
@@ -162,7 +162,7 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                                             onOpenVideoGenerator();
                                             setShowUploadMenu(false);
                                         }}
-                                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 text-sm text-gray-700 transition-colors text-left"
+                                        className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm text-gray-700 dark:text-gray-200 transition-colors text-left"
                                     >
                                         <Video size={16} />
                                         <span>视频生成器</span>
