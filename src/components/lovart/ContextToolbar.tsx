@@ -383,7 +383,7 @@ export function ContextToolbar({
                         className={`rounded-lg p-2 transition-colors ${
                             element.type === 'image' && onCrop
                                 ? showCropPanel
-                                    ? 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-400/14 dark:text-sky-200 dark:hover:bg-sky-400/20'
+                                    ? 'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-white/12 dark:text-white dark:hover:bg-white/16'
                                     : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
                         }`}
@@ -433,7 +433,7 @@ export function ContextToolbar({
                                 onClick={handleReversePrompt}
                                 onMouseEnter={() => setHoveredAction('reverse-prompt')}
                                 onMouseLeave={() => setHoveredAction((current) => (current === 'reverse-prompt' ? null : current))}
-                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'text-sky-500' : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'}`}
+                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white' : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'}`}
                                 title={`反推提示词 · ${CREDIT_COSTS.reversePrompt} 积分`}
                                 disabled={isReversingPrompt}
                             >
@@ -448,17 +448,17 @@ export function ContextToolbar({
                             onMouseEnter={() => setHoveredAction('annotate')}
                             onMouseLeave={() => setHoveredAction((current) => (current === 'annotate' ? null : current))}
                             className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
-                            title={`标记编辑 · ${CREDIT_COSTS.detectObject} 积分`}
+                            title={`局部编辑 · ${CREDIT_COSTS.detectObject} 积分`}
                         >
                             <AnnotationEditIcon className="h-[18px] w-[18px]" />
                         </button>
                     )}
 
                     {hoveredAction && (
-                        <div className="mx-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-medium text-gray-600 dark:border-white/10 dark:bg-white/8 dark:text-slate-200">
+                        <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-medium text-gray-600 shadow-[0_8px_24px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-200 dark:shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
                             {hoveredAction === 'remove-bg' && `去背景 · ${CREDIT_COSTS.removeBackground} 积分`}
                             {hoveredAction === 'reverse-prompt' && `反推提示词 · ${CREDIT_COSTS.reversePrompt} 积分`}
-                            {hoveredAction === 'annotate' && `标记编辑 · ${CREDIT_COSTS.detectObject} 积分 · 进入后可框选局部再编辑`}
+                            {hoveredAction === 'annotate' && `局部编辑 · ${CREDIT_COSTS.detectObject} 积分 · 进入后可框选局部再编辑`}
                             {hoveredAction === 'upscale' && `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起`}
                         </div>
                     )}
@@ -471,7 +471,7 @@ export function ContextToolbar({
                             }}
                             className={`p-2 rounded-lg transition-colors ${
                                 showEditPanel
-                                    ? 'bg-purple-100 text-purple-600 dark:bg-purple-500/18 dark:text-purple-200'
+                                    ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white'
                                     : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                             }`}
                             title="编辑 / 重新生成"
@@ -483,7 +483,7 @@ export function ContextToolbar({
                     {onConnectFlow && (
                         <button
                             onClick={() => onConnectFlow(element)}
-                            className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
+                            className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
                             title="创建流程图连接"
                         >
                             <ArrowRight size={16} />
@@ -494,20 +494,30 @@ export function ContextToolbar({
 
                     {onDuplicate && (
                         <button
-                            onClick={async () => {
-                                onDuplicate(element);
-                                try {
-                                    await navigator.clipboard.writeText(element.content || '');
-                                } catch {
-                                    // ignore clipboard failures
-                                }
-                            }}
-                            className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors"
-                            title="复制"
+                            onClick={() => onDuplicate(element)}
+                            className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors dark:text-slate-200 dark:hover:bg-white/8"
+                            title="复制节点"
                         >
                             <Copy size={18} />
                         </button>
                     )}
+
+                    <button
+                        onClick={async () => {
+                            try {
+                                const rawClipboardValue = element.finalPrompt || element.prompt || element.initialPrompt || element.content || '';
+                                const clipboardText = typeof rawClipboardValue === 'string' ? rawClipboardValue : JSON.stringify(rawClipboardValue);
+                                if (!clipboardText) return;
+                                await navigator.clipboard.writeText(clipboardText);
+                            } catch {
+                                // ignore clipboard failures
+                            }
+                        }}
+                        className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors dark:text-slate-200 dark:hover:bg-white/8"
+                        title="复制内容"
+                    >
+                        <span className="text-[11px] font-semibold">文</span>
+                    </button>
 
                     <button
                         onClick={handleDownload}
@@ -749,8 +759,14 @@ export function ContextToolbar({
                                 </div>
                                 <div className="flex flex-wrap gap-2 pt-1">
                                     <button
+                                        onClick={() => navigator.clipboard.writeText(reversePromptResult.concisePrompt)}
+                                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/12"
+                                    >
+                                        复制简版 Prompt
+                                    </button>
+                                    <button
                                         onClick={() => navigator.clipboard.writeText(reversePromptResult.detailedPrompt)}
-                                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-700 transition-colors hover:bg-gray-200"
+                                        className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/8 dark:text-slate-200 dark:hover:bg-white/12"
                                     >
                                         复制详细 Prompt
                                     </button>
@@ -760,7 +776,7 @@ export function ContextToolbar({
                                                 onOpenImageEditMode(element, 'generate', reversePromptResult.detailedPrompt);
                                                 setShowReversePromptPanel(false);
                                             }}
-                                            className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs text-white transition-colors hover:bg-purple-700"
+                                            className="rounded-lg bg-black px-3 py-1.5 text-xs text-white transition-colors hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100"
                                         >
                                             用它继续编辑
                                         </button>

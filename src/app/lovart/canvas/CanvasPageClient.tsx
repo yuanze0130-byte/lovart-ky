@@ -1691,8 +1691,8 @@ function LovartCanvasContent() {
                         >
                             <div className="mb-3 flex items-start justify-between gap-3">
                                 <div>
-                                    <div className="text-sm font-semibold text-gray-900">手动标记编辑</div>
-                                    <div className="mt-1 text-xs text-gray-500">先点选一个区域，再自己告诉系统这里是什么</div>
+                                    <div className="text-sm font-semibold text-gray-900">局部编辑</div>
+                                    <div className="mt-1 text-xs text-gray-500">① 点击图中主体进行识别 ② 确认对象 ③ 输入修改要求 ④ 执行局部编辑（3积分）</div>
                                 </div>
                                 <button
                                     type="button"
@@ -1705,6 +1705,12 @@ function LovartCanvasContent() {
                                 >
                                     关闭
                                 </button>
+                            </div>
+                            <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+                                <div className="font-medium text-gray-700">当前状态</div>
+                                <div className="mt-1">
+                                    {annotationObject ? `已识别对象：${annotationObject.label || annotationSubject || '局部区域'}，可以继续输入修改要求。` : '请先在图上点击你想编辑的主体或局部区域。'}
+                                </div>
                             </div>
                             <div className="mb-3">
                                 <div className="mb-1 text-xs font-medium text-gray-600">对象名称</div>
@@ -1761,9 +1767,9 @@ function LovartCanvasContent() {
                                         type="button"
                                         onClick={() => void handleApplyObjectEdit()}
                                         disabled={!annotationSubject.trim() || !objectEditPrompt.trim() || isEditingObject}
-                                        className="rounded-full bg-fuchsia-600 px-4 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                                        className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black"
                                     >
-                                        {isEditingObject ? '处理中...' : '应用修改'}
+                                        {isEditingObject ? '处理中...' : '执行局部编辑（3积分）'}
                                     </button>
                                 </div>
                             </div>
