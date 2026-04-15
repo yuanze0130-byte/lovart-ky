@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
 import type { AnnotationObject, AnnotationPoint } from '@/lib/object-annotation';
 import { detectObjectWithProvider } from '@/lib/object-detection-provider';
+import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max));
@@ -23,8 +24,30 @@ function createFallbackObject(click: AnnotationPoint, imageWidth: number, imageH
 }
 
 export async function POST(request: NextRequest) {
+  let chargedUserId: string | null = null;
+  let creditsConsumed = false;
   try {
-    await requireUser(request);
+    const user = await requireUser(request);
+    chargedUserId = user.id;
+
+    const creditResult = await consumeCredits({
+      userId: user.id,
+      amount: CREDIT_COSTS.detectObject,
+      type: 'manual_adjust',
+      description: '标记编辑对象识别',
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        {
+          error: '积分不足',
+          details: `当前积分 ${creditResult.currentCredits}，标记编辑需 ${creditResult.requiredCredits} 积分`,
+        },
+        { status: 402 }
+      );
+    }
+
+    creditsConsumed = true;
 
     const { image, imageWidth, imageHeight, click } = await request.json() as {
       image?: string;
@@ -68,6 +91,14 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error) {
+    if (chargedUserId && creditsConsumed) {
+      await refundCredits({
+        userId: chargedUserId,
+        amount: CREDIT_COSTS.detectObject,
+        type: 'manual_adjust',
+        description: '标记编辑失败退款',
+      });
+    }
     return NextResponse.json(
       {
         error: 'Failed to detect object',

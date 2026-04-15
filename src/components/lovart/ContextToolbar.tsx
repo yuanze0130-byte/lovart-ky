@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw } from 'lucide-react';
-import { getUpscaleCreditCost } from '@/lib/credits';
+import { CREDIT_COSTS, getUpscaleCreditCost } from '@/lib/credits';
 import { CanvasElement } from './CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 
@@ -110,6 +110,7 @@ export function ContextToolbar({
     const [isReversingPrompt, setIsReversingPrompt] = useState(false);
     const [isUpscaling, setIsUpscaling] = useState(false);
     const [isCropping, setIsCropping] = useState(false);
+    const [hoveredAction, setHoveredAction] = useState<null | 'remove-bg' | 'reverse-prompt' | 'annotate' | 'upscale'>(null);
     const [cropX, setCropX] = useState(0);
     const [cropY, setCropY] = useState(0);
     const [cropWidth, setCropWidth] = useState(Math.round(element.width || 300));
@@ -357,12 +358,14 @@ export function ContextToolbar({
 
                     <button
                         onClick={handleRemoveBackgroundClick}
+                        onMouseEnter={() => setHoveredAction('remove-bg')}
+                        onMouseLeave={() => setHoveredAction((current) => (current === 'remove-bg' ? null : current))}
                         className={`p-2 rounded-lg transition-colors relative ${
                             element.type === 'image' && onRemoveBackground
                                 ? 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
-                        title={element.type === 'image' ? (isRemovingBg ? '去背景处理中...' : '去背景') : '仅图片支持去背景'}
+                        title={element.type === 'image' ? (isRemovingBg ? '去背景处理中...' : '去背景 · 3 积分') : '仅图片支持去背景'}
                         disabled={element.type !== 'image' || !onRemoveBackground || isRemovingBg}
                     >
                         {isRemovingBg ? <Loader2 size={18} className="animate-spin" /> : <RemoveBackgroundIcon className="h-[18px] w-[18px]" />}
@@ -395,6 +398,8 @@ export function ContextToolbar({
                             if (element.type !== 'image' || !onUpscale) return;
                             setShowUpscalePanel((prev) => !prev);
                         }}
+                        onMouseEnter={() => setHoveredAction('upscale')}
+                        onMouseLeave={() => setHoveredAction((current) => (current === 'upscale' ? null : current))}
                         className={`p-2 rounded-lg transition-colors ${
                             element.type === 'image' && onUpscale
                                 ? showUpscalePanel
@@ -402,7 +407,7 @@ export function ContextToolbar({
                                     : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
-                        title={element.type === 'image' ? '超分' : '仅图片支持超分'}
+                        title={element.type === 'image' ? `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起` : '仅图片支持超分'}
                         disabled={element.type !== 'image' || !onUpscale || isUpscaling}
                     >
                         <UpscaleIcon className="w-4 h-4" />
@@ -426,8 +431,10 @@ export function ContextToolbar({
                             </button>
                             <button
                                 onClick={handleReversePrompt}
-                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'text-purple-500' : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'}`}
-                                title="反推提示词"
+                                onMouseEnter={() => setHoveredAction('reverse-prompt')}
+                                onMouseLeave={() => setHoveredAction((current) => (current === 'reverse-prompt' ? null : current))}
+                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'text-sky-500' : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'}`}
+                                title={`反推提示词 · ${CREDIT_COSTS.reversePrompt} 积分`}
                                 disabled={isReversingPrompt}
                             >
                                 {isReversingPrompt ? <Loader2 size={18} className="animate-spin" /> : <ReversePromptIcon className="h-[18px] w-[18px]" />}
@@ -438,11 +445,22 @@ export function ContextToolbar({
                     {element.type === 'image' && onStartObjectAnnotation && (
                         <button
                             onClick={() => onStartObjectAnnotation(element)}
-                            className="p-2 rounded-lg text-fuchsia-600 transition-colors hover:bg-fuchsia-50 dark:text-fuchsia-200 dark:hover:bg-fuchsia-400/12"
-                            title="标记编辑"
+                            onMouseEnter={() => setHoveredAction('annotate')}
+                            onMouseLeave={() => setHoveredAction((current) => (current === 'annotate' ? null : current))}
+                            className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
+                            title={`标记编辑 · ${CREDIT_COSTS.detectObject} 积分`}
                         >
                             <AnnotationEditIcon className="h-[18px] w-[18px]" />
                         </button>
+                    )}
+
+                    {hoveredAction && (
+                        <div className="mx-1 rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-medium text-gray-600 dark:border-white/10 dark:bg-white/8 dark:text-slate-200">
+                            {hoveredAction === 'remove-bg' && `去背景 · ${CREDIT_COSTS.removeBackground} 积分`}
+                            {hoveredAction === 'reverse-prompt' && `反推提示词 · ${CREDIT_COSTS.reversePrompt} 积分`}
+                            {hoveredAction === 'annotate' && `标记编辑 · ${CREDIT_COSTS.detectObject} 积分 · 进入后可框选局部再编辑`}
+                            {hoveredAction === 'upscale' && `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起`}
+                        </div>
                     )}
 
                     {onGenerateFromImage && (

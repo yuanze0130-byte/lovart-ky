@@ -9,9 +9,9 @@ export type VideoModelMode = 'standard' | 'fast';
 export type UpscaleScale = 2 | 4 | 6;
 
 export const CREDIT_COSTS = {
-  detectObject: 0,
-  reversePrompt: 0,
-  removeBackground: 2,
+  detectObject: 3,
+  reversePrompt: 3,
+  removeBackground: 3,
   generateImage: {
     standard: {
       '1K': 3,

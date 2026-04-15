@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUser } from '@/lib/require-user';
+import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
 
 interface ReversePromptPayload {
   imageData?: string;
@@ -24,8 +25,30 @@ function normalizeReferenceImage(referenceImage?: string) {
 }
 
 export async function POST(request: NextRequest) {
+  let chargedUserId: string | null = null;
+  let creditsConsumed = false;
   try {
-    await requireUser(request);
+    const user = await requireUser(request);
+    chargedUserId = user.id;
+
+    const creditResult = await consumeCredits({
+      userId: user.id,
+      amount: CREDIT_COSTS.reversePrompt,
+      type: 'manual_adjust',
+      description: '反推提示词',
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        {
+          error: '积分不足',
+          details: `当前积分 ${creditResult.currentCredits}，反推提示词需 ${creditResult.requiredCredits} 积分`,
+        },
+        { status: 402 }
+      );
+    }
+
+    creditsConsumed = true;
 
     const { imageData } = (await request.json()) as ReversePromptPayload;
     if (!imageData || typeof imageData !== 'string') {
@@ -93,6 +116,14 @@ export async function POST(request: NextRequest) {
       notes: parsed.notes || '',
     });
   } catch (error: unknown) {
+    if (chargedUserId && creditsConsumed) {
+      await refundCredits({
+        userId: chargedUserId,
+        amount: CREDIT_COSTS.reversePrompt,
+        type: 'manual_adjust',
+        description: '反推提示词失败退款',
+      });
+    }
     console.error('Error reversing prompt:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
