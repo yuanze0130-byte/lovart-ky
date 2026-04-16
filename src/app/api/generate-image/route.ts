@@ -122,6 +122,32 @@ function normalizeReferenceImages(referenceImages?: string[], referenceImage?: s
   return single ? [single] : [];
 }
 
+function getProxyModel(payload: GenerateImagePayload) {
+  const resolution = payload.resolution || '1K';
+
+  if (payload.modelVariant === 'standard') {
+    if (resolution === '2K') {
+      return process.env.GEMINI_PROXY_STANDARD_MODEL_2K || process.env.GEMINI_PROXY_STANDARD_MODEL_HD || 'nano-banana-hd';
+    }
+
+    if (resolution === '4K') {
+      return process.env.GEMINI_PROXY_STANDARD_MODEL_4K || 'gemini-3.1-flash-image-preview-4k';
+    }
+
+    return process.env.GEMINI_PROXY_STANDARD_MODEL || 'nano-banana';
+  }
+
+  if (resolution === '2K') {
+    return process.env.GEMINI_PROXY_PRO_MODEL_2K || 'nano-banana-pro-2k';
+  }
+
+  if (resolution === '4K') {
+    return process.env.GEMINI_PROXY_PRO_MODEL_4K || 'nano-banana-pro-4k';
+  }
+
+  return process.env.GEMINI_PROXY_PRO_MODEL || process.env.GEMINI_PROXY_MODEL || 'nano-banana-pro';
+}
+
 function getProxyTargets() {
   const primaryBaseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
   const primaryApiKey = process.env.GEMINI_API_KEY;
@@ -331,10 +357,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 
   content.push({ type: 'text', text: finalPrompt });
 
-  const proxyModel =
-    payload.modelVariant === 'standard'
-      ? process.env.GEMINI_PROXY_STANDARD_MODEL || 'nano-banana'
-      : process.env.GEMINI_PROXY_MODEL || 'gemini-3.1-flash-image-preview';
+  const proxyModel = getProxyModel(payload);
 
   let lastError: unknown = null;
 
