@@ -363,6 +363,7 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
   const geminiBaseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
+  const geminiApiVersion = process.env.GOOGLE_GEMINI_API_VERSION ?? (geminiBaseUrl ? '' : undefined);
 
   if (!apiKey) {
     throw new Error('GOOGLE_GEMINI_API_KEY not configured');
@@ -370,7 +371,7 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 
   const ai = new GoogleGenAI({
     apiKey,
-    ...(geminiBaseUrl ? { httpOptions: { baseUrl: geminiBaseUrl } } : {}),
+    ...(geminiBaseUrl ? { httpOptions: { baseUrl: geminiBaseUrl, apiVersion: geminiApiVersion } } : {}),
   });
   const finalPrompt = buildPrompt(
     payload.prompt,
