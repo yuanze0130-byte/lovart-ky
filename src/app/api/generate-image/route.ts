@@ -24,7 +24,24 @@ interface GeminiMessage {
 
 interface GeminiChatCompletion {
   choices?: Array<{
-    message?: GeminiMessage;
+    message?: GeminiMessage & {
+      content?: string | Array<{
+        type?: string;
+        text?: string;
+        image_url?: { url?: string };
+        url?: string;
+        b64_json?: string;
+        image_base64?: string;
+      }> | null;
+    };
+  }>;
+  data?: Array<{
+    url?: string;
+    b64_json?: string;
+  }>;
+  images?: Array<{
+    url?: string;
+    b64_json?: string;
   }>;
 }
 
@@ -105,89 +122,21 @@ function normalizeReferenceImages(referenceImages?: string[], referenceImage?: s
   return single ? [single] : [];
 }
 
-async function maybeTranslatePromptWithProxy(prompt: string) {
-  const hasChinese = /[\u4e00-\u9fff]/.test(prompt);
-  const apiKey = process.env.GEMINI_API_KEY;
-  const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
+function getProxyTargets() {
+  const primaryBaseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
+  const primaryApiKey = process.env.GEMINI_API_KEY;
+  const fallbackBaseURL = process.env.GEMINI_FALLBACK_BASE_URL;
+  const fallbackApiKey = process.env.GEMINI_FALLBACK_API_KEY;
 
-  if (!hasChinese || !apiKey) {
-    return prompt;
-  }
+  const targets = [
+    primaryApiKey ? { label: 'primary' as const, baseURL: primaryBaseURL, apiKey: primaryApiKey } : null,
+    fallbackApiKey && fallbackBaseURL ? { label: 'fallback' as const, baseURL: fallbackBaseURL, apiKey: fallbackApiKey } : null,
+  ].filter(Boolean) as Array<{ label: 'primary' | 'fallback'; baseURL: string; apiKey: string }>;
 
-  try {
-    const client = new OpenAI({ apiKey, baseURL });
-    const translateRes = await client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: `Translate the following image generation prompt to English. Only return the translated prompt, nothing else:\n${prompt}`,
-        },
-      ],
-    });
-    return translateRes.choices[0]?.message?.content?.trim() || prompt;
-  } catch {
-    return prompt;
-  }
+  return targets;
 }
 
-async function generateViaProxy(payload: GenerateImagePayload) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
-
-  if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not configured');
-  }
-
-  const client = new OpenAI({ apiKey, baseURL });
-  const translatedPrompt = await maybeTranslatePromptWithProxy(payload.prompt);
-  const finalPrompt = buildPrompt(
-    translatedPrompt,
-    payload.resolution || '1K',
-    payload.aspectRatio || '1:1'
-  );
-
-  const content: Array<
-    | { type: 'text'; text: string }
-    | { type: 'image_url'; image_url: { url: string } }
-  > = [];
-
-  const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
-  references.forEach((reference) => {
-    const url = reference.kind === 'url'
-      ? reference.url!
-      : `data:${reference.mimeType || 'image/jpeg'};base64,${reference.data || ''}`;
-
-    content.push({
-      type: 'image_url',
-      image_url: { url },
-    });
-  });
-
-  content.push({ type: 'text', text: finalPrompt });
-
-  const proxyModel =
-    payload.modelVariant === 'standard'
-      ? process.env.GEMINI_PROXY_STANDARD_MODEL || 'nano-banana'
-      : process.env.GEMINI_PROXY_MODEL || 'gemini-3.1-flash-image-preview';
-
-  const response = (await client.chat.completions.create({
-    model: proxyModel,
-    messages: [{ role: 'user', content }],
-  })) as unknown as GeminiChatCompletion;
-
-  const baseResult = {
-    requestedAspectRatio: payload.aspectRatio || '1:1',
-    requestedResolution: payload.resolution || '1K',
-    provider: 'proxy' as const,
-    providerMode: getProvider(),
-    providerFallbackUsed: false,
-    model: proxyModel,
-    modelVariant: payload.modelVariant || 'pro',
-    editMode: payload.editMode || 'generate',
-    referenceCount: references.length,
-  };
-
+function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>) {
   const parts = response.choices?.[0]?.message?.parts;
   if (parts && Array.isArray(parts)) {
     for (const part of parts) {
@@ -202,9 +151,49 @@ async function generateViaProxy(payload: GenerateImagePayload) {
     }
   }
 
+  const directB64 = response.data?.[0]?.b64_json || response.images?.[0]?.b64_json;
+  if (directB64) {
+    return {
+      imageData: `data:image/png;base64,${directB64}`,
+      textResponse: '',
+      ...baseResult,
+    };
+  }
+
+  const directUrl = response.data?.[0]?.url || response.images?.[0]?.url;
+  if (directUrl) {
+    return {
+      imageData: directUrl,
+      textResponse: '',
+      ...baseResult,
+    };
+  }
+
   const messageContent = response.choices?.[0]?.message?.content;
 
-  if (messageContent) {
+  if (Array.isArray(messageContent)) {
+    for (const item of messageContent) {
+      const imageUrl = item?.image_url?.url || item?.url;
+      const b64 = item?.b64_json || item?.image_base64;
+      if (imageUrl) {
+        return {
+          imageData: imageUrl,
+          textResponse: '',
+          ...baseResult,
+        };
+      }
+      if (b64) {
+        return {
+          imageData: `data:image/png;base64,${b64}`,
+          textResponse: '',
+          ...baseResult,
+        };
+      }
+    }
+    throw new Error(`模型返回了结构化内容但未找到图片数据: ${JSON.stringify(messageContent).slice(0, 500)}`);
+  }
+
+  if (typeof messageContent === 'string' && messageContent) {
     const base64Match = messageContent.match(/data:image\/[^;]+;base64,[A-Za-z0-9+/=]+/);
     if (base64Match) {
       return {
@@ -236,6 +225,103 @@ async function generateViaProxy(payload: GenerateImagePayload) {
   }
 
   throw new Error('No image data in proxy response');
+}
+
+async function maybeTranslatePromptWithProxy(prompt: string) {
+  const hasChinese = /[\u4e00-\u9fff]/.test(prompt);
+  const targets = getProxyTargets();
+
+  if (!hasChinese || targets.length === 0) {
+    return prompt;
+  }
+
+  try {
+    const client = new OpenAI({ apiKey: targets[0].apiKey, baseURL: targets[0].baseURL });
+    const translateRes = await client.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: `Translate the following image generation prompt to English. Only return the translated prompt, nothing else:\n${prompt}`,
+        },
+      ],
+    });
+    return translateRes.choices[0]?.message?.content?.trim() || prompt;
+  } catch {
+    return prompt;
+  }
+}
+
+async function generateViaProxy(payload: GenerateImagePayload) {
+  const targets = getProxyTargets();
+
+  if (targets.length === 0) {
+    throw new Error('GEMINI_API_KEY not configured');
+  }
+
+  const translatedPrompt = await maybeTranslatePromptWithProxy(payload.prompt);
+  const finalPrompt = buildPrompt(
+    translatedPrompt,
+    payload.resolution || '1K',
+    payload.aspectRatio || '1:1'
+  );
+
+  const content: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string } }
+  > = [];
+
+  const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
+  references.forEach((reference) => {
+    const url = reference.kind === 'url'
+      ? reference.url!
+      : `data:${reference.mimeType || 'image/jpeg'};base64,${reference.data || ''}`;
+
+    content.push({
+      type: 'image_url',
+      image_url: { url },
+    });
+  });
+
+  content.push({ type: 'text', text: finalPrompt });
+
+  const proxyModel =
+    payload.modelVariant === 'standard'
+      ? process.env.GEMINI_PROXY_STANDARD_MODEL || 'nano-banana'
+      : process.env.GEMINI_PROXY_MODEL || 'gemini-3.1-flash-image-preview';
+
+  let lastError: unknown = null;
+
+  for (const target of targets) {
+    try {
+      const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL });
+      const response = (await client.chat.completions.create({
+        model: proxyModel,
+        messages: [{ role: 'user', content }],
+      })) as unknown as GeminiChatCompletion;
+
+      const baseResult = {
+        requestedAspectRatio: payload.aspectRatio || '1:1',
+        requestedResolution: payload.resolution || '1K',
+        provider: 'proxy' as const,
+        providerMode: getProvider(),
+        providerFallbackUsed: target.label === 'fallback',
+        fallbackFrom: target.label === 'fallback' ? 'primary' : undefined,
+        model: proxyModel,
+        modelVariant: payload.modelVariant || 'pro',
+        editMode: payload.editMode || 'generate',
+        referenceCount: references.length,
+        proxyTarget: target.label,
+      };
+
+      return extractImageFromProxyResponse(response, baseResult);
+    } catch (error) {
+      lastError = error;
+      console.warn(`Proxy target ${target.label} failed:`, error);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error('All proxy targets failed');
 }
 
 async function generateViaOfficial(payload: GenerateImagePayload) {
