@@ -14,13 +14,13 @@ export const CREDIT_COSTS = {
   removeBackground: 3,
   generateImage: {
     standard: {
-      '1K': 3,
+      '1K': 2,
       '2K': 3,
-      '4K': 6,
+      '4K': 4,
     },
     pro: {
-      '1K': 3,
-      '2K': 3,
+      '1K': 4,
+      '2K': 5,
       '4K': 6,
     },
   },
