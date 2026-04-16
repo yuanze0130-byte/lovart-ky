@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { authedFetch } from '@/lib/authed-fetch';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
@@ -9,6 +9,8 @@ export function useObjectAnnotation() {
   const [hoveredObject, setHoveredObject] = useState<DetectedObject | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [pendingPoint, setPendingPoint] = useState<{ x: number; y: number } | null>(null);
+  const detectRequestIdRef = useRef(0);
 
   const isAnnotationMode = Boolean(activeImageId);
 
@@ -17,19 +19,30 @@ export function useObjectAnnotation() {
     setActiveImageId(element.id);
     setSelectedObject(null);
     setHoveredObject(null);
+    setPendingPoint(null);
   }, []);
 
   const exitAnnotationMode = useCallback(() => {
     setActiveImageId(null);
     setSelectedObject(null);
     setHoveredObject(null);
+    setPendingPoint(null);
   }, []);
 
   const detectObject = useCallback(async (params: {
     image: CanvasElement;
     point: { x: number; y: number };
   }) => {
+    if (isDetecting) {
+      return null;
+    }
+
+    const requestId = Date.now();
+    detectRequestIdRef.current = requestId;
     setIsDetecting(true);
+    setPendingPoint(params.point);
+    setSelectedObject(null);
+
     try {
       const response = await authedFetch('/api/detect-object', {
         method: 'POST',
@@ -47,13 +60,20 @@ export function useObjectAnnotation() {
         throw new Error(data.details || data.error || '对象识别失败');
       }
 
+      if (detectRequestIdRef.current !== requestId) {
+        return null;
+      }
+
       const detected = data.object as DetectedObject;
       setSelectedObject(detected);
       return detected;
     } finally {
-      setIsDetecting(false);
+      if (detectRequestIdRef.current === requestId) {
+        setIsDetecting(false);
+        setPendingPoint(null);
+      }
     }
-  }, []);
+  }, [isDetecting]);
 
   const editObject = useCallback(async (params: {
     image: CanvasElement;
@@ -90,6 +110,7 @@ export function useObjectAnnotation() {
     isAnnotationMode,
     isDetecting,
     isEditing,
+    pendingPoint,
     setHoveredObject,
     setSelectedObject,
     enterAnnotationMode,

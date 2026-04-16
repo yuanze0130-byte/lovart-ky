@@ -155,6 +155,7 @@ interface CanvasAreaProps {
     annotationImageId?: string | null;
     annotationObject?: DetectedObject | null;
     isDetectingObject?: boolean;
+    annotationPendingPoint?: { x: number; y: number } | null;
     onStartObjectAnnotation?: (element: CanvasElement) => void;
     onExitObjectAnnotation?: () => void;
     onDetectObjectAt?: (element: CanvasElement, point: { x: number; y: number }) => void;
@@ -189,6 +190,7 @@ export function CanvasArea({
     annotationImageId,
     annotationObject,
     isDetectingObject,
+    annotationPendingPoint,
     onStartObjectAnnotation,
     onExitObjectAnnotation,
     onDetectObjectAt,
@@ -293,6 +295,10 @@ export function CanvasArea({
 
         const clickedElement = elements.find((el) => el.id === elementId);
         if (annotationImageId && clickedElement?.id === annotationImageId && clickedElement.type === 'image') {
+            if (isDetectingObject) {
+                return;
+            }
+
             const point = getCanvasPoint(e.clientX, e.clientY);
             onDetectObjectAt?.(clickedElement, {
                 x: Math.max(0, Math.min(point.x - clickedElement.x, clickedElement.width || 1)),
@@ -1728,17 +1734,33 @@ export function CanvasArea({
                     const imageElement = elements.find((el) => el.id === annotationImageId && el.type === 'image');
                     if (!imageElement) return null;
                     return (
-                        <ObjectAnnotationOverlay
-                            imageBounds={{
-                                left: imageElement.x,
-                                top: imageElement.y,
-                                width: imageElement.width || 1,
-                                height: imageElement.height || 1,
-                            }}
-                            object={annotationObject || null}
-                            isDetecting={isDetectingObject}
-                            onClose={() => onExitObjectAnnotation?.()}
-                        />
+                        <>
+                            <ObjectAnnotationOverlay
+                                imageBounds={{
+                                    left: imageElement.x,
+                                    top: imageElement.y,
+                                    width: imageElement.width || 1,
+                                    height: imageElement.height || 1,
+                                }}
+                                object={annotationObject || null}
+                                isDetecting={isDetectingObject}
+                                onClose={() => onExitObjectAnnotation?.()}
+                            />
+                            {isDetectingObject && annotationPendingPoint && (
+                                <div
+                                    className="pointer-events-none absolute z-[72]"
+                                    style={{
+                                        left: imageElement.x + annotationPendingPoint.x,
+                                        top: imageElement.y + annotationPendingPoint.y,
+                                        transform: 'translate(-50%, -50%)',
+                                    }}
+                                >
+                                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-fuchsia-300 bg-white/95 shadow-lg">
+                                        <div className="h-2.5 w-2.5 animate-ping rounded-full bg-fuchsia-500" />
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     );
                 })()}
 

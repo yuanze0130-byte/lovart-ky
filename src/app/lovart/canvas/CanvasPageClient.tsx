@@ -126,6 +126,7 @@ function LovartCanvasContent() {
         selectedObject: annotationObject,
         isDetecting: isDetectingObject,
         isEditing: isEditingObject,
+        pendingPoint: annotationPendingPoint,
         enterAnnotationMode,
         exitAnnotationMode,
         detectObject,
@@ -176,7 +177,7 @@ function LovartCanvasContent() {
             x: baseX - 24,
             y: baseY - 48,
             width: 280,
-            content: resolvedMode === 'branding' ? 'Brand Agent · Strategy Lane' : resolvedMode === 'image-editing' ? 'Editing Agent · Edit Lane' : resolvedMode === 'research' ? 'Research Agent · Research Lane' : 'Design Agent · Concept Lane',
+            content: resolvedMode === 'branding' ? 'Brand Agent 闂?Strategy Lane' : resolvedMode === 'image-editing' ? 'Editing Agent 闂?Edit Lane' : resolvedMode === 'research' ? 'Research Agent 闂?Research Lane' : 'Design Agent 闂?Concept Lane',
             fontSize: 14,
             color: '#64748B',
         });
@@ -201,14 +202,13 @@ function LovartCanvasContent() {
                         type: 'text' as const,
                         x: cardX,
                         y: cardY - 44,
-                        width: preset.cardWidth - 36,
                         content: resolvedMode === 'branding'
-                            ? index === 0 ? '品牌定位' : index === 1 ? '语气与调性' : index === 2 ? '视觉系统' : '品牌延展'
+                            ? index === 0 ? '????' : index === 1 ? '?????' : index === 2 ? '????' : '????'
                             : resolvedMode === 'image-editing'
-                                ? index === 0 ? '编辑目标' : index === 1 ? '问题诊断' : index === 2 ? '修改策略' : '输出建议'
+                                ? index === 0 ? '????' : index === 1 ? '????' : index === 2 ? '????' : '????'
                                 : resolvedMode === 'research'
-                                    ? index === 0 ? '参考样本' : index === 1 ? '风格关键词' : index === 2 ? '竞品观察' : '可借鉴方向'
-                                    : index === 0 ? '核心概念' : index === 1 ? '视觉语言' : index === 2 ? '版式建议' : '执行建议',
+                                    ? index === 0 ? '????' : index === 1 ? '?????' : index === 2 ? '????' : '?????'
+                                    : index === 0 ? '????' : index === 1 ? '????' : index === 2 ? '????' : '????',
                         fontSize: 14,
                         color: '#6B7280',
                     },
@@ -262,12 +262,16 @@ function LovartCanvasContent() {
                 y: baseY + 56,
                 width: 620,
                 content: resolvedMode === 'branding'
-                    ? `品牌工作区 · 从定位、调性到视觉方向\n${typeof result.summary === 'string' ? result.summary : result.reply}`
+                    ?                         (typeof result.summary === 'string' && result.summary.trim()
+                            ? result.summary
+                            : result.reply)
                     : resolvedMode === 'image-editing'
-                        ? `图像编辑工作区 · 从问题诊断到修改执行\n${typeof result.summary === 'string' ? result.summary : result.reply}`
+                        ? `?????????????????????????????????????????????${typeof result.summary === 'string' ? result.summary : result.reply}`
                         : resolvedMode === 'research'
-                            ? `研究工作区 · 从参考采样到创意线索\n${typeof result.summary === 'string' ? result.summary : result.reply}`
-                            : `设计工作区 · 从概念到生成执行\n${typeof result.summary === 'string' ? result.summary : result.reply}`,
+                            ? `???????????????????????????????????????${typeof result.summary === 'string' ? result.summary : result.reply}`
+                            : (typeof result.summary === 'string' && result.summary.trim()
+                                ? result.summary
+                                : result.reply),
                 fontSize: 18,
                 color: '#6B7280',
             });
@@ -402,7 +406,7 @@ function LovartCanvasContent() {
         enterAnnotationMode(element);
         setSelectedObject({
             id: `manual-${Date.now()}`,
-            label: annotationSubject.trim() || '已标记区域',
+            label: annotationSubject.trim() || '?????',
             score: 1,
             bbox: region,
         });
@@ -418,7 +422,7 @@ function LovartCanvasContent() {
                 image: imageElement,
                 object: {
                     ...annotationObject,
-                    label: annotationSubject.trim() || annotationObject.label || '已标记区域',
+                    label: annotationSubject.trim() || annotationObject.label || '?????',
                 },
                 prompt: objectEditPrompt.trim(),
             });
@@ -437,7 +441,7 @@ function LovartCanvasContent() {
 
             setObjectEditPrompt('');
         } catch (error) {
-            alert(error instanceof Error ? error.message : '对象编辑失败');
+            alert(error instanceof Error ? error.message : '??????');
         }
     }, [annotationImageId, annotationObject, annotationSubject, editObject, elements, objectEditPrompt, setElements]);
 
@@ -1094,7 +1098,6 @@ function LovartCanvasContent() {
             orientation: meta.orientation,
             label: meta.label,
             shortLabel: meta.shortLabel,
-            displaySize: `${resolvedSize.width} × ${resolvedSize.height}`,
             renderProfile: getStoryboardRenderProfile(resolvedVideoSize),
         };
     }, []);
@@ -1104,7 +1107,8 @@ function LovartCanvasContent() {
         const resolvedAspectRatio = item.aspectRatio ?? '9:16';
         const fallbackMeta = getStoryboardAspectMeta(resolvedAspectRatio);
         const resolvedOutputSize = item.outputSize ?? fallbackMeta.videoSize;
-        const { width, height, videoSize, orientation, label, shortLabel, displaySize, renderProfile } = getStoryboardNodeSize(resolvedAspectRatio, resolvedOutputSize);
+        const { width, height, videoSize, orientation, label, shortLabel, renderProfile } = getStoryboardNodeSize(resolvedAspectRatio, resolvedOutputSize);
+        const displaySize = fallbackMeta.displaySize;
         const resolvedOrientation = item.orientation ?? fallbackMeta.orientation;
         const spacing = 120;
 
@@ -1123,12 +1127,10 @@ function LovartCanvasContent() {
         const draftPrompt = [
             shotLabel,
             item.title,
-            `${resolvedAspectRatio} · ${label} · ${durationLabel}`,
+            `${resolvedAspectRatio} ? ${label} ? ${durationLabel}`,
             item.sourcePrompt,
-            `输出画幅请保持 ${resolvedAspectRatio}（${resolvedOrientation} / ${resolvedOutputSize}）。`,
-            `分镜画幅映射：${frameDeltaLabel}。`,
-            item.type === 'image' ? '请基于这张分镜参考图生成一个具有镜头运动与主体动作的视频镜头。' : '请基于这个分镜片段继续生成风格一致、运动自然的视频镜头。',
-        ].filter(Boolean).join('｜');
+            `?????????????????????????????????????????${frameDeltaLabel}`
+        ].filter(Boolean).join('\n');
 
         if (!source || options?.forceStandalone) {
             const standaloneId = uuidv4();
@@ -1314,10 +1316,7 @@ function LovartCanvasContent() {
         const layoutBiasX = storyboardLayout === 'horizontal' && recommendedLayout !== 'horizontal' ? 12 : 0;
         const layoutBiasY = storyboardLayout === 'vertical' && recommendedLayout !== 'vertical' ? 12 : 0;
         const boardOrientationSummary = [
-            orientationMix.portrait > 0 ? `Portrait × ${orientationMix.portrait}` : null,
-            orientationMix.landscape > 0 ? `Landscape × ${orientationMix.landscape}` : null,
-            orientationMix.square > 0 ? `Square × ${orientationMix.square}` : null,
-        ].filter(Boolean).join(' · ');
+        ].filter(Boolean).join(' 闂?');
         const boardSurfaceElement: CanvasElement = {
             id: uuidv4(),
             type: 'shape',
@@ -1339,7 +1338,6 @@ function LovartCanvasContent() {
             y: boardBaseY - 84,
             width: Math.max(360, Math.min(boardMetrics.width + boardPaddingX * 2, 760)),
             height: 88,
-            content: `${boardSummary.boardTitle}｜${storyboard.length} 个镜头｜${recommendedLayout === storyboardLayout ? '布局已对齐' : `建议切换${recommendedLayout === 'horizontal' ? '横向流程' : '纵向队列'}`}｜${hasMixedFrames ? '自适应画幅' : '统一画幅'}｜${boardOrientationSummary || '竖版 × 0'}｜${boardSummary.laneSummary}｜${boardSummary.reviewRailSummary}｜${boardSummary.coverageSummary}｜${boardSummary.renderSummary}｜${boardSummary.durationSummary}｜${boardSummary.frameSummary}｜${boardSummary.boardSubtitle}`,
             fontSize: 14,
             color: '#0f172a',
             backgroundColor: '#ffffff',
@@ -1391,7 +1389,7 @@ function LovartCanvasContent() {
                             y: laneY + 10,
                             width: 180,
                             height: 24,
-                            content: `${orientation.toUpperCase()} LANE`,
+                            content: orientation.toUpperCase() + ' LANE',
                             fontSize: 11,
                             color: orientation === 'landscape' ? '#7c3aed' : orientation === 'square' ? '#059669' : '#0284c7',
                         },
@@ -1562,528 +1560,19 @@ function LovartCanvasContent() {
             <div className="h-screen w-full bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)] flex items-center justify-center">
                 <div className="text-center rounded-3xl border border-white/10 bg-slate-950/50 px-8 py-7 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-xl">
                     <div className="w-16 h-16 border-4 border-slate-700 border-t-sky-400 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="font-medium text-slate-100">加载画布中...</p>
-                    <p className="text-sm mt-2 text-slate-400">正在从云端获取数据</p>
+                    <p className="font-medium text-slate-100">Loading canvas workspace...</p>
+                    <p className="text-sm mt-2 text-slate-400">Please wait while the editor restores your board.</p>
                 </div>
             </div>
         );
     }
 
-    return (
-        <div className="h-screen w-full relative overflow-hidden bg-white dark:bg-black">
-            <header className="absolute top-0 left-0 z-50 flex h-14 w-full items-center justify-between px-4 pointer-events-none border-b border-transparent bg-transparent dark:border-white/8 dark:bg-black/28 dark:shadow-[0_12px_40px_rgba(0,0,0,0.22)] dark:backdrop-blur-xl">
-                <div className="flex items-center gap-2 pointer-events-auto">
-                    <Link href="/" className="flex items-center gap-1 rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-white/8">
-                        <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold dark:bg-gradient-to-br dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500">D</div>
-                        <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
-                    </Link>
-                    <input
-                        type="text"
-                        value={title}
-                        onChange={(e) => setTitle(e.target.value)}
-                        className="w-40 rounded px-2 py-1 text-sm font-medium text-gray-700 bg-transparent border-none outline-none transition-colors hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-100 dark:hover:bg-white/8 dark:focus:bg-white/8"
-                        placeholder="Untitled"
-                        disabled={isLoading}
-                    />
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                        {saveStatus === 'saving' && (
-                            <>
-                                <Cloud size={14} className="animate-pulse" />
-                                <span>保存中...</span>
-                            </>
-                        )}
-                        {saveStatus === 'saved' && user && (
-                            <>
-                                <Cloud size={14} className="text-emerald-400" />
-                                <span className="text-emerald-300">已保存</span>
-                            </>
-                        )}
-                        {saveStatus === 'offline' && (
-                            <>
-                                <CloudOff size={14} className="text-red-500" />
-                                <span className="text-red-600">离线</span>
-                            </>
-                        )}
-                        {!user && <span className="text-amber-600">未登录</span>}
-                    </div>
-                </div>
-
-                <div className="flex items-center gap-2 pointer-events-auto">
-                    <ThemeToggle />
-                    <button
-                        onClick={() => setShowChat(!showChat)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showChat ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
-                    >
-                        <Sparkles size={18} className="text-black" />
-                    </button>
-                </div>
-            </header>
-
-            {agentStage !== 'idle' && (
-                <div className="absolute top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-sky-200 bg-white/92 px-4 py-2 text-sm font-medium text-sky-700 shadow-[0_14px_34px_rgba(14,165,233,0.14)] backdrop-blur-xl dark:border-sky-400/20 dark:bg-slate-950/86 dark:text-sky-200">
-                    {agentStage === 'analyzing' ? 'Agent 正在分析需求…' : agentStage === 'planning' ? 'Agent 正在规划工作区…' : agentStage === 'building' ? 'Agent 正在搭建节点…' : 'Agent 已完成初始工作区'}
-                </div>
-            )}
-
-            {showChat && (
-                <div className="absolute right-4 top-20 bottom-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300">
-                    <AiDesignerPanel
-                        onGenerate={handleAgentGenerate}
-                        isGenerating={isGenerating}
-                        onClose={() => setShowChat(false)}
-                        initialPrompt={promptFromUrl}
-                        initialMode={agentModeFromUrl}
-                    />
-                </div>
-            )}
-
-            <div className="absolute inset-0">
-                <CanvasArea
-                    scale={scale}
-                    pan={pan}
-                    boardColor={boardColor}
-                    onPanChange={setPan}
-                    onZoomIn={zoomIn}
-                    onZoomOut={zoomOut}
-                    onZoomTo={zoomTo}
-                    elements={elements}
-                    selectedIds={selectedIds}
-                    onSelect={setSelectedIds}
-                    onElementChange={handleElementChange}
-                    onElementsChange={handleElementsChange}
-                    onDelete={handleDelete}
-                    onDeleteMany={handleDeleteMany}
-                    onAddElement={appendElement}
-                    onCreateNodeAt={(x, y) => {
-                        appendElement({
-                            ...createImageGeneratorElement(),
-                            x,
-                            y,
-                        });
-                    }}
-                    activeTool={activeTool}
-                    onDragStart={() => setIsDraggingElement(true)}
-                    onDragEnd={() => setIsDraggingElement(false)}
-                    onGenerateFromImage={handleGenerateFromImage}
-                    onOpenImageEditMode={handleOpenImageEditMode}
-                    onConnectFlow={handleConnectFlow}
-                    onRemoveBackground={handleRemoveBackground}
-                    onUpscale={handleUpscale}
-                    onCrop={handleCrop}
-                    annotationImageId={annotationImageId}
-                    annotationObject={annotationObject}
-                    isDetectingObject={isDetectingObject}
-                    onStartObjectAnnotation={enterAnnotationMode}
-                    onExitObjectAnnotation={exitAnnotationMode}
-                    onDetectObjectAt={handleDetectObjectAt}
-                    onAnnotateRegion={handleAnnotateRegion}
-                />
-                {annotationImageId && annotationObject && (() => {
-                    const imageElement = elements.find((element) => element.id === annotationImageId);
-                    if (!imageElement) return null;
-                    return (
-                        <div
-                            className="absolute z-[90] w-80 rounded-2xl border border-fuchsia-200 bg-white/96 p-4 shadow-[0_24px_70px_rgba(15,23,42,0.18)] backdrop-blur-xl"
-                            style={{
-                                left: `${(imageElement.x + (imageElement.width || 0)) * scale + pan.x + 18}px`,
-                                top: `${imageElement.y * scale + pan.y}px`,
-                            }}
-                        >
-                            <div className="mb-3 flex items-start justify-between gap-3">
-                                <div>
-                                    <div className="text-sm font-semibold text-gray-900">局部编辑</div>
-                                    <div className="mt-1 text-xs text-gray-500">① 点击图中主体进行识别 ② 确认对象 ③ 输入修改要求 ④ 执行局部编辑（3积分）</div>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        exitAnnotationMode();
-                                        setAnnotationSubject('');
-                                        setObjectEditPrompt('');
-                                    }}
-                                    className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
-                                >
-                                    关闭
-                                </button>
-                            </div>
-                            <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
-                                <div className="font-medium text-gray-700">当前状态</div>
-                                <div className="mt-1">
-                                    {annotationObject ? `已识别对象：${annotationObject.label || annotationSubject || '局部区域'}，可以继续输入修改要求。` : '请先在图上点击你想编辑的主体或局部区域。'}
-                                </div>
-                            </div>
-                            <div className="mb-3">
-                                <div className="mb-1 text-xs font-medium text-gray-600">对象名称</div>
-                                <input
-                                    value={annotationSubject}
-                                    onChange={(event) => setAnnotationSubject(event.target.value)}
-                                    placeholder="例如：帽子、logo、包、路牌"
-                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-fuchsia-300 focus:bg-white"
-                                />
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                    {['人物', '服饰', 'logo'].map((item) => (
-                                        <button
-                                            key={item}
-                                            type="button"
-                                            onClick={() => setAnnotationSubject(item)}
-                                            className="rounded-full border border-gray-200 px-3 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
-                                        >
-                                            {item}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <textarea
-                                value={objectEditPrompt}
-                                onChange={(event) => setObjectEditPrompt(event.target.value)}
-                                placeholder="描述你想怎么修改这个对象，比如：改成红色帽子、删掉这个 logo、把它换成金属材质"
-                                className="h-24 w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-fuchsia-300 focus:bg-white"
-                            />
-                            <div className="mt-2 flex flex-wrap gap-2">
-                                {['删除', '换颜色', '替换'].map((item) => (
-                                    <button
-                                        key={item}
-                                        type="button"
-                                        onClick={() => setObjectEditPrompt((prev) => prev ? `${prev}，${item}` : item)}
-                                        className="rounded-full border border-gray-200 px-3 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
-                                    >
-                                        {item}
-                                    </button>
-                                ))}
-                            </div>
-                            <div className="mt-3 flex items-center justify-between gap-2">
-                                <div className="text-[11px] text-gray-400">当前为手动标记版：你定义对象名称，系统只改这块区域</div>
-                                <div className="flex items-center gap-2">
-                                    {!!imageElement.previousContent && (
-                                        <button
-                                            type="button"
-                                            onClick={handleRevertObjectEdit}
-                                            className="rounded-full border border-gray-200 px-4 py-2 text-xs font-medium text-gray-700"
-                                        >
-                                            回退
-                                        </button>
-                                    )}
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleApplyObjectEdit()}
-                                        disabled={!annotationSubject.trim() || !objectEditPrompt.trim() || isEditingObject}
-                                        className="rounded-full bg-black px-4 py-2 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-black"
-                                    >
-                                        {isEditingObject ? '处理中...' : '执行局部编辑（3积分）'}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })()}
-
-                <FloatingToolbar
-                    activeTool={activeTool}
-                    onToolChange={setActiveTool}
-                    onAddImage={handleAddImage}
-                    onAddVideo={handleAddVideo}
-                    onAddText={handleAddText}
-                    onAddShape={handleAddShape}
-                    onOpenImageGenerator={handleOpenImageGenerator}
-                    onOpenVideoGenerator={handleOpenVideoGenerator}
-                />
-
-                {selectedIds.length === 1 && !isDraggingElement && (() => {
-                    const selectedEl = elements.find(el => el.id === selectedIds[0]);
-                    if (selectedEl?.type === 'image-generator') {
-                        const left = (selectedEl.x * scale) + pan.x;
-                        const top = ((selectedEl.y + (selectedEl.height || 400)) * scale) + pan.y + 20;
-
-                        return (
-                            <ImageGeneratorPanel
-                                elementId={selectedIds[0]}
-                                initialMode={selectedEl.initialEditMode}
-                                initialPrompt={selectedEl.initialPrompt}
-                                onGenerate={handleGenerateImage}
-                                isGenerating={isGenerating}
-                                canvasElements={elements}
-                                style={{
-                                    left: `${left}px`,
-                                    top: `${top}px`,
-                                }}
-                            />
-                        );
-                    }
-                    return null;
-                })()}
-
-                {selectedIds.length === 1 && !isDraggingElement && (() => {
-                    const selectedEl = elements.find(el => el.id === selectedIds[0]);
-                    if (selectedEl?.type === 'video-generator') {
-                        const left = (selectedEl.x * scale) + pan.x;
-                        const top = ((selectedEl.y + (selectedEl.height || 300)) * scale) + pan.y + 20;
-
-                        return (
-                            <VideoGeneratorPanel
-                                elementId={selectedIds[0]}
-                                onGenerate={handleGenerateVideo}
-                                onConfigChange={handleVideoGeneratorConfigChange}
-                                canvasElements={elements}
-                                style={{
-                                    left: `${left}px`,
-                                    top: `${top}px`,
-                                }}
-                            />
-                        );
-                    }
-                    return null;
-                })()}
-
-                <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? 'right-[420px]' : 'right-4'}`}>
-                    <AssetsPanel
-                        assets={projectAssets}
-                        storyboard={storyboard}
-                        collapsed={assetsCollapsed}
-                        onToggleCollapse={() => setAssetsCollapsed((prev) => !prev)}
-                        onInsertAsset={handleInsertAsset}
-                        onLocateAsset={handleLocateAsset}
-                        onUseAsImageReference={handleUseAsImageReference}
-                        onUseAsVideoReference={handleUseAsVideoReference}
-                        onAddToStoryboard={handleAddToStoryboard}
-                        onLocateStoryboardItem={handleLocateStoryboardItem}
-                        onMoveStoryboardItem={handleMoveStoryboardItem}
-                        onRemoveStoryboardItem={handleRemoveStoryboardItem}
-                        onRenameStoryboardItem={handleRenameStoryboardItem}
-                        onUpdateStoryboardBrief={handleUpdateStoryboardBrief}
-                        onUpdateStoryboardDuration={handleUpdateStoryboardDuration}
-                        onUpdateStoryboardAspectRatio={handleUpdateStoryboardAspectRatio}
-                        onUpdateStoryboardOutputSize={handleUpdateStoryboardOutputSize}
-                        onResetStoryboardAspectRatioFromAsset={handleResetStoryboardAspectRatioFromAsset}
-                        onUpdateAllStoryboardDurations={handleUpdateAllStoryboardDurations}
-                        onUpdateAllStoryboardRenderProfiles={handleUpdateAllStoryboardRenderProfiles}
-                        onNormalizeAllStoryboardOutputSizes={handleNormalizeAllStoryboardOutputSizes}
-                        onApplyStoryboardBoardPreset={handleApplyStoryboardBoardPreset}
-                        onAutoStoryboardLayout={handleAutoStoryboardLayout}
-                        onUpdateAllStoryboardAspectRatios={(aspectRatio) => {
-                            const aspectMeta = getStoryboardAspectMeta(aspectRatio);
-                            setStoryboard((prev) => {
-                                const next = prev.map((item) => {
-                                    const currentAspect = item.aspectRatio ?? '9:16';
-                                    const currentOutputSize = item.outputSize ?? getStoryboardAspectMeta(currentAspect).videoSize;
-                                    const currentRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(currentOutputSize);
-                                    const inferredFromCurrentSize = inferStoryboardAspectRatioFromVideoSize(currentOutputSize);
-                                    const nextOutputSize = inferredFromCurrentSize === aspectRatio
-                                        ? currentOutputSize
-                                        : getPreferredStoryboardVideoSize(aspectRatio, currentRenderProfile);
-                                    return {
-                                        ...item,
-                                        aspectRatio,
-                                        orientation: aspectMeta.orientation,
-                                        outputSize: nextOutputSize,
-                                        renderProfile: getStoryboardRenderProfile(nextOutputSize),
-                                    };
-                                });
-                                syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
-                                return next;
-                            });
-                        }}
-                        onResetAllStoryboardAspectRatiosFromAssets={() => {
-                            setStoryboard((prev) => {
-                                const next = prev.map((item) => {
-                                    const aspectRatio = resolveStoryboardAspectRatioFromAsset(item);
-                                    const aspectMeta = getStoryboardAspectMeta(aspectRatio);
-                                    const preferredRenderProfile = item.renderProfile ?? getStoryboardRenderProfile(item.outputSize ?? aspectMeta.videoSize);
-                                    const preferredOutputSize = getPreferredStoryboardVideoSize(aspectRatio, preferredRenderProfile);
-                                    return {
-                                        ...item,
-                                        aspectRatio,
-                                        orientation: aspectMeta.orientation,
-                                        outputSize: preferredOutputSize,
-                                        renderProfile: getStoryboardRenderProfile(preferredOutputSize),
-                                        sourceAspectRatio: aspectRatio,
-                                        sourceOrientation: aspectMeta.orientation,
-                                        sourceOutputSize: preferredOutputSize,
-                                    };
-                                });
-                                syncStoryboardLinkedElements(next, storyboardLayout, { syncNodeFrame: true });
-                                return next;
-                            });
-                        }}
-                        storyboardLayout={storyboardLayout}
-                        onStoryboardLayoutChange={(layout) => {
-                            setStoryboardLayout(layout);
-                            syncStoryboardLinkedElements(storyboard, layout);
-                        }}
-                        onCreateVideoFromStoryboard={handleCreateVideoFromStoryboard}
-                        onCreateStoryboardFlow={handleCreateStoryboardFlow}
-                    />
-                </div>
-
-                <div className="absolute bottom-4 left-4 z-50 flex flex-col gap-3">
-                    {showMiniMap && (() => {
-                        const { bounds, viewport, nodes } = miniMapData;
-                        const mapWidth = 208;
-                        const mapHeight = 144;
-                        const boundsWidth = Math.max(1, bounds.right - bounds.left);
-                        const boundsHeight = Math.max(1, bounds.bottom - bounds.top);
-                        const toMapX = (value: number) => ((value - bounds.left) / boundsWidth) * mapWidth;
-                        const toMapY = (value: number) => ((value - bounds.top) / boundsHeight) * mapHeight;
-                        return (
-                            <div className="w-[220px] rounded-[22px] border border-gray-200/90 bg-white/96 p-3 shadow-[0_20px_50px_rgba(15,23,42,0.15)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/82 dark:shadow-[0_28px_70px_rgba(0,0,0,0.5)]">
-                                <div className="mb-2 flex items-center justify-between px-1">
-                                    <div>
-                                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-slate-400">小地图</div>
-                                        <div className="mt-0.5 text-[11px] text-gray-400 dark:text-slate-500">点节点聚焦 · 拖框导航</div>
-                                    </div>
-                                    <button
-                                        onClick={handleFitCanvas}
-                                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-[11px] font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-white/10 dark:bg-white/6 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white"
-                                        title="适配全部内容"
-                                    >
-                                        Fit
-                                    </button>
-                                </div>
-                                <div
-                                    ref={miniMapRef}
-                                    className={`relative overflow-hidden rounded-2xl border border-gray-200/90 bg-[radial-gradient(circle_at_top,_rgba(186,230,253,0.28),_rgba(255,255,255,0.98))] shadow-inner transition-all dark:border-white/10 dark:bg-[radial-gradient(circle_at_top,_rgba(30,41,59,0.96),_rgba(2,6,23,0.98))] ${isMiniMapDragging ? 'cursor-grabbing ring-2 ring-sky-300/50 dark:ring-sky-400/30' : 'cursor-pointer hover:border-sky-200 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_8px_24px_rgba(14,165,233,0.08)] dark:hover:border-sky-400/20'}`}
-                                    style={{ width: mapWidth, height: mapHeight }}
-                                    onMouseDown={(e) => {
-                                        const rect = e.currentTarget.getBoundingClientRect();
-                                        setIsMiniMapDragging(true);
-                                        handleMiniMapNavigate(e.clientX, e.clientY, rect);
-                                    }}
-                                    onMouseMove={(e) => {
-                                        if (!isMiniMapDragging) return;
-                                        handleMiniMapNavigate(e.clientX, e.clientY, e.currentTarget.getBoundingClientRect());
-                                    }}
-                                    onMouseUp={() => setIsMiniMapDragging(false)}
-                                    onMouseLeave={() => setIsMiniMapDragging(false)}
-                                >
-                                    {nodes.map((node) => {
-                                        const width = Math.max(6, ((node.width || 120) / boundsWidth) * mapWidth);
-                                        const height = Math.max(6, ((node.height || 90) / boundsHeight) * mapHeight);
-                                        const isSelected = selectedIds.includes(node.id);
-                                        const tone = node.type === 'image' || node.type === 'video'
-                                            ? 'border-emerald-300/80 bg-emerald-400/22 dark:border-emerald-300/50 dark:bg-emerald-400/16'
-                                            : node.type === 'image-generator' || node.type === 'video-generator'
-                                                ? 'border-violet-300/80 bg-violet-400/22 dark:border-violet-300/50 dark:bg-violet-400/16'
-                                                : 'border-sky-300/80 bg-sky-400/22 dark:border-sky-300/50 dark:bg-sky-400/16';
-                                        return (
-                                            <button
-                                                key={node.id}
-                                                type="button"
-                                                className={`absolute rounded-[4px] border transition-all hover:z-10 hover:brightness-110 hover:shadow-sm ${tone} ${isSelected ? 'ring-1 ring-blue-500/60 dark:ring-sky-300/60' : ''} ${miniMapHoveredId === node.id ? 'scale-[1.04]' : ''}`}
-                                                style={{
-                                                    left: toMapX(node.x),
-                                                    top: toMapY(node.y),
-                                                    width,
-                                                    height,
-                                                }}
-                                                title={node.storyboardTitle || node.prompt || node.type}
-                                                onMouseEnter={() => setMiniMapHoveredId(node.id)}
-                                                onMouseLeave={() => setMiniMapHoveredId((current) => (current === node.id ? null : current))}
-                                                onMouseDown={(e) => {
-                                                    e.stopPropagation();
-                                                    handleMiniMapFocusElement(node);
-                                                }}
-                                            />
-                                        );
-                                    })}
-                                    <div
-                                        className="absolute rounded-xl border border-blue-500/90 bg-blue-400/10 shadow-[0_0_0_1px_rgba(59,130,246,0.2),0_8px_20px_rgba(59,130,246,0.12)] transition-shadow dark:border-sky-300/90 dark:bg-sky-400/10 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.22),0_10px_24px_rgba(56,189,248,0.12)]"
-                                        style={{
-                                            left: toMapX(viewport.left),
-                                            top: toMapY(viewport.top),
-                                            width: Math.max(24, ((viewport.right - viewport.left) / boundsWidth) * mapWidth),
-                                            height: Math.max(20, ((viewport.bottom - viewport.top) / boundsHeight) * mapHeight),
-                                        }}
-                                        onMouseDown={(e) => {
-                                            e.stopPropagation();
-                                            setIsMiniMapDragging(true);
-                                        }}
-                                    >
-                                        <div className="absolute left-1/2 top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-blue-500/80 bg-white shadow-sm dark:border-sky-300/80 dark:bg-slate-950" />
-                                    </div>
-                                    {miniMapHoveredId && (() => {
-                                        const hoveredNode = nodes.find((node) => node.id === miniMapHoveredId);
-                                        if (!hoveredNode) return null;
-                                        return (
-                                            <div className="absolute left-2 top-2 rounded-lg border border-gray-200/90 bg-white/96 px-2 py-1 text-[10px] text-gray-600 shadow-sm dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-300">
-                                                {hoveredNode.storyboardTitle || hoveredNode.prompt || hoveredNode.type}
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                                <div className="mt-2 flex items-center gap-3 px-1 text-[10px] text-gray-400 dark:text-slate-500">
-                                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-400" />媒体</span>
-                                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-400" />生成器</span>
-                                    <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-sky-400" />其他</span>
-                                </div>
-                            </div>
-                        );
-                    })()}
-
-                    <div className="relative flex items-center rounded-[20px] border border-gray-200/90 bg-white/94 p-1.5 shadow-[0_14px_34px_rgba(15,23,42,0.14)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/78 dark:shadow-[0_20px_48px_rgba(0,0,0,0.45)]">
-                        <button
-                            onClick={() => setShowMiniMap((prev) => !prev)}
-                            className={`rounded-xl p-2 transition-all ${showMiniMap ? 'bg-sky-100 text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.14)] dark:bg-sky-400/14 dark:text-sky-200 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.16)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
-                            title="切换小地图"
-                        >
-                            <MapIcon size={16} />
-                        </button>
-                        <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-white/10" />
-                        <button
-                            onClick={() => setShowBoardColorPicker((prev) => !prev)}
-                            className={`rounded-xl p-2 transition-colors ${showBoardColorPicker ? 'bg-sky-100 text-sky-700 dark:bg-sky-400/14 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
-                            title="画板颜色"
-                        >
-                            <Palette size={16} />
-                        </button>
-                        <button onClick={() => zoomOut()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
-                            <Minus size={16} />
-                        </button>
-                        <button
-                            onClick={() => zoomTo(1, { x: viewportSize.width / 2, y: viewportSize.height / 2 })}
-                            className="min-w-[3.4rem] rounded-lg px-2 py-1 text-center text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-200 dark:hover:bg-white/10 dark:hover:text-white"
-                            title="回到 100%"
-                        >
-                            {Math.round(scale * 100)}%
-                        </button>
-                        <button onClick={() => zoomIn()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
-                            <Plus size={16} />
-                        </button>
-                        {showBoardColorPicker && (
-                            <div className="absolute bottom-[calc(100%+10px)] left-0 rounded-2xl border border-gray-200/90 bg-white/96 p-3 shadow-[0_18px_40px_rgba(15,23,42,0.16)] backdrop-blur-2xl dark:border-white/10 dark:bg-slate-950/92 dark:shadow-[0_24px_60px_rgba(0,0,0,0.5)]">
-                                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-slate-400">画板颜色</div>
-                                <div className="flex items-center gap-2">
-                                    {BOARD_COLOR_OPTIONS.map((color) => {
-                                        const active = boardColor.toLowerCase() === color.toLowerCase();
-                                        return (
-                                            <button
-                                                key={color}
-                                                type="button"
-                                                onClick={() => setBoardColor(color)}
-                                                className={`h-7 w-7 rounded-full border transition-transform hover:scale-105 ${active ? 'border-sky-500 ring-2 ring-sky-300/40 dark:ring-sky-400/30' : 'border-gray-200 dark:border-white/10'}`}
-                                                style={{ backgroundColor: color }}
-                                                title={color}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
+    return null;
 }
 
-export default function LovartCanvas() {
+export default function CanvasPageClient() {
     return (
-        <Suspense fallback={
-            <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)] flex items-center justify-center">
-                <div className="text-center rounded-3xl border border-white/10 bg-slate-950/50 px-7 py-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-xl">
-                    <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-sky-400"></div>
-                    <p className="text-slate-200">Loading canvas...</p>
-                </div>
-            </div>
-        }>
+        <Suspense fallback={null}>
             <LovartCanvasContent />
         </Suspense>
     );
