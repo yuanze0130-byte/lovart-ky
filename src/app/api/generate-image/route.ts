@@ -137,6 +137,23 @@ function getProxyTargets() {
 }
 
 function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>) {
+  try {
+    console.log('[generate-image] proxy response summary:', {
+      proxyTarget: baseResult.proxyTarget,
+      providerMode: baseResult.providerMode,
+      model: baseResult.model,
+      topLevelKeys: Object.keys((response || {}) as Record<string, unknown>),
+      hasChoices: Array.isArray(response?.choices),
+      hasData: Array.isArray(response?.data),
+      hasImages: Array.isArray(response?.images),
+      messageContentType: Array.isArray(response?.choices?.[0]?.message?.content)
+        ? 'array'
+        : typeof response?.choices?.[0]?.message?.content,
+      hasParts: Array.isArray(response?.choices?.[0]?.message?.parts),
+    });
+  } catch {
+    // ignore logging issues
+  }
   const parts = response.choices?.[0]?.message?.parts;
   if (parts && Array.isArray(parts)) {
     for (const part of parts) {
@@ -294,6 +311,16 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 
   for (const target of targets) {
     try {
+      console.log('[generate-image] trying proxy target:', {
+        target: target.label,
+        baseURL: target.baseURL,
+        model: proxyModel,
+        modelVariant: payload.modelVariant || 'pro',
+        resolution: payload.resolution || '1K',
+        aspectRatio: payload.aspectRatio || '1:1',
+        referenceCount: references.length,
+      });
+
       const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL });
       const response = (await client.chat.completions.create({
         model: proxyModel,
@@ -317,7 +344,11 @@ async function generateViaProxy(payload: GenerateImagePayload) {
       return extractImageFromProxyResponse(response, baseResult);
     } catch (error) {
       lastError = error;
-      console.warn(`Proxy target ${target.label} failed:`, error);
+      console.warn('[generate-image] proxy target failed:', {
+        target: target.label,
+        baseURL: target.baseURL,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -522,7 +553,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.error('Error generating image:', error);
+    console.error('[generate-image] final error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     return NextResponse.json(
