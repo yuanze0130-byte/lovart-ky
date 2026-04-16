@@ -151,6 +151,10 @@ function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResul
         : typeof response?.choices?.[0]?.message?.content,
       hasParts: Array.isArray(response?.choices?.[0]?.message?.parts),
     });
+    console.log(
+      '[generate-image] proxy raw response preview:',
+      JSON.stringify(response, null, 2).slice(0, 5000)
+    );
   } catch {
     // ignore logging issues
   }
