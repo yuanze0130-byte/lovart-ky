@@ -136,6 +136,31 @@ function getProxyTargets() {
   return targets;
 }
 
+function extractImageFromGeminiResponse(response: any, baseResult: Record<string, unknown>) {
+  const candidates = response?.candidates || [];
+  for (const candidate of candidates) {
+    const responseParts = candidate?.content?.parts || [];
+
+    for (const part of responseParts) {
+      const inlineData = part?.inlineData || part?.inline_data;
+      if (inlineData?.data) {
+        return {
+          imageData: `data:${inlineData.mimeType || inlineData.mime_type || 'image/png'};base64,${inlineData.data}`,
+          textResponse: '',
+          ...baseResult,
+        };
+      }
+    }
+  }
+
+  const responseText = typeof response?.text === 'string' ? response.text.trim() : '';
+  if (responseText) {
+    throw new Error(`Gemini 返回了文字而非图片: ${responseText.slice(0, 300)}`);
+  }
+
+  throw new Error('No image data in Gemini response');
+}
+
 function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>) {
   try {
     console.log('[generate-image] proxy response summary:', {
@@ -359,11 +384,91 @@ async function generateViaProxy(payload: GenerateImagePayload) {
   throw lastError instanceof Error ? lastError : new Error('All proxy targets failed');
 }
 
+function buildGeminiGenerateUrl(baseUrl: string, model: string, apiVersion: string) {
+  const normalizedBase = baseUrl.replace(/\/+$/, '');
+  const modelPath = model.startsWith('models/') ? model : `models/${model}`;
+  const versionPath = apiVersion ? `/${apiVersion.replace(/^\/+|\/+$/g, '')}` : '';
+
+  if (normalizedBase.includes(':generateContent')) {
+    return normalizedBase;
+  }
+
+  return `${normalizedBase}${versionPath}/${modelPath}:generateContent`;
+}
+
+async function generateViaGeminiRest(
+  payload: GenerateImagePayload,
+  parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>,
+  baseResult: Record<string, unknown>
+) {
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
+  const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
+  const geminiBaseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
+  const geminiApiVersion = process.env.GOOGLE_GEMINI_API_VERSION ?? 'v1beta';
+
+  if (!apiKey || !geminiBaseUrl) {
+    throw new Error('GOOGLE_GEMINI_API_KEY or GOOGLE_GEMINI_BASE_URL not configured');
+  }
+
+  const url = new URL(buildGeminiGenerateUrl(geminiBaseUrl, model, geminiApiVersion));
+  if (!url.searchParams.has('key')) {
+    url.searchParams.set('key', apiKey);
+  }
+
+  console.log('[generate-image] trying gemini REST target:', {
+    url: url.toString().replace(apiKey, '[redacted]'),
+    model,
+    modelVariant: payload.modelVariant || 'pro',
+    resolution: payload.resolution || '1K',
+    aspectRatio: payload.aspectRatio || '1:1',
+  });
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: 'user',
+          parts,
+        },
+      ],
+      generationConfig: {
+        responseModalities: ['IMAGE'],
+        imageConfig: {
+          aspectRatio: payload.aspectRatio || '1:1',
+          imageSize: payload.resolution || '1K',
+        },
+      },
+    }),
+  });
+
+  const contentType = response.headers.get('content-type') || '';
+  const responseText = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`Gemini REST failed (${response.status}): ${responseText.slice(0, 500)}`);
+  }
+
+  if (!contentType.includes('application/json')) {
+    throw new Error(`Gemini REST returned non-JSON (${contentType || 'unknown'}): ${responseText.slice(0, 200)}`);
+  }
+
+  return extractImageFromGeminiResponse(JSON.parse(responseText), {
+    ...baseResult,
+    provider: 'official-rest',
+    officialBaseUrl: geminiBaseUrl,
+  });
+}
+
 async function generateViaOfficial(payload: GenerateImagePayload) {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
   const geminiBaseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
-  const geminiApiVersion = process.env.GOOGLE_GEMINI_API_VERSION ?? (geminiBaseUrl ? '' : undefined);
+  const geminiApiVersion = process.env.GOOGLE_GEMINI_API_VERSION;
 
   if (!apiKey) {
     throw new Error('GOOGLE_GEMINI_API_KEY not configured');
@@ -371,7 +476,7 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 
   const ai = new GoogleGenAI({
     apiKey,
-    ...(geminiBaseUrl ? { httpOptions: { baseUrl: geminiBaseUrl, apiVersion: geminiApiVersion } } : {}),
+    ...(geminiBaseUrl ? { httpOptions: { baseUrl: geminiBaseUrl, ...(geminiApiVersion !== undefined ? { apiVersion: geminiApiVersion } : {}) } } : {}),
   });
   const finalPrompt = buildPrompt(
     payload.prompt,
@@ -422,6 +527,23 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
     referenceCount: references.length,
   });
 
+  const baseResult = {
+    requestedAspectRatio: payload.aspectRatio || '1:1',
+    requestedResolution: payload.resolution || '1K',
+    provider: 'official' as const,
+    providerMode: getProvider(),
+    providerFallbackUsed: false,
+    officialBaseUrl: geminiBaseUrl || 'google-default',
+    model,
+    modelVariant: payload.modelVariant || 'pro',
+    editMode: payload.editMode || 'generate',
+    referenceCount: references.length,
+  };
+
+  if (geminiBaseUrl) {
+    return generateViaGeminiRest(payload, parts, baseResult);
+  }
+
   const response = await ai.models.generateContent({
     model,
     contents: [
@@ -439,42 +561,7 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
     },
   });
 
-  const baseResult = {
-    requestedAspectRatio: payload.aspectRatio || '1:1',
-    requestedResolution: payload.resolution || '1K',
-    provider: 'official' as const,
-    providerMode: getProvider(),
-    providerFallbackUsed: false,
-    officialBaseUrl: geminiBaseUrl || 'google-default',
-    model,
-    modelVariant: payload.modelVariant || 'pro',
-    editMode: payload.editMode || 'generate',
-    referenceCount: references.length,
-  };
-
-  const candidates = response.candidates || [];
-  for (const candidate of candidates) {
-    const candidateContent = candidate.content;
-    const responseParts = candidateContent?.parts || [];
-
-    for (const part of responseParts) {
-      const inlineData = part.inlineData;
-      if (inlineData?.data) {
-        return {
-          imageData: `data:${inlineData.mimeType || 'image/png'};base64,${inlineData.data}`,
-          textResponse: '',
-          ...baseResult,
-        };
-      }
-    }
-  }
-
-  const responseText = typeof response.text === 'string' ? response.text.trim() : '';
-  if (responseText) {
-    throw new Error(`Google Gemini 返回了文字而非图片: ${responseText.slice(0, 300)}`);
-  }
-
-  throw new Error('No image data in official Gemini response');
+  return extractImageFromGeminiResponse(response, baseResult);
 }
 
 export async function POST(request: NextRequest) {
