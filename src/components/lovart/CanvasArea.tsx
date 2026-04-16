@@ -141,6 +141,7 @@ interface CanvasAreaProps {
     onAddElement: (element: CanvasElement) => void;
     onCreateNodeAt?: (x: number, y: number) => void;
     activeTool: string;
+    backgroundColor?: string;
     onDragStart?: () => void;
     onDragEnd?: () => void;
     onGenerateFromImage?: (element: CanvasElement) => void;
@@ -179,6 +180,7 @@ export function CanvasArea({
     onAddElement,
     onCreateNodeAt,
     activeTool,
+    backgroundColor = '#F4F4F5',
     onDragStart,
     onDragEnd,
     onGenerateFromImage,
@@ -853,7 +855,7 @@ export function CanvasArea({
                         ? 'cursor-crosshair'
                         : ''
             }`}
-            style={{ backgroundColor: boardColor }}
+            style={{ backgroundColor: backgroundColor ?? boardColor }}
             onMouseMove={handleMouseMove}
             onMouseDown={(e) => handleMouseDown(e, null)}
             onWheel={handleWheel}
@@ -903,7 +905,7 @@ export function CanvasArea({
                     <button
                         onClick={handleDuplicateSelection}
                         className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-slate-200 dark:hover:bg-white/8 dark:hover:text-white"
-                        title="复制"
+                        title="复制图层"
                     >
                         <Copy size={16} />
                     </button>

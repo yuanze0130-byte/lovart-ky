@@ -474,7 +474,7 @@ export function ContextToolbar({
                                     ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white'
                                     : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                             }`}
-                            title="编辑 / 重新生成"
+                            title="编辑 / 重新生成 · 3 积分起"
                         >
                             <Wand2 size={18} />
                         </button>
@@ -494,9 +494,11 @@ export function ContextToolbar({
 
                     {onDuplicate && (
                         <button
-                            onClick={() => onDuplicate(element)}
+                            onClick={() => {
+                                onDuplicate(element);
+                            }}
                             className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors dark:text-slate-200 dark:hover:bg-white/8"
-                            title="复制节点"
+                            title="复制图层"
                         >
                             <Copy size={18} />
                         </button>

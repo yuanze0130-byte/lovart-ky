@@ -185,11 +185,9 @@ export function ImageGeneratorPanel({
         <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
           {activeMeta.title}
         </div>
-        {editMode !== 'generate' && (
-          <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {activeMeta.subtitle}
-          </div>
-        )}
+        <div className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {activeMeta.subtitle}
+        </div>
       </div>
 
       <div className="p-4">

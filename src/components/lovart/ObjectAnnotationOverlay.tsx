@@ -67,7 +67,7 @@ export function ObjectAnnotationOverlay({ imageBounds, object, isDetecting, onCl
         className="absolute flex items-center gap-3 rounded-full border border-gray-200 bg-white/95 px-4 py-2 text-xs text-gray-700 shadow-lg"
         style={{
           left: imageBounds.left,
-          top: Math.max(12, imageBounds.top - 52),
+          top: imageBounds.top + imageBounds.height + 14,
           zIndex: 80,
         }}
       >
