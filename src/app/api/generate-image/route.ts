@@ -362,12 +362,16 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 async function generateViaOfficial(payload: GenerateImagePayload) {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
+  const geminiBaseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
 
   if (!apiKey) {
     throw new Error('GOOGLE_GEMINI_API_KEY not configured');
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({
+    apiKey,
+    ...(geminiBaseUrl ? { httpOptions: { baseUrl: geminiBaseUrl } } : {}),
+  });
   const finalPrompt = buildPrompt(
     payload.prompt,
     payload.resolution || '1K',
@@ -408,6 +412,15 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 
   parts.push({ text: finalPrompt });
 
+  console.log('[generate-image] trying gemini-compatible target:', {
+    baseURL: geminiBaseUrl || 'google-default',
+    model,
+    modelVariant: payload.modelVariant || 'pro',
+    resolution: payload.resolution || '1K',
+    aspectRatio: payload.aspectRatio || '1:1',
+    referenceCount: references.length,
+  });
+
   const response = await ai.models.generateContent({
     model,
     contents: [
@@ -431,6 +444,7 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
     provider: 'official' as const,
     providerMode: getProvider(),
     providerFallbackUsed: false,
+    officialBaseUrl: geminiBaseUrl || 'google-default',
     model,
     modelVariant: payload.modelVariant || 'pro',
     editMode: payload.editMode || 'generate',
