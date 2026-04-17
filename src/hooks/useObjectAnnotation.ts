@@ -79,6 +79,7 @@ export function useObjectAnnotation() {
     image: CanvasElement;
     object: DetectedObject;
     prompt: string;
+    aspectRatio?: string;
   }) => {
     setIsEditing(true);
     try {
@@ -89,6 +90,7 @@ export function useObjectAnnotation() {
           image: params.image.content,
           object: params.object,
           prompt: params.prompt,
+          aspectRatio: params.aspectRatio,
         }),
       });
 

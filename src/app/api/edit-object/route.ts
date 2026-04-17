@@ -6,10 +6,11 @@ export async function POST(request: NextRequest) {
   try {
     await requireUser(request);
 
-    const { image, object, prompt } = await request.json() as {
+    const { image, object, prompt, aspectRatio } = await request.json() as {
       image?: string;
       object?: DetectedObject;
       prompt?: string;
+      aspectRatio?: string;
     };
 
     if (!image || typeof image !== 'string') {
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
         referenceImage: image,
         referenceImages: [image],
         resolution: '1K',
-        aspectRatio: '1:1',
+        aspectRatio: aspectRatio || '1:1',
         modelVariant: 'pro',
         editMode: 'generate',
       }),

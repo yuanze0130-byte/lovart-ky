@@ -419,7 +419,7 @@ function LovartCanvasContent() {
                 image: imageElement,
                 object: {
                     ...annotationObject,
-                    label: annotationSubject.trim() || annotationObject.label || '已标记区域',
+                    label: annotationSubject.trim() || annotationObject.label || '?????',
                 },
                 prompt: objectEditPrompt.trim(),
             });
