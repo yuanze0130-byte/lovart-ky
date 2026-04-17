@@ -1567,12 +1567,67 @@ function LovartCanvasContent() {
         );
     }
 
-    return null;
+    return (
+        <div className="min-h-screen bg-[#F8F8F6]">
+            <div className="fixed inset-0 z-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_30%),linear-gradient(180deg,#f9fafb_0%,#f5f6f8_100%)] dark:bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.06),_transparent_24%),linear-gradient(180deg,#020617_0%,#0f172a_58%,#111827_100%)]" />
+            <div className="relative z-10 h-screen w-full overflow-hidden">
+                <CanvasArea
+                    scale={scale}
+                    pan={pan}
+                    boardColor={boardColor}
+                    onPanChange={setPan}
+                    onZoomIn={zoomIn}
+                    onZoomOut={zoomOut}
+                    onZoomTo={zoomTo}
+                    elements={elements}
+                    selectedIds={selectedIds}
+                    onSelect={setSelectedIds}
+                    onElementChange={handleElementChange}
+                    onElementsChange={handleElementsChange}
+                    onDelete={handleDelete}
+                    onDeleteMany={handleDeleteMany}
+                    onAddElement={appendElement}
+                    onCreateNodeAt={(x, y) => {
+                        const generator = createImageGeneratorElement();
+                        appendElement({
+                            ...generator,
+                            x,
+                            y,
+                        });
+                    }}
+                    activeTool={activeTool}
+                    onDragStart={() => setIsDraggingElement(true)}
+                    onDragEnd={() => setIsDraggingElement(false)}
+                    onGenerateFromImage={handleGenerateFromImage}
+                    onOpenImageEditMode={handleOpenImageEditMode}
+                    onConnectFlow={handleConnectFlow}
+                    onRemoveBackground={handleRemoveBackground}
+                    onUpscale={handleUpscale}
+                    onCrop={handleCrop}
+                    annotationImageId={annotationImageId}
+                    annotationObject={annotationObject}
+                    isDetectingObject={isDetectingObject}
+                    annotationPendingPoint={annotationPendingPoint}
+                    onStartObjectAnnotation={enterAnnotationMode}
+                    onExitObjectAnnotation={exitAnnotationMode}
+                    onDetectObjectAt={handleDetectObjectAt}
+                    onAnnotateRegion={handleAnnotateRegion}
+                />
+            </div>
+        </div>
+    );
 }
 
-export default function CanvasPageClient() {
+export default function LovartCanvas() {
     return (
-        <Suspense fallback={null}>
+        <Suspense fallback={
+            <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)] flex items-center justify-center">
+                <div className="text-center rounded-3xl border border-white/10 bg-slate-950/50 px-7 py-6 shadow-[0_24px_80px_rgba(2,6,23,0.45)] backdrop-blur-xl">
+                    <div className="mx-auto mb-4 h-12 w-12 animate-spin rounded-full border-b-2 border-sky-400"></div>
+                    <p className="text-slate-200">Loading canvas...</p>
+                </div>
+            </div>
+        }>
             <LovartCanvasContent />
         </Suspense>
     );
