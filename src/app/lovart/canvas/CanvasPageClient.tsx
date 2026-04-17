@@ -126,6 +126,7 @@ function LovartCanvasContent() {
         selectedObject: annotationObject,
         isDetecting: isDetectingObject,
         isEditing: isEditingObject,
+        pendingPoint: annotationPendingPoint,
         enterAnnotationMode,
         exitAnnotationMode,
         detectObject,
@@ -1673,6 +1674,7 @@ function LovartCanvasContent() {
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}
                     isDetectingObject={isDetectingObject}
+                    annotationPendingPoint={annotationPendingPoint}
                     onStartObjectAnnotation={enterAnnotationMode}
                     onExitObjectAnnotation={exitAnnotationMode}
                     onDetectObjectAt={handleDetectObjectAt}
