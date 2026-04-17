@@ -394,8 +394,9 @@ function LovartCanvasContent() {
                     setAnnotationSubject(detected.label);
                 }
             })
-            .catch(() => {
+            .catch((error) => {
                 setAnnotationSubject('');
+                alert(error instanceof Error ? error.message : '对象识别失败，请稍后重试');
             });
     }, [detectObject]);
 
