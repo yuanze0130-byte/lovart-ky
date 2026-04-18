@@ -1,6 +1,7 @@
 import type { NextRequest } from 'next/server';
 import type { EditSelectedImageAction, AgentActionResult, AgentContext } from '@/lib/agent/actions';
 import { callInternalJson } from '@/lib/agent/executors/shared';
+import type { AnnotationObject } from '@/lib/object-annotation';
 
 type EditObjectApiResult = {
   imageData?: string;
@@ -16,13 +17,25 @@ export async function runEditSelectedImageAction(input: {
     throw new Error('当前未选中图片，无法执行编辑');
   }
 
+  const selectedObject: AnnotationObject = input.context.selectedObject?.id
+    ? {
+        id: input.context.selectedObject.id,
+        label: input.context.selectedObject.label,
+        score: input.context.selectedObject.score,
+        bbox: input.context.selectedObject.bbox,
+        polygon: input.context.selectedObject.polygon,
+        maskUrl: input.context.selectedObject.maskUrl,
+      }
+    : {
+        id: 'agent-fallback-object',
+        label: 'selected-subject',
+        score: 1,
+        bbox: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
+      };
+
   const result = await callInternalJson<EditObjectApiResult>(input.request, '/api/edit-object', {
     image: input.context.selectedImage,
-    object: {
-      label: 'selected-subject',
-      score: 1,
-      bbox: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
-    },
+    object: selectedObject,
     prompt: input.action.prompt,
     aspectRatio: input.action.aspectRatio || '1:1',
   });
@@ -35,6 +48,6 @@ export async function runEditSelectedImageAction(input: {
     kind: 'image_edited',
     assetId: `agent-edited-${Date.now()}`,
     imageData: result.imageData,
-    message: '已完成图片编辑',
+    message: selectedObject?.label ? `已完成对象编辑：${selectedObject.label}` : '已完成图片编辑',
   };
 }

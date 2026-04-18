@@ -487,6 +487,7 @@ function LovartCanvasContent() {
         selectedIds,
         elements,
         assetIds: projectAssets.map((asset) => asset.id),
+        selectedObject: annotationObject,
     });
     const { runAgent, isRunning: isAgentRunning, result: agentResult, error: agentError } = useAgentRunner();
     const storyboardStorageKey = useMemo(() => `lovart:storyboard:${projectId || 'draft'}`, [projectId]);
@@ -1484,17 +1485,31 @@ function LovartCanvasContent() {
     const applyAgentCanvasDrafts = useCallback((drafts: DraftCanvasElement[]) => {
         setElements((prev) => [
             ...prev,
-            ...drafts.map((draft) => ({
-                id: draft.id,
-                type: draft.type,
-                x: draft.x,
-                y: draft.y,
-                width: draft.width,
-                height: draft.height,
-                content: draft.content,
-                prompt: draft.prompt,
-                storyboardTitle: draft.title,
-            })),
+            ...drafts.map((draft): CanvasElement => {
+                const aspectRatio: CanvasElement['storyboardAspectRatio'] = draft.width === draft.height ? '1:1' : draft.width > draft.height ? '16:9' : '9:16';
+                const videoSize: CanvasElement['storyboardVideoSize'] = draft.width === draft.height ? '1024x1024' : draft.width > draft.height ? '1280x720' : '720x1280';
+                const orientation: CanvasElement['storyboardOrientation'] = draft.width === draft.height ? 'square' : draft.width > draft.height ? 'landscape' : 'portrait';
+                return {
+                    id: draft.id,
+                    type: draft.type,
+                    x: draft.x,
+                    y: draft.y,
+                    width: draft.width,
+                    height: draft.height,
+                    originalWidth: draft.width,
+                    originalHeight: draft.height,
+                    content: draft.content,
+                    prompt: draft.prompt,
+                    storyboardTitle: draft.title,
+                    storyboardBrief: draft.prompt,
+                    storyboardAspectRatio: aspectRatio,
+                    storyboardVideoSize: videoSize,
+                    storyboardOrientation: orientation,
+                    storyboardSourceAspectRatio: aspectRatio,
+                    storyboardSourceVideoSize: videoSize,
+                    storyboardSourceOrientation: orientation,
+                };
+            }),
         ]);
     }, [setElements]);
 

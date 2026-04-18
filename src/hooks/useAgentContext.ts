@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import type { AgentContext } from '@/lib/agent/actions';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import type { AnnotationObject } from '@/lib/object-annotation';
 
 export function useAgentContext(input: {
   page: AgentContext['page'];
@@ -10,6 +11,7 @@ export function useAgentContext(input: {
   selectedIds?: string[];
   elements?: CanvasElement[];
   assetIds?: string[];
+  selectedObject?: AnnotationObject | null;
 }): AgentContext {
   return useMemo(() => {
     const selectedElementId = input.selectedIds?.[0] || null;
@@ -24,6 +26,7 @@ export function useAgentContext(input: {
       selectedElementId,
       assetIds: input.assetIds || [],
       selectedImage,
+      selectedObject: input.selectedObject || null,
     } satisfies AgentContext;
-  }, [input.assetIds, input.elements, input.page, input.projectId, input.selectedIds]);
+  }, [input.assetIds, input.elements, input.page, input.projectId, input.selectedIds, input.selectedObject]);
 }

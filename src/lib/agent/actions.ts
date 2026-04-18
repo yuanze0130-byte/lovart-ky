@@ -11,6 +11,14 @@ export type AgentContext = {
   selectedStoryboardItemId?: string | null;
   assetIds?: string[];
   selectedImage?: string | null;
+  selectedObject?: {
+    id?: string;
+    label?: string;
+    score?: number;
+    bbox: { x: number; y: number; width: number; height: number };
+    polygon?: { x: number; y: number }[];
+    maskUrl?: string;
+  } | null;
 };
 
 export type CreateStoryboardAction = {
