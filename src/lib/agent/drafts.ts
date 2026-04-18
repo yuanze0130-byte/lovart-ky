@@ -49,6 +49,38 @@ export function getDefaultCanvasElementSize(type: 'image' | 'video', aspectRatio
   }
 }
 
+function stripPromptNoise(prompt: string) {
+  return prompt
+    .replace(/[，,。.!！？]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildStoryboardBeats(shots: number) {
+  const defaults = [
+    { title: '开场定调', intent: '建立场景与气质', durationSec: 3 },
+    { title: '主体亮相', intent: '让主角/主体进入画面中心', durationSec: 4 },
+    { title: '细节特写', intent: '强调关键细节与材质', durationSec: 3 },
+    { title: '动作推进', intent: '通过动作推动节奏', durationSec: 4 },
+    { title: '氛围拉满', intent: '强化风格、光线与情绪', durationSec: 4 },
+    { title: '收束落点', intent: '形成记忆点或结尾停留', durationSec: 3 },
+  ];
+
+  return Array.from({ length: shots }, (_, index) => {
+    if (index < defaults.length) return defaults[index];
+    return {
+      title: `镜头延展 ${index + 1}`,
+      intent: '补充叙事与节奏变化',
+      durationSec: 3 + (index % 3),
+    };
+  });
+}
+
+function buildShotPrompt(basePrompt: string, beat: { title: string; intent: string }, index: number, shots: number) {
+  const sequenceLabel = `第 ${index + 1}/${shots} 镜`;
+  return `${sequenceLabel} · ${beat.title} · ${beat.intent} · 画面围绕「${basePrompt}」展开，保持统一世界观、主体一致性、镜头衔接与视觉节奏。`;
+}
+
 export function buildDraftStoryboardItems(options: {
   prompt: string;
   shots: number;
@@ -56,13 +88,15 @@ export function buildDraftStoryboardItems(options: {
 }): DraftStoryboardItem[] {
   const outputSize = getDefaultStoryboardVideoSize(options.aspectRatio);
   const now = new Date().toISOString();
+  const cleanedPrompt = stripPromptNoise(options.prompt);
+  const beats = buildStoryboardBeats(options.shots);
 
-  return Array.from({ length: options.shots }, (_, index) => ({
+  return beats.map((beat, index) => ({
     id: randomUUID(),
-    title: `Shot ${index + 1}`,
-    sourcePrompt: `${options.prompt} · 镜头 ${index + 1}`,
+    title: `${String(index + 1).padStart(2, '0')} · ${beat.title}`,
+    sourcePrompt: buildShotPrompt(cleanedPrompt || options.prompt, beat, index, options.shots),
     order: index,
-    durationSec: 5,
+    durationSec: beat.durationSec,
     aspectRatio: options.aspectRatio,
     outputSize,
     renderProfile: outputSize === '1024x1792' || outputSize === '1792x1024' ? 'high' : 'standard',
@@ -93,11 +127,12 @@ export function buildDraftCanvasElements(options: {
 
 export function buildStoryboardCreatedResult(prompt: string, shots: number, aspectRatio: StoryboardAspectRatio): AgentActionResult {
   const items = buildDraftStoryboardItems({ prompt, shots, aspectRatio });
+  const totalDuration = items.reduce((sum, item) => sum + item.durationSec, 0);
   return {
     kind: 'storyboard_created',
     storyboardId: randomUUID(),
     count: items.length,
     items,
-    message: `已创建 ${items.length} 个分镜草案`,
+    message: `已创建 ${items.length} 个分镜草案，总时长约 ${totalDuration}s`,
   };
 }
