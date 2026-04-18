@@ -489,6 +489,15 @@ function LovartCanvasContent() {
         assetIds: projectAssets.map((asset) => asset.id),
         selectedObject: annotationObject,
         storyboardCount: storyboard.length,
+        storyboardItems: storyboard.map((item) => ({
+            id: item.id,
+            order: item.order,
+            title: item.title,
+            sourcePrompt: item.sourcePrompt,
+            aspectRatio: item.aspectRatio,
+            outputSize: item.outputSize,
+            thumbnailUrl: item.thumbnailUrl,
+        })),
     });
     const { runAgent, isRunning: isAgentRunning, result: agentResult, error: agentError } = useAgentRunner();
     const storyboardStorageKey = useMemo(() => `lovart:storyboard:${projectId || 'draft'}`, [projectId]);
@@ -1564,6 +1573,61 @@ function LovartCanvasContent() {
             })));
         }
 
+        if (nextResult.kind === 'storyboard_image_generated') {
+            const targetStoryboardItem = storyboard.find((item) => item.id === nextResult.storyboardItemId);
+            const x = 120;
+            const y = 120;
+            const aspectMeta = getStoryboardAspectMeta(nextResult.aspectRatio);
+
+            const nextElement: CanvasElement = {
+                id: `agent-storyboard-image-${nextResult.storyboardItemId}-${Date.now()}`,
+                type: 'image',
+                x,
+                y,
+                width: aspectMeta.canvasWidth,
+                height: aspectMeta.canvasHeight,
+                originalWidth: aspectMeta.canvasWidth,
+                originalHeight: aspectMeta.canvasHeight,
+                content: nextResult.imageData,
+                prompt: nextResult.prompt,
+                storyboardItemId: nextResult.storyboardItemId,
+                storyboardShotLabel: `第 ${nextResult.storyboardOrder} 镜`,
+                storyboardTitle: nextResult.title,
+                storyboardBrief: targetStoryboardItem?.sourcePrompt || nextResult.prompt,
+                storyboardAspectRatio: nextResult.aspectRatio,
+                storyboardVideoSize: targetStoryboardItem?.outputSize || aspectMeta.videoSize,
+                storyboardOrientation: aspectMeta.orientation,
+                storyboardSourceAspectRatio: targetStoryboardItem?.sourceAspectRatio || nextResult.aspectRatio,
+                storyboardSourceVideoSize: targetStoryboardItem?.sourceOutputSize || targetStoryboardItem?.outputSize || aspectMeta.videoSize,
+                storyboardSourceOrientation: targetStoryboardItem?.sourceOrientation || aspectMeta.orientation,
+                storyboardRenderProfile: targetStoryboardItem?.renderProfile || getStoryboardRenderProfile(targetStoryboardItem?.outputSize || aspectMeta.videoSize),
+                storyboardDurationSec: targetStoryboardItem?.durationSec || 5,
+                storyboardShotIndex: nextResult.storyboardOrder - 1,
+                storyboardShotCount: storyboard.length,
+                storyboardSequenceState: storyboard.length <= 1 ? 'single' : nextResult.storyboardOrder === 1 ? 'first' : nextResult.storyboardOrder === storyboard.length ? 'last' : 'middle',
+                storyboardSequenceHint: getStoryboardSequenceHint(storyboardLayout, storyboard.length <= 1 ? 'single' : nextResult.storyboardOrder === 1 ? 'first' : nextResult.storyboardOrder === storyboard.length ? 'last' : 'middle'),
+                storyboardBoardMode: getStoryboardBoardMode(storyboardLayout, storyboard.length <= 1 ? 'single' : nextResult.storyboardOrder === 1 ? 'first' : nextResult.storyboardOrder === storyboard.length ? 'last' : 'middle'),
+            };
+
+            setElements((prev) => [...prev, nextElement]);
+            setSelectedIds([nextElement.id]);
+            setStoryboard((prev) => prev.map((item) => item.id === nextResult.storyboardItemId ? {
+                ...item,
+                elementId: nextElement.id,
+                assetId: nextResult.assetId,
+                thumbnailUrl: nextResult.imageData,
+                type: 'image',
+                sourcePrompt: item.sourcePrompt || nextResult.prompt,
+                aspectRatio: item.aspectRatio || nextResult.aspectRatio,
+                orientation: item.orientation || aspectMeta.orientation,
+                outputSize: item.outputSize || aspectMeta.videoSize,
+                renderProfile: item.renderProfile || getStoryboardRenderProfile(item.outputSize || aspectMeta.videoSize),
+                sourceAspectRatio: item.sourceAspectRatio || nextResult.aspectRatio,
+                sourceOrientation: item.sourceOrientation || aspectMeta.orientation,
+                sourceOutputSize: item.sourceOutputSize || item.outputSize || aspectMeta.videoSize,
+            } : item));
+        }
+
         if (nextResult.kind === 'image_edited') {
             applyAgentCanvasDrafts([
                 {
@@ -1579,7 +1643,7 @@ function LovartCanvasContent() {
                 },
             ]);
         }
-    }, [agentContext, applyAgentCanvasDrafts, handleCreateStoryboardFlow, runAgent]);
+    }, [agentContext, applyAgentCanvasDrafts, handleCreateStoryboardFlow, runAgent, storyboard, storyboardLayout]);
 
     const duplicateElements = useCallback((source: CanvasElement[]) => {
         const idMap = new Map<string, string>();

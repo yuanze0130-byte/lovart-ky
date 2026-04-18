@@ -59,6 +59,41 @@ function inferVideoSizeFromAspectRatio(aspectRatio?: StoryboardAspectRatio): Sto
   }
 }
 
+function extractStoryboardOrder(message: string): number | undefined {
+  const match = message.match(/第\s*(\d+)\s*(镜|个镜头|条分镜|格|张)/);
+  if (!match) return undefined;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function resolveStoryboardTarget(context: AgentContext, explicitOrder?: number) {
+  if (context.selectedStoryboardItemId && context.storyboardItems?.some((item) => item.id === context.selectedStoryboardItemId)) {
+    const selected = context.storyboardItems.find((item) => item.id === context.selectedStoryboardItemId)!;
+    return {
+      storyboardItemId: selected.id,
+      storyboardOrder: selected.order + 1,
+      aspectRatio: selected.aspectRatio,
+    };
+  }
+
+  if (typeof explicitOrder === 'number' && explicitOrder > 0) {
+    const matched = context.storyboardItems?.find((item) => item.order === explicitOrder - 1);
+    if (matched) {
+      return {
+        storyboardItemId: matched.id,
+        storyboardOrder: matched.order + 1,
+        aspectRatio: matched.aspectRatio,
+      };
+    }
+  }
+
+  return {
+    storyboardItemId: undefined,
+    storyboardOrder: explicitOrder,
+    aspectRatio: undefined,
+  };
+}
+
 export async function parseAgentCommand(input: {
   message: string;
   context: AgentContext;
@@ -67,10 +102,22 @@ export async function parseAgentCommand(input: {
   const raw = input.message.trim();
   const lower = raw.toLowerCase();
   const aspectRatio = extractAspectRatio(raw);
+  const storyboardOrder = extractStoryboardOrder(raw);
 
   if (/制作板|production board|展开.*分镜|分镜.*展开|生成.*板|创建.*板/.test(raw)) {
     return {
       type: 'create_storyboard_board',
+    };
+  }
+
+  if ((/第\s*\d+\s*(镜|个镜头|条分镜|格|张)/.test(raw) || Boolean(input.context.selectedStoryboardItemId)) && /生成|出图|做图|画一下|画一张|做一张|渲染/.test(raw) && !/视频|video/.test(lower)) {
+    const target = resolveStoryboardTarget(input.context, storyboardOrder);
+    return {
+      type: 'generate_storyboard_image',
+      prompt: normalizePrompt(raw) || raw,
+      storyboardItemId: target.storyboardItemId,
+      storyboardOrder: target.storyboardOrder,
+      aspectRatio: aspectRatio || target.aspectRatio || '9:16',
     };
   }
 

@@ -10,6 +10,15 @@ export type AgentContext = {
   selectedElementId?: string | null;
   selectedStoryboardItemId?: string | null;
   storyboardCount?: number;
+  storyboardItems?: Array<{
+    id: string;
+    order: number;
+    title: string;
+    sourcePrompt?: string;
+    aspectRatio?: StoryboardAspectRatio;
+    outputSize?: StoryboardVideoSize;
+    thumbnailUrl?: string;
+  }>;
   assetIds?: string[];
   selectedImage?: string | null;
   selectedObject?: {
@@ -41,6 +50,14 @@ export type GenerateImagesAction = {
   addToProject?: boolean;
 };
 
+export type GenerateStoryboardImageAction = {
+  type: 'generate_storyboard_image';
+  prompt?: string;
+  storyboardItemId?: string;
+  storyboardOrder?: number;
+  aspectRatio?: StoryboardAspectRatio;
+};
+
 export type GenerateVideoAction = {
   type: 'generate_video';
   prompt: string;
@@ -66,6 +83,7 @@ export type AgentAction =
   | CreateStoryboardAction
   | CreateStoryboardBoardAction
   | GenerateImagesAction
+  | GenerateStoryboardImageAction
   | GenerateVideoAction
   | AddToCanvasAction
   | EditSelectedImageAction;
@@ -112,6 +130,17 @@ export type AgentActionResult =
       assetIds: string[];
       images: Array<{ assetId: string; imageData: string; prompt: string }>;
       count: number;
+      message: string;
+    }
+  | {
+      kind: 'storyboard_image_generated';
+      assetId: string;
+      storyboardItemId: string;
+      storyboardOrder: number;
+      title: string;
+      prompt: string;
+      imageData: string;
+      aspectRatio: StoryboardAspectRatio;
       message: string;
     }
   | {

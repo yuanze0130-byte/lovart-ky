@@ -5,6 +5,7 @@ import { runCreateStoryboardAction } from '@/lib/agent/executors/createStoryboar
 import { runCreateStoryboardBoardAction } from '@/lib/agent/executors/createStoryboardBoard';
 import { runEditSelectedImageAction } from '@/lib/agent/executors/editSelectedImage';
 import { runGenerateImagesAction } from '@/lib/agent/executors/generateImages';
+import { runGenerateStoryboardImageAction } from '@/lib/agent/executors/generateStoryboardImage';
 import { runGenerateVideoAction } from '@/lib/agent/executors/generateVideo';
 
 export async function executeAgentAction(input: {
@@ -20,6 +21,8 @@ export async function executeAgentAction(input: {
       return runCreateStoryboardBoardAction({ context: input.context });
     case 'generate_images':
       return runGenerateImagesAction({ request: input.request, action: input.action, context: input.context });
+    case 'generate_storyboard_image':
+      return runGenerateStoryboardImageAction({ request: input.request, action: input.action, context: input.context });
     case 'generate_video':
       return runGenerateVideoAction({ request: input.request, action: input.action, context: input.context });
     case 'add_to_canvas':
