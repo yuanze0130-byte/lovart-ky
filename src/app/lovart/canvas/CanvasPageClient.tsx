@@ -11,6 +11,7 @@ import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
+import { AgentPanel } from '@/components/lovart/AgentPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
@@ -19,6 +20,9 @@ import { useProjectAssets, type ProjectAsset, type StoryboardItem, type Storyboa
 import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { useObjectAnnotation } from '@/hooks/useObjectAnnotation';
+import { useAgentRunner } from '@/hooks/useAgentRunner';
+import { useAgentContext } from '@/hooks/useAgentContext';
+import type { DraftCanvasElement } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 
 function LovartCanvasContent() {
@@ -36,6 +40,7 @@ function LovartCanvasContent() {
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
     const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as 'design' | 'branding' | 'image-editing' | 'research' | null) || 'design', [searchParams]);
     const [showChat, setShowChat] = useState(Boolean(promptFromUrl));
+    const [showAgentPanel, setShowAgentPanel] = useState(false);
     const [assetsCollapsed, setAssetsCollapsed] = useState(false);
     const [showMiniMap, setShowMiniMap] = useState(false);
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
@@ -476,6 +481,14 @@ function LovartCanvasContent() {
     }, [createImageGeneratorElement, setElements, setSelectedIds]);
 
     const projectAssets = useProjectAssets(elements);
+    const agentContext = useAgentContext({
+        page: 'canvas',
+        projectId,
+        selectedIds,
+        elements,
+        assetIds: projectAssets.map((asset) => asset.id),
+    });
+    const { runAgent, isRunning: isAgentRunning, result: agentResult, error: agentError } = useAgentRunner();
     const storyboardStorageKey = useMemo(() => `lovart:storyboard:${projectId || 'draft'}`, [projectId]);
 
     useEffect(() => {
@@ -1468,6 +1481,86 @@ function LovartCanvasContent() {
         });
     }, [elements, handleLocateAsset, projectAssets, scale, setPan]);
 
+    const applyAgentCanvasDrafts = useCallback((drafts: DraftCanvasElement[]) => {
+        setElements((prev) => [
+            ...prev,
+            ...drafts.map((draft) => ({
+                id: draft.id,
+                type: draft.type,
+                x: draft.x,
+                y: draft.y,
+                width: draft.width,
+                height: draft.height,
+                content: draft.content,
+                prompt: draft.prompt,
+                storyboardTitle: draft.title,
+            })),
+        ]);
+    }, [setElements]);
+
+    const handleAgentRun = useCallback(async (message: string) => {
+        const response = await runAgent(message, agentContext);
+        const nextResult = response.result;
+        if (!nextResult) return;
+
+        if (nextResult.kind === 'storyboard_created') {
+            setStoryboard(normalizeStoryboardItems(nextResult.items.map((item, index) => ({
+                id: item.id,
+                assetId: `draft-storyboard-${item.id}`,
+                elementId: '',
+                title: item.title,
+                type: 'image',
+                thumbnailUrl: '',
+                order: index,
+                sourcePrompt: item.sourcePrompt,
+                durationSec: item.durationSec,
+                aspectRatio: item.aspectRatio,
+                orientation: getStoryboardAspectMeta(item.aspectRatio).orientation,
+                outputSize: item.outputSize,
+                renderProfile: item.renderProfile,
+                sourceAspectRatio: item.aspectRatio,
+                sourceOrientation: getStoryboardAspectMeta(item.aspectRatio).orientation,
+                sourceOutputSize: item.outputSize,
+                createdAt: item.createdAt,
+            }))));
+            setStoryboardLayout('vertical');
+        }
+
+        if (nextResult.kind === 'canvas_update_planned') {
+            applyAgentCanvasDrafts(nextResult.elementDrafts);
+        }
+
+        if (nextResult.kind === 'images_generated') {
+            applyAgentCanvasDrafts(nextResult.images.map((image, index) => ({
+                id: `agent-image-draft-${index}-${Date.now()}`,
+                type: 'image',
+                x: 120 + index * 284,
+                y: 120,
+                width: 260,
+                height: 260,
+                content: image.imageData,
+                prompt: image.prompt,
+                title: `Agent Image ${index + 1}`,
+            })));
+        }
+
+        if (nextResult.kind === 'image_edited') {
+            applyAgentCanvasDrafts([
+                {
+                    id: `agent-edited-draft-${Date.now()}`,
+                    type: 'image',
+                    x: 120,
+                    y: 120,
+                    width: 260,
+                    height: 260,
+                    content: nextResult.imageData,
+                    prompt: message,
+                    title: 'Edited Image',
+                },
+            ]);
+        }
+    }, [agentContext, applyAgentCanvasDrafts, runAgent]);
+
     const duplicateElements = useCallback((source: CanvasElement[]) => {
         const idMap = new Map<string, string>();
         source.forEach((element) => {
@@ -1613,6 +1706,12 @@ function LovartCanvasContent() {
                 <div className="flex items-center gap-2 pointer-events-auto">
                     <ThemeToggle />
                     <button
+                        onClick={() => setShowAgentPanel((prev) => !prev)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showAgentPanel ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
+                    >
+                        <Sparkles size={18} className="text-black" />
+                    </button>
+                    <button
                         onClick={() => setShowChat(!showChat)}
                         className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showChat ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
                     >
@@ -1628,13 +1727,25 @@ function LovartCanvasContent() {
             )}
 
             {showChat && (
-                <div className="absolute right-4 top-20 bottom-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300">
+                <div className={`absolute top-20 bottom-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300 ${showAgentPanel ? 'right-[420px]' : 'right-4'}`}>
                     <AiDesignerPanel
                         onGenerate={handleAgentGenerate}
                         isGenerating={isGenerating}
                         onClose={() => setShowChat(false)}
                         initialPrompt={promptFromUrl}
                         initialMode={agentModeFromUrl}
+                    />
+                </div>
+            )}
+
+            {showAgentPanel && (
+                <div className={`absolute top-20 bottom-4 w-[380px] z-40 animate-in slide-in-from-right-4 duration-300 ${showChat ? 'right-[836px]' : 'right-[420px]'}`}>
+                    <AgentPanel
+                        isRunning={isAgentRunning}
+                        result={agentResult}
+                        error={agentError}
+                        onRun={handleAgentRun}
+                        onClose={() => setShowAgentPanel(false)}
                     />
                 </div>
             )}
@@ -1831,7 +1942,7 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? 'right-[420px]' : 'right-4'}`}>
+                <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? (showAgentPanel ? 'right-[1220px]' : 'right-[420px]') : (showAgentPanel ? 'right-[420px]' : 'right-4')}`}>
                     <AssetsPanel
                         assets={projectAssets}
                         storyboard={storyboard}
