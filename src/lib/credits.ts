@@ -1,7 +1,7 @@
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import type { UserCreditsRow } from '@/lib/supabase';
 
-export const DEFAULT_SIGNUP_CREDITS = 80;
+export const DEFAULT_SIGNUP_CREDITS = 30;
 
 export type ImageModelVariant = 'standard' | 'pro';
 export type ImageResolution = '1K' | '2K' | '4K';

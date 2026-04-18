@@ -155,11 +155,11 @@ export default function LovartDashboard() {
                 if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
                     const { data: newData } = await supabase
                         .from('user_credits')
-                        .insert({ user_id: user.id, credits: 80 })
+                        .insert({ user_id: user.id, credits: 30 })
                         .select()
                         .single();
                     const insertedCredits = newData as UserCreditsRow | null;
-                    setCredits(insertedCredits?.credits || 80);
+                    setCredits(insertedCredits?.credits || 30);
                 } else if (!creditsResult.error) {
                     const creditsData = creditsResult.data as Pick<UserCreditsRow, 'credits'> | null;
                     setCredits(creditsData?.credits || 0);

@@ -65,7 +65,7 @@ export default function UserPage() {
                         .from('user_credits')
                         .insert({
                             user_id: user.id,
-                            credits: 80,
+                            credits: 30,
                         })
                         .select()
                         .single();
@@ -76,7 +76,7 @@ export default function UserPage() {
                 } else if (error) {
                     throw error;
                 } else {
-                    setCredits(creditRow?.credits ?? 80);
+                    setCredits(creditRow?.credits ?? 30);
                 }
             } catch (error) {
                 console.error('Failed to load user credits:', error);
