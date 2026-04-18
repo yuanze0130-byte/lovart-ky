@@ -6,6 +6,7 @@ import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift, 
 import { LoginModal } from '@/components/auth/LoginModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
+import { authedFetch } from '@/lib/authed-fetch';
 import type { UserCreditsRow, CreditTransactionRow } from '@/lib/supabase';
 
 export default function UserPage() {
@@ -61,17 +62,16 @@ export default function UserPage() {
                 }
 
                 if (error && error.code === 'PGRST116') {
-                    const { data: newData, error: insertError } = await supabase
-                        .from('user_credits')
-                        .insert({
-                            user_id: user.id,
-                            credits: 30,
-                        })
-                        .select()
-                        .single();
+                    const response = await authedFetch('/api/user-credits/ensure', {
+                        method: 'POST',
+                    });
+                    const payload = await response.json();
 
-                    if (insertError) throw insertError;
-                    const insertedCredits = newData as UserCreditsRow;
+                    if (!response.ok) {
+                        throw new Error(payload?.error || 'Failed to ensure user credits');
+                    }
+
+                    const insertedCredits = payload?.credits as UserCreditsRow;
                     setCredits(insertedCredits.credits);
                 } else if (error) {
                     throw error;
@@ -80,7 +80,7 @@ export default function UserPage() {
                 }
             } catch (error) {
                 console.error('Failed to load user credits:', error);
-                setCredits(80);
+                setCredits(30);
             } finally {
                 setIsLoading(false);
             }

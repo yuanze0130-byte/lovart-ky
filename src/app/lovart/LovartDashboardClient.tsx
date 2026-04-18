@@ -8,6 +8,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { useSupabase } from '@/hooks/useSupabase';
+import { authedFetch } from '@/lib/authed-fetch';
 import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
 import Link from 'next/link';
 import { v4 as uuidv4 } from 'uuid';
@@ -153,13 +154,17 @@ export default function LovartDashboard() {
                 })));
 
                 if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
-                    const { data: newData } = await supabase
-                        .from('user_credits')
-                        .insert({ user_id: user.id, credits: 30 })
-                        .select()
-                        .single();
-                    const insertedCredits = newData as UserCreditsRow | null;
-                    setCredits(insertedCredits?.credits || 30);
+                    const response = await authedFetch('/api/user-credits/ensure', {
+                        method: 'POST',
+                    });
+                    const payload = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(payload?.error || 'Failed to ensure user credits');
+                    }
+
+                    const insertedCredits = payload?.credits as UserCreditsRow | null;
+                    setCredits(insertedCredits?.credits || 0);
                 } else if (!creditsResult.error) {
                     const creditsData = creditsResult.data as Pick<UserCreditsRow, 'credits'> | null;
                     setCredits(creditsData?.credits || 0);
