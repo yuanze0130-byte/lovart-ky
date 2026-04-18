@@ -9,6 +9,7 @@ export type AgentContext = {
   canvasId?: string | null;
   selectedElementId?: string | null;
   selectedStoryboardItemId?: string | null;
+  storyboardCount?: number;
   assetIds?: string[];
   selectedImage?: string | null;
   selectedObject?: {
@@ -26,6 +27,10 @@ export type CreateStoryboardAction = {
   prompt: string;
   shots?: number;
   aspectRatio?: StoryboardAspectRatio;
+};
+
+export type CreateStoryboardBoardAction = {
+  type: 'create_storyboard_board';
 };
 
 export type GenerateImagesAction = {
@@ -59,6 +64,7 @@ export type EditSelectedImageAction = {
 
 export type AgentAction =
   | CreateStoryboardAction
+  | CreateStoryboardBoardAction
   | GenerateImagesAction
   | GenerateVideoAction
   | AddToCanvasAction
@@ -94,6 +100,11 @@ export type AgentActionResult =
       storyboardId: string;
       count: number;
       items: DraftStoryboardItem[];
+      message: string;
+    }
+  | {
+      kind: 'storyboard_board_requested';
+      count: number;
       message: string;
     }
   | {

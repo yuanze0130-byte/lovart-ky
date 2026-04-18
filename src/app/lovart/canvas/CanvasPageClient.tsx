@@ -488,6 +488,7 @@ function LovartCanvasContent() {
         elements,
         assetIds: projectAssets.map((asset) => asset.id),
         selectedObject: annotationObject,
+        storyboardCount: storyboard.length,
     });
     const { runAgent, isRunning: isAgentRunning, result: agentResult, error: agentError } = useAgentRunner();
     const storyboardStorageKey = useMemo(() => `lovart:storyboard:${projectId || 'draft'}`, [projectId]);
@@ -1541,6 +1542,10 @@ function LovartCanvasContent() {
             setStoryboardLayout('vertical');
         }
 
+        if (nextResult.kind === 'storyboard_board_requested') {
+            handleCreateStoryboardFlow();
+        }
+
         if (nextResult.kind === 'canvas_update_planned') {
             applyAgentCanvasDrafts(nextResult.elementDrafts);
         }
@@ -1574,7 +1579,7 @@ function LovartCanvasContent() {
                 },
             ]);
         }
-    }, [agentContext, applyAgentCanvasDrafts, runAgent]);
+    }, [agentContext, applyAgentCanvasDrafts, handleCreateStoryboardFlow, runAgent]);
 
     const duplicateElements = useCallback((source: CanvasElement[]) => {
         const idMap = new Map<string, string>();

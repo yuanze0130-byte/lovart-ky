@@ -12,6 +12,7 @@ export function useAgentContext(input: {
   elements?: CanvasElement[];
   assetIds?: string[];
   selectedObject?: AnnotationObject | null;
+  storyboardCount?: number;
 }): AgentContext {
   return useMemo(() => {
     const selectedElementId = input.selectedIds?.[0] || null;
@@ -27,6 +28,7 @@ export function useAgentContext(input: {
       assetIds: input.assetIds || [],
       selectedImage,
       selectedObject: input.selectedObject || null,
+      storyboardCount: input.storyboardCount || 0,
     } satisfies AgentContext;
-  }, [input.assetIds, input.elements, input.page, input.projectId, input.selectedIds, input.selectedObject]);
+  }, [input.assetIds, input.elements, input.page, input.projectId, input.selectedIds, input.selectedObject, input.storyboardCount]);
 }

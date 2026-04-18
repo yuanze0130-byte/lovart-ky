@@ -68,6 +68,12 @@ export async function parseAgentCommand(input: {
   const lower = raw.toLowerCase();
   const aspectRatio = extractAspectRatio(raw);
 
+  if (/制作板|production board|展开.*分镜|分镜.*展开|生成.*板|创建.*板/.test(raw)) {
+    return {
+      type: 'create_storyboard_board',
+    };
+  }
+
   if (/分镜|storyboard|镜头/.test(raw)) {
     return {
       type: 'create_storyboard',
