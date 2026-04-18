@@ -7,6 +7,7 @@ import { getStoryboardAspectMeta, getStoryboardVideoSizeOptions, getStoryboardRe
 interface AssetsPanelProps {
   assets: ProjectAsset[];
   storyboard: StoryboardItem[];
+  selectedStoryboardItemId?: string | null;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onInsertAsset: (asset: ProjectAsset) => void;
@@ -14,6 +15,7 @@ interface AssetsPanelProps {
   onUseAsImageReference: (asset: ProjectAsset) => void;
   onUseAsVideoReference: (asset: ProjectAsset) => void;
   onAddToStoryboard: (asset: ProjectAsset) => void;
+  onSelectStoryboardItem?: (itemId: string | null) => void;
   onLocateStoryboardItem: (item: StoryboardItem) => void;
   onMoveStoryboardItem: (itemId: string, direction: 'up' | 'down') => void;
   onRemoveStoryboardItem: (itemId: string) => void;
@@ -39,6 +41,7 @@ interface AssetsPanelProps {
 export function AssetsPanel({
   assets,
   storyboard,
+  selectedStoryboardItemId,
   collapsed,
   onToggleCollapse,
   onInsertAsset,
@@ -46,6 +49,7 @@ export function AssetsPanel({
   onUseAsImageReference,
   onUseAsVideoReference,
   onAddToStoryboard,
+  onSelectStoryboardItem,
   onLocateStoryboardItem,
   onMoveStoryboardItem,
   onRemoveStoryboardItem,
@@ -770,6 +774,7 @@ export function AssetsPanel({
               const aspectMeta = getStoryboardAspectMeta(resolvedAspectRatio);
               const OrientationIcon = aspectMeta.orientation === 'landscape' ? RectangleHorizontal : aspectMeta.orientation === 'square' ? Square : RectangleVertical;
               const isExpanded = expandedStoryboardIds.includes(item.id);
+              const isSelected = selectedStoryboardItemId === item.id;
               const resolvedOutputSize = item.outputSize ?? aspectMeta.videoSize;
               const renderProfile = item.renderProfile ?? getStoryboardRenderProfile(resolvedOutputSize);
               const sourceAspectRatio = item.sourceAspectRatio ?? resolvedAspectRatio;
@@ -793,10 +798,13 @@ export function AssetsPanel({
               return (
                 <div
                   key={item.id}
-                  className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5"
+                  className={`overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)] dark:bg-white/5 ${isSelected ? 'border-sky-400 ring-2 ring-sky-400/20 dark:border-sky-300 dark:ring-sky-300/20' : 'border-gray-200 dark:border-white/10'}`}
                 >
                   <button
-                    onClick={() => setExpandedStoryboardIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id])}
+                    onClick={() => {
+                      onSelectStoryboardItem?.(item.id);
+                      setExpandedStoryboardIds((prev) => prev.includes(item.id) ? prev.filter((id) => id !== item.id) : [...prev, item.id]);
+                    }}
                     className="flex w-full items-center gap-3 p-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/8"
                   >
                     <div className="flex w-[96px] shrink-0 flex-col items-center gap-2">
@@ -1056,7 +1064,10 @@ export function AssetsPanel({
                         生成对应视频节点
                       </button>
                       <button
-                        onClick={() => onLocateStoryboardItem(item)}
+                        onClick={() => {
+                          onSelectStoryboardItem?.(item.id);
+                          onLocateStoryboardItem(item);
+                        }}
                         className="col-span-2 flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
                       >
                         <LocateFixed size={14} />

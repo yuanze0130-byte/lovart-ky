@@ -12,6 +12,7 @@ export function useAgentContext(input: {
   elements?: CanvasElement[];
   assetIds?: string[];
   selectedObject?: AnnotationObject | null;
+  selectedStoryboardItemId?: string | null;
   storyboardCount?: number;
   storyboardItems?: AgentContext['storyboardItems'];
 }): AgentContext {
@@ -29,8 +30,9 @@ export function useAgentContext(input: {
       assetIds: input.assetIds || [],
       selectedImage,
       selectedObject: input.selectedObject || null,
+      selectedStoryboardItemId: input.selectedStoryboardItemId || null,
       storyboardCount: input.storyboardCount || 0,
       storyboardItems: input.storyboardItems || [],
     } satisfies AgentContext;
-  }, [input.assetIds, input.elements, input.page, input.projectId, input.selectedIds, input.selectedObject, input.storyboardCount, input.storyboardItems]);
+  }, [input.assetIds, input.elements, input.page, input.projectId, input.selectedIds, input.selectedObject, input.selectedStoryboardItemId, input.storyboardCount, input.storyboardItems]);
 }

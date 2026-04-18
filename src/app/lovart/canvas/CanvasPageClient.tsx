@@ -49,6 +49,7 @@ function LovartCanvasContent() {
     const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building' | 'done'>('idle');
     const [canvasBackground, setCanvasBackground] = useState('#F4F4F5');
     const [storyboard, setStoryboard] = useState<StoryboardItem[]>([]);
+    const [selectedStoryboardItemId, setSelectedStoryboardItemId] = useState<string | null>(null);
     const [storyboardLayout, setStoryboardLayout] = useState<StoryboardLayoutMode>('vertical');
     const [annotationSubject, setAnnotationSubject] = useState('');
     const [objectEditPrompt, setObjectEditPrompt] = useState('');
@@ -488,6 +489,7 @@ function LovartCanvasContent() {
         elements,
         assetIds: projectAssets.map((asset) => asset.id),
         selectedObject: annotationObject,
+        selectedStoryboardItemId,
         storyboardCount: storyboard.length,
         storyboardItems: storyboard.map((item) => ({
             id: item.id,
@@ -1477,6 +1479,7 @@ function LovartCanvasContent() {
     }, [handleElementChange]);
 
     const handleLocateStoryboardItem = useCallback((item: StoryboardItem) => {
+        setSelectedStoryboardItemId(item.id);
         const asset = projectAssets.find((entry) => entry.id === item.assetId);
         if (asset) {
             handleLocateAsset(asset);
@@ -2030,6 +2033,7 @@ function LovartCanvasContent() {
                     <AssetsPanel
                         assets={projectAssets}
                         storyboard={storyboard}
+                        selectedStoryboardItemId={selectedStoryboardItemId}
                         collapsed={assetsCollapsed}
                         onToggleCollapse={() => setAssetsCollapsed((prev) => !prev)}
                         onInsertAsset={handleInsertAsset}
@@ -2037,6 +2041,7 @@ function LovartCanvasContent() {
                         onUseAsImageReference={handleUseAsImageReference}
                         onUseAsVideoReference={handleUseAsVideoReference}
                         onAddToStoryboard={handleAddToStoryboard}
+                        onSelectStoryboardItem={setSelectedStoryboardItemId}
                         onLocateStoryboardItem={handleLocateStoryboardItem}
                         onMoveStoryboardItem={handleMoveStoryboardItem}
                         onRemoveStoryboardItem={handleRemoveStoryboardItem}
