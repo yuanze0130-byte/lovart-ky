@@ -8,8 +8,8 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useAuth } from '@/hooks/useAuth';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { useSupabase } from '@/hooks/useSupabase';
-import { authedFetch } from '@/lib/authed-fetch';
-import type { ProjectRow, UserCreditsRow } from '@/lib/supabase';
+import { useUserCredits } from '@/hooks/useUserCredits';
+import type { ProjectRow } from '@/lib/supabase';
 import Link from 'next/link';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -38,10 +38,10 @@ interface Notification {
 export default function LovartDashboard() {
     const { user, signOut } = useAuth();
     const supabase = useSupabase();
+    const { credits } = useUserCredits();
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoading, setIsLoading] = useState(true);
-    const [credits, setCredits] = useState<number | null>(null);
     const [placeholder, setPlaceholder] = useState('');
     const [placeholderIndex, setPlaceholderIndex] = useState(0);
     const [inputValue, setInputValue] = useState('');
@@ -107,17 +107,12 @@ export default function LovartDashboard() {
             }
 
             try {
-                const [projectsResult, creditsResult] = await Promise.all([
+                const [projectsResult] = await Promise.all([
                     supabase
                         .from('projects')
                         .select('*')
                         .eq('user_id', user.id)
                         .order('updated_at', { ascending: false }),
-                    supabase
-                        .from('user_credits')
-                        .select('credits')
-                        .eq('user_id', user.id)
-                        .single(),
                 ]);
 
                 if (projectsResult.error) throw projectsResult.error;
@@ -152,23 +147,6 @@ export default function LovartDashboard() {
                     thumbnail: project.thumbnail || derivedThumbnailMap.get(project.id) || null,
                     updated_at: project.updated_at,
                 })));
-
-                if (creditsResult.error && creditsResult.error.code === 'PGRST116') {
-                    const response = await authedFetch('/api/user-credits/ensure', {
-                        method: 'POST',
-                    });
-                    const payload = await response.json();
-
-                    if (!response.ok) {
-                        throw new Error(payload?.error || 'Failed to ensure user credits');
-                    }
-
-                    const insertedCredits = payload?.credits as UserCreditsRow | null;
-                    setCredits(insertedCredits?.credits || 0);
-                } else if (!creditsResult.error) {
-                    const creditsData = creditsResult.data as Pick<UserCreditsRow, 'credits'> | null;
-                    setCredits(creditsData?.credits || 0);
-                }
             } catch (error) {
                 console.error('Failed to load data:', error);
             } finally {

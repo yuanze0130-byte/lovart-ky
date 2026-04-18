@@ -1,20 +1,16 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift, Shield, Search, Save } from 'lucide-react';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { useAuth } from '@/hooks/useAuth';
-import { useSupabase } from '@/hooks/useSupabase';
-import { authedFetch } from '@/lib/authed-fetch';
-import type { UserCreditsRow, CreditTransactionRow } from '@/lib/supabase';
+import { useUserCredits } from '@/hooks/useUserCredits';
+import type { CreditTransactionRow } from '@/lib/supabase';
 
 export default function UserPage() {
     const { user, session, signOut } = useAuth();
-    const supabase = useSupabase();
-    const [credits, setCredits] = useState<number | null>(null);
-    const [transactions, setTransactions] = useState<CreditTransactionRow[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
+    const { credits, transactions, isLoading, refresh } = useUserCredits();
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [adminIdentifier, setAdminIdentifier] = useState('');
     const [adminCredits, setAdminCredits] = useState('80');
@@ -32,62 +28,6 @@ export default function UserPage() {
     );
 
     const isAdmin = !!user?.email && adminEmails.includes(user.email.toLowerCase());
-
-    useEffect(() => {
-        async function loadUserCredits() {
-            if (!user || !supabase) {
-                setIsLoading(false);
-                return;
-            }
-
-            try {
-                const [{ data, error }, { data: txData, error: txError }] = await Promise.all([
-                    supabase
-                        .from('user_credits')
-                        .select('*')
-                        .eq('user_id', user.id)
-                        .single(),
-                    supabase
-                        .from('credit_transactions')
-                        .select('*')
-                        .eq('user_id', user.id)
-                        .order('created_at', { ascending: false })
-                        .limit(10),
-                ]);
-
-                const creditRow = data as UserCreditsRow | null;
-                const txRows = (txData || []) as CreditTransactionRow[];
-                if (!txError) {
-                    setTransactions(txRows);
-                }
-
-                if (error && error.code === 'PGRST116') {
-                    const response = await authedFetch('/api/user-credits/ensure', {
-                        method: 'POST',
-                    });
-                    const payload = await response.json();
-
-                    if (!response.ok) {
-                        throw new Error(payload?.error || 'Failed to ensure user credits');
-                    }
-
-                    const insertedCredits = payload?.credits as UserCreditsRow;
-                    setCredits(insertedCredits.credits);
-                } else if (error) {
-                    throw error;
-                } else {
-                    setCredits(creditRow?.credits ?? 30);
-                }
-            } catch (error) {
-                console.error('Failed to load user credits:', error);
-                setCredits(30);
-            } finally {
-                setIsLoading(false);
-            }
-        }
-
-        void loadUserCredits();
-    }, [user, supabase]);
 
     const formatDate = (dateString: string | undefined) => {
         if (!dateString) return '未知';
