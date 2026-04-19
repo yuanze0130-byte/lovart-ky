@@ -17,7 +17,8 @@ import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
 import { useCanvasElements } from '@/hooks/useCanvasElements';
 import { useProjectAssets, type ProjectAsset, type StoryboardItem, type StoryboardAspectRatio, type StoryboardLayoutMode, type StoryboardVideoSize, type StoryboardRenderProfile, inferStoryboardAspectRatio, normalizeStoryboardItems, getStoryboardAspectMeta, inferStoryboardAspectRatioFromVideoSize, getStoryboardNodeDimensions, getStoryboardRenderProfile, getPreferredStoryboardVideoSize, formatStoryboardMeta, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getRecommendedStoryboardLayout, summarizeProductionBoard } from '@/hooks/useProjectAssets';
-import { useCanvasGeneration } from '@/hooks/useCanvasGeneration';
+import { useCanvasGeneration, requestImageGeneration, type Resolution, type AspectRatio } from '@/hooks/useCanvasGeneration';
+import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { useObjectAnnotation } from '@/hooks/useObjectAnnotation';
 import { useAgentRunner } from '@/hooks/useAgentRunner';
@@ -1526,6 +1527,115 @@ function LovartCanvasContent() {
         ]);
     }, [setElements]);
 
+    const handleAgentGenerateStoryboardImage = useCallback(async (input: {
+        storyboardItemId: string;
+        storyboardOrder: number;
+        title: string;
+        prompt: string;
+        aspectRatio: AspectRatio;
+        resolution: Resolution;
+        modelVariant: 'standard' | 'pro';
+    }) => {
+        const targetStoryboardItem = storyboard.find((item) => item.id === input.storyboardItemId);
+        const aspectMeta = getStoryboardAspectMeta(input.aspectRatio as StoryboardAspectRatio);
+        const nextElementId = `agent-storyboard-image-${input.storyboardItemId}-${Date.now()}`;
+
+        const generatorElement: CanvasElement = {
+            id: nextElementId,
+            type: 'image-generator',
+            x: 120,
+            y: 120,
+            width: aspectMeta.canvasWidth,
+            height: aspectMeta.canvasHeight,
+            originalWidth: aspectMeta.canvasWidth,
+            originalHeight: aspectMeta.canvasHeight,
+            prompt: input.prompt,
+            storyboardItemId: input.storyboardItemId,
+            storyboardShotLabel: `第 ${input.storyboardOrder} 镜`,
+            storyboardTitle: input.title,
+            storyboardBrief: targetStoryboardItem?.sourcePrompt || input.prompt,
+            storyboardAspectRatio: input.aspectRatio as StoryboardAspectRatio,
+            storyboardVideoSize: targetStoryboardItem?.outputSize || aspectMeta.videoSize,
+            storyboardOrientation: aspectMeta.orientation,
+            storyboardSourceAspectRatio: targetStoryboardItem?.sourceAspectRatio || input.aspectRatio as StoryboardAspectRatio,
+            storyboardSourceVideoSize: targetStoryboardItem?.sourceOutputSize || targetStoryboardItem?.outputSize || aspectMeta.videoSize,
+            storyboardSourceOrientation: targetStoryboardItem?.sourceOrientation || aspectMeta.orientation,
+            storyboardRenderProfile: targetStoryboardItem?.renderProfile || getStoryboardRenderProfile(targetStoryboardItem?.outputSize || aspectMeta.videoSize),
+            storyboardDurationSec: targetStoryboardItem?.durationSec || 5,
+            storyboardShotIndex: input.storyboardOrder,
+            storyboardShotCount: storyboard.length,
+            storyboardSequenceState: storyboard.length <= 1 ? 'single' : input.storyboardOrder === 1 ? 'first' : input.storyboardOrder === storyboard.length ? 'last' : 'middle',
+            storyboardSequenceHint: getStoryboardSequenceHint(storyboardLayout, storyboard.length <= 1 ? 'single' : input.storyboardOrder === 1 ? 'first' : input.storyboardOrder === storyboard.length ? 'last' : 'middle'),
+            storyboardBoardMode: getStoryboardBoardMode(storyboardLayout, storyboard.length <= 1 ? 'single' : input.storyboardOrder === 1 ? 'first' : input.storyboardOrder === storyboard.length ? 'last' : 'middle'),
+        };
+
+        setElements((prev) => [...prev, generatorElement]);
+        setSelectedIds([generatorElement.id]);
+        setSelectedStoryboardItemId(input.storyboardItemId);
+
+        try {
+            const result = await requestImageGeneration({
+                prompt: input.prompt,
+                resolution: input.resolution,
+                aspectRatio: input.aspectRatio,
+                referenceImages: [],
+                modelVariant: input.modelVariant,
+                editMode: 'generate',
+            });
+
+            if (!result.imageData) {
+                throw new Error('镜头出图失败');
+            }
+
+            const dimensions = await getImageDimensions(result.imageData);
+            const displaySize = getSmartDisplaySize(dimensions);
+
+            setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
+                ...el,
+                type: 'image',
+                content: result.imageData,
+                width: displaySize.width,
+                height: displaySize.height,
+                originalWidth: displaySize.originalWidth,
+                originalHeight: displaySize.originalHeight,
+                prompt: result.finalPrompt,
+                generationMetadata: {
+                    ...result.generationMetadata,
+                    resolution: result.requestedResolution,
+                    aspectRatio: result.requestedAspectRatio,
+                    modelVariant: result.returnedModelVariant,
+                    provider: result.returnedProvider,
+                    providerMode: result.returnedProviderMode,
+                    providerFallbackUsed: result.providerFallbackUsed,
+                    fallbackFrom: result.fallbackFrom,
+                    fallbackReason: result.fallbackReason,
+                    model: result.returnedModel,
+                },
+                requestedAspectRatio: result.requestedAspectRatio,
+                requestedResolution: result.requestedResolution,
+            } : el));
+
+            setStoryboard((prev) => prev.map((item) => item.id === input.storyboardItemId ? {
+                ...item,
+                elementId: generatorElement.id,
+                assetId: `agent-storyboard-image-${input.storyboardItemId}-${Date.now()}`,
+                thumbnailUrl: result.imageData!,
+                type: 'image',
+                sourcePrompt: item.sourcePrompt || result.finalPrompt,
+                aspectRatio: item.aspectRatio || input.aspectRatio as StoryboardAspectRatio,
+                orientation: item.orientation || aspectMeta.orientation,
+                outputSize: item.outputSize || aspectMeta.videoSize,
+                renderProfile: item.renderProfile || getStoryboardRenderProfile(item.outputSize || aspectMeta.videoSize),
+                sourceAspectRatio: item.sourceAspectRatio || input.aspectRatio as StoryboardAspectRatio,
+                sourceOrientation: item.sourceOrientation || aspectMeta.orientation,
+                sourceOutputSize: item.sourceOutputSize || item.outputSize || aspectMeta.videoSize,
+            } : item));
+        } catch (error) {
+            setElements((prev) => prev.filter((el) => el.id !== generatorElement.id));
+            throw error;
+        }
+    }, [setElements, setSelectedIds, storyboard, storyboardLayout]);
+
     const handleAgentRun = useCallback(async (message: string) => {
         const response = await runAgent(message, agentContext);
         const nextResult = response.result;
@@ -1576,59 +1686,16 @@ function LovartCanvasContent() {
             })));
         }
 
-        if (nextResult.kind === 'storyboard_image_generated') {
-            const targetStoryboardItem = storyboard.find((item) => item.id === nextResult.storyboardItemId);
-            const x = 120;
-            const y = 120;
-            const aspectMeta = getStoryboardAspectMeta(nextResult.aspectRatio);
-
-            const nextElement: CanvasElement = {
-                id: `agent-storyboard-image-${nextResult.storyboardItemId}-${Date.now()}`,
-                type: 'image',
-                x,
-                y,
-                width: aspectMeta.canvasWidth,
-                height: aspectMeta.canvasHeight,
-                originalWidth: aspectMeta.canvasWidth,
-                originalHeight: aspectMeta.canvasHeight,
-                content: nextResult.imageData,
-                prompt: nextResult.prompt,
+        if (nextResult.kind === 'storyboard_image_generation_requested') {
+            await handleAgentGenerateStoryboardImage({
                 storyboardItemId: nextResult.storyboardItemId,
-                storyboardShotLabel: `第 ${nextResult.storyboardOrder} 镜`,
-                storyboardTitle: nextResult.title,
-                storyboardBrief: targetStoryboardItem?.sourcePrompt || nextResult.prompt,
-                storyboardAspectRatio: nextResult.aspectRatio,
-                storyboardVideoSize: targetStoryboardItem?.outputSize || aspectMeta.videoSize,
-                storyboardOrientation: aspectMeta.orientation,
-                storyboardSourceAspectRatio: targetStoryboardItem?.sourceAspectRatio || nextResult.aspectRatio,
-                storyboardSourceVideoSize: targetStoryboardItem?.sourceOutputSize || targetStoryboardItem?.outputSize || aspectMeta.videoSize,
-                storyboardSourceOrientation: targetStoryboardItem?.sourceOrientation || aspectMeta.orientation,
-                storyboardRenderProfile: targetStoryboardItem?.renderProfile || getStoryboardRenderProfile(targetStoryboardItem?.outputSize || aspectMeta.videoSize),
-                storyboardDurationSec: targetStoryboardItem?.durationSec || 5,
-                storyboardShotIndex: nextResult.storyboardOrder - 1,
-                storyboardShotCount: storyboard.length,
-                storyboardSequenceState: storyboard.length <= 1 ? 'single' : nextResult.storyboardOrder === 1 ? 'first' : nextResult.storyboardOrder === storyboard.length ? 'last' : 'middle',
-                storyboardSequenceHint: getStoryboardSequenceHint(storyboardLayout, storyboard.length <= 1 ? 'single' : nextResult.storyboardOrder === 1 ? 'first' : nextResult.storyboardOrder === storyboard.length ? 'last' : 'middle'),
-                storyboardBoardMode: getStoryboardBoardMode(storyboardLayout, storyboard.length <= 1 ? 'single' : nextResult.storyboardOrder === 1 ? 'first' : nextResult.storyboardOrder === storyboard.length ? 'last' : 'middle'),
-            };
-
-            setElements((prev) => [...prev, nextElement]);
-            setSelectedIds([nextElement.id]);
-            setStoryboard((prev) => prev.map((item) => item.id === nextResult.storyboardItemId ? {
-                ...item,
-                elementId: nextElement.id,
-                assetId: nextResult.assetId,
-                thumbnailUrl: nextResult.imageData,
-                type: 'image',
-                sourcePrompt: item.sourcePrompt || nextResult.prompt,
-                aspectRatio: item.aspectRatio || nextResult.aspectRatio,
-                orientation: item.orientation || aspectMeta.orientation,
-                outputSize: item.outputSize || aspectMeta.videoSize,
-                renderProfile: item.renderProfile || getStoryboardRenderProfile(item.outputSize || aspectMeta.videoSize),
-                sourceAspectRatio: item.sourceAspectRatio || nextResult.aspectRatio,
-                sourceOrientation: item.sourceOrientation || aspectMeta.orientation,
-                sourceOutputSize: item.sourceOutputSize || item.outputSize || aspectMeta.videoSize,
-            } : item));
+                storyboardOrder: nextResult.storyboardOrder,
+                title: nextResult.title,
+                prompt: nextResult.prompt,
+                aspectRatio: nextResult.aspectRatio as AspectRatio,
+                resolution: nextResult.resolution,
+                modelVariant: nextResult.modelVariant,
+            });
         }
 
         if (nextResult.kind === 'image_edited') {
@@ -1646,7 +1713,7 @@ function LovartCanvasContent() {
                 },
             ]);
         }
-    }, [agentContext, applyAgentCanvasDrafts, handleCreateStoryboardFlow, runAgent, storyboard, storyboardLayout]);
+    }, [agentContext, applyAgentCanvasDrafts, handleAgentGenerateStoryboardImage, handleCreateStoryboardFlow, runAgent]);
 
     const duplicateElements = useCallback((source: CanvasElement[]) => {
         const idMap = new Map<string, string>();

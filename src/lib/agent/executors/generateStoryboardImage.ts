@@ -1,6 +1,4 @@
-import type { NextRequest } from 'next/server';
 import type { AgentActionResult, AgentContext, GenerateStoryboardImageAction, StoryboardAspectRatio } from '@/lib/agent/actions';
-import { callInternalJson } from '@/lib/agent/executors/shared';
 
 type GenerateImageApiResult = {
   imageData?: string;
@@ -12,7 +10,6 @@ function resolveAspectRatio(value?: StoryboardAspectRatio): StoryboardAspectRati
 }
 
 export async function runGenerateStoryboardImageAction(input: {
-  request: NextRequest;
   action: GenerateStoryboardImageAction;
   context: AgentContext;
 }): Promise<AgentActionResult> {
@@ -39,27 +36,15 @@ export async function runGenerateStoryboardImageAction(input: {
     throw new Error('当前镜头没有可用提示词，无法生成图片');
   }
 
-  const result = await callInternalJson<GenerateImageApiResult>(input.request, '/api/generate-image', {
-    prompt: finalPrompt,
-    resolution: '1K',
-    aspectRatio: resolvedAspectRatio,
-    modelVariant: 'pro',
-    editMode: 'generate',
-  });
-
-  if (!result.imageData) {
-    throw new Error(result.error || '镜头出图失败');
-  }
-
   return {
-    kind: 'storyboard_image_generated',
-    assetId: `agent-storyboard-image-${target.id}-${Date.now()}`,
+    kind: 'storyboard_image_generation_requested',
     storyboardItemId: target.id,
     storyboardOrder: target.order + 1,
     title: target.title,
     prompt: finalPrompt,
-    imageData: result.imageData,
     aspectRatio: resolvedAspectRatio,
-    message: `已为第 ${target.order + 1} 镜生成图片`,
+    resolution: '1K',
+    modelVariant: 'pro',
+    message: `已准备为第 ${target.order + 1} 镜生成图片`,
   };
 }

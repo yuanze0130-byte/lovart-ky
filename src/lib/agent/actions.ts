@@ -133,14 +133,14 @@ export type AgentActionResult =
       message: string;
     }
   | {
-      kind: 'storyboard_image_generated';
-      assetId: string;
+      kind: 'storyboard_image_generation_requested';
       storyboardItemId: string;
       storyboardOrder: number;
       title: string;
       prompt: string;
-      imageData: string;
       aspectRatio: StoryboardAspectRatio;
+      resolution: '1K' | '2K' | '4K';
+      modelVariant: 'standard' | 'pro';
       message: string;
     }
   | {

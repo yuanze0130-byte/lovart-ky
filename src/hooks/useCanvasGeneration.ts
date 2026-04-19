@@ -7,11 +7,11 @@ import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 
 type BananaVariant = 'standard' | 'pro';
-type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
+export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
-type Resolution = '1K' | '2K' | '4K';
-type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
+export type Resolution = '1K' | '2K' | '4K';
+export type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 
 type DesignPlan = Record<string, unknown>;
 
@@ -112,6 +112,125 @@ async function readResponsePayload(response: Response): Promise<Record<string, u
       rawText,
     };
   }
+}
+
+export async function requestImageGeneration(input: {
+  prompt: string;
+  resolution: Resolution;
+  aspectRatio: AspectRatio;
+  referenceImages?: string[];
+  modelVariant?: BananaVariant;
+  editMode?: ImageEditMode;
+  promptPatch?: string;
+  promptPresetId?: string;
+  promptPresetLabel?: string;
+  promptDebug?: string;
+}) {
+  const {
+    prompt,
+    resolution,
+    aspectRatio,
+    referenceImages = [],
+    modelVariant = 'pro',
+    editMode = 'generate',
+    promptPatch,
+    promptPresetId,
+    promptPresetLabel,
+    promptDebug,
+  } = input;
+
+  const finalPrompt = promptPatch ? `${prompt}\n\n[编辑意图]\n${promptPatch}` : prompt;
+  const generationMetadata = buildGenerationMetadata({
+    prompt,
+    finalPrompt,
+    promptPatch,
+    promptPresetId,
+    promptPresetLabel,
+    promptDebug,
+    editMode,
+    modelVariant,
+    referenceCount: referenceImages.length,
+    resolution,
+    aspectRatio,
+  });
+  const primaryReference = referenceImages[0];
+
+  const response = await authedFetch('/api/generate-image', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt: finalPrompt,
+      resolution,
+      aspectRatio,
+      referenceImage: primaryReference,
+      referenceImages,
+      modelVariant,
+      editMode,
+      mimeType: primaryReference ? 'image/jpeg' : undefined,
+    }),
+  });
+
+  const data = await readResponsePayload(response);
+
+  if (!response.ok) {
+    throw new Error(
+      typeof data.details === 'string'
+        ? data.details
+        : typeof data.error === 'string'
+          ? data.error
+          : '生成失败'
+    );
+  }
+
+  const imageData = typeof data.imageData === 'string' ? data.imageData : undefined;
+  const textResponse = typeof data.textResponse === 'string' ? data.textResponse : undefined;
+  const requestedAspectRatio = isAspectRatio(data.requestedAspectRatio)
+    ? data.requestedAspectRatio
+    : aspectRatio;
+  const requestedResolution = isResolution(data.requestedResolution)
+    ? data.requestedResolution
+    : resolution;
+  const returnedModelVariant = isBananaVariant(data.modelVariant)
+    ? data.modelVariant
+    : modelVariant;
+  const returnedProvider: 'official' | 'proxy' | undefined = data.provider === 'official' || data.provider === 'proxy'
+    ? data.provider
+    : undefined;
+  const returnedProviderMode: 'official' | 'proxy' | 'auto' | undefined = data.providerMode === 'official' || data.providerMode === 'proxy' || data.providerMode === 'auto'
+    ? data.providerMode
+    : undefined;
+  const providerFallbackUsed: boolean | undefined = typeof data.providerFallbackUsed === 'boolean'
+    ? data.providerFallbackUsed
+    : undefined;
+  const fallbackFrom: 'official' | 'proxy' | undefined = data.fallbackFrom === 'official' || data.fallbackFrom === 'proxy'
+    ? data.fallbackFrom
+    : undefined;
+  const fallbackReason: string | undefined = typeof data.fallbackReason === 'string'
+    ? data.fallbackReason
+    : undefined;
+  const returnedModel: string | undefined = typeof data.model === 'string'
+    ? data.model
+    : undefined;
+
+  return {
+    imageData,
+    textResponse,
+    finalPrompt,
+    generationMetadata,
+    requestedAspectRatio,
+    requestedResolution,
+    returnedModelVariant,
+    returnedProvider,
+    returnedProviderMode,
+    providerFallbackUsed,
+    fallbackFrom,
+    fallbackReason,
+    returnedModel,
+    referenceImages,
+    editMode,
+  };
 }
 
 export function useCanvasGeneration({
@@ -272,84 +391,38 @@ export function useCanvasGeneration({
     ) => {
       setIsGenerating(true);
       try {
-        const finalPrompt = promptPatch ? `${prompt}\n\n[编辑意图]\n${promptPatch}` : prompt;
-        const generationMetadata = buildGenerationMetadata({
+        const result = await requestImageGeneration({
           prompt,
-          finalPrompt,
+          resolution,
+          aspectRatio,
+          referenceImages,
+          modelVariant,
+          editMode,
           promptPatch,
           promptPresetId,
           promptPresetLabel,
           promptDebug,
-          editMode,
-          modelVariant,
-          referenceCount: referenceImages.length,
-          resolution,
-          aspectRatio,
         });
-        const primaryReference = referenceImages[0];
-
-        const response = await authedFetch('/api/generate-image', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            prompt: finalPrompt,
-            resolution,
-            aspectRatio,
-            referenceImage: primaryReference,
-            referenceImages,
-            modelVariant,
-            editMode,
-            mimeType: primaryReference ? 'image/jpeg' : undefined,
-          }),
-        });
-
-        const data = await readResponsePayload(response);
-
-        if (!response.ok) {
-          throw new Error(
-            typeof data.details === 'string'
-              ? data.details
-              : typeof data.error === 'string'
-                ? data.error
-                : '生成失败'
-          );
-        }
 
         const generatorElementId = selectedIds.find(
           (id) => elements.find((el) => el.id === id)?.type === 'image-generator'
         );
 
-        const imageData = typeof data.imageData === 'string' ? data.imageData : undefined;
-        const textResponse = typeof data.textResponse === 'string' ? data.textResponse : undefined;
-        const requestedAspectRatio = isAspectRatio(data.requestedAspectRatio)
-          ? data.requestedAspectRatio
-          : aspectRatio;
-        const requestedResolution = isResolution(data.requestedResolution)
-          ? data.requestedResolution
-          : resolution;
-        const returnedModelVariant = isBananaVariant(data.modelVariant)
-          ? data.modelVariant
-          : modelVariant;
-        const returnedProvider = data.provider === 'official' || data.provider === 'proxy'
-          ? data.provider
-          : undefined;
-        const returnedProviderMode = data.providerMode === 'official' || data.providerMode === 'proxy' || data.providerMode === 'auto'
-          ? data.providerMode
-          : undefined;
-        const providerFallbackUsed = typeof data.providerFallbackUsed === 'boolean'
-          ? data.providerFallbackUsed
-          : undefined;
-        const fallbackFrom = data.fallbackFrom === 'official' || data.fallbackFrom === 'proxy'
-          ? data.fallbackFrom
-          : undefined;
-        const fallbackReason = typeof data.fallbackReason === 'string'
-          ? data.fallbackReason
-          : undefined;
-        const returnedModel = typeof data.model === 'string'
-          ? data.model
-          : undefined;
+        const {
+          imageData,
+          textResponse,
+          finalPrompt,
+          generationMetadata,
+          requestedAspectRatio,
+          requestedResolution,
+          returnedModelVariant,
+          returnedProvider,
+          returnedProviderMode,
+          providerFallbackUsed,
+          fallbackFrom,
+          fallbackReason,
+          returnedModel,
+        } = result;
 
         if (imageData) {
           const dimensions = await getImageDimensions(imageData);

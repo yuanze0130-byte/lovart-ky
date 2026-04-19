@@ -22,7 +22,7 @@ export async function executeAgentAction(input: {
     case 'generate_images':
       return runGenerateImagesAction({ request: input.request, action: input.action, context: input.context });
     case 'generate_storyboard_image':
-      return runGenerateStoryboardImageAction({ request: input.request, action: input.action, context: input.context });
+      return runGenerateStoryboardImageAction({ action: input.action, context: input.context });
     case 'generate_video':
       return runGenerateVideoAction({ request: input.request, action: input.action, context: input.context });
     case 'add_to_canvas':
