@@ -427,6 +427,7 @@ function LovartCanvasContent() {
             }
 
             setObjectEditPrompt('');
+            alert('???????');
         } catch (error) {
             const message = error instanceof Error ? error.message : '对象编辑失败';
             alert(message === 'NOT_AUTHENTICATED' ? '当前未登录或登录状态已过期，请先登录后再使用标记编辑。' : message);
