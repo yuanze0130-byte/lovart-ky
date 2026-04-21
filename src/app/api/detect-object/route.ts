@@ -17,7 +17,7 @@ function createFallbackObject(click: AnnotationPoint, imageWidth: number, imageH
 
   return {
     id: `detected-${Date.now()}`,
-    label: '候选对象',
+    label: '????',
     score: 0.5,
     bbox: { x, y, width: boxWidth, height: boxHeight },
   };
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       amount: CREDIT_COSTS.detectObject,
       type: 'manual_adjust',
-      description: '标记编辑对象识别',
+      description: '????????',
     });
 
     if (!creditResult.ok) {
@@ -66,9 +66,13 @@ export async function POST(request: NextRequest) {
 
     if (!image || typeof image !== 'string') {
       return NextResponse.json({
-        object: fallback,
+        object: {
+          ...fallback,
+          provider: 'fallback',
+          details: '????????????????????',
+        },
         provider: 'fallback',
-        details: '缺少图片数据，已使用点击位置生成候选框。',
+        details: '????????????????????',
       });
     }
 
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         object: fallback,
         provider: 'fallback',
-        details: modelError instanceof Error ? modelError.message : '视觉识别失败，已使用点击位置生成候选框。',
+        details: modelError instanceof Error ? modelError.message : '????????????????????',
       });
     }
   } catch (error) {

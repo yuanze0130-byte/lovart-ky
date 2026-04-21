@@ -14,6 +14,8 @@ export type AnnotationObject = {
   bbox: AnnotationBox;
   polygon?: AnnotationPoint[];
   maskUrl?: string;
+  provider?: string;
+  details?: string;
 };
 
 export function serializeAnnotationPrompt(input: {

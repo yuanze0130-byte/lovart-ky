@@ -34,8 +34,11 @@ export function ObjectAnnotationOverlay({ imageBounds, object, isDetecting, onCl
               zIndex: 75,
             }}
           >
-            <div className="absolute -top-8 left-0 rounded-full bg-gray-900 px-3 py-1 text-[11px] font-medium text-white shadow-lg">
-              {object.label || '对象'}{typeof object.score === 'number' ? ` · ${Math.round(object.score * 100)}%` : ''}
+            <div className="absolute -top-8 left-0 flex items-center gap-2 rounded-full bg-gray-900 px-3 py-1 text-[11px] font-medium text-white shadow-lg">
+              <span>{object.label || '对象'}{typeof object.score === 'number' ? ` · ${Math.round(object.score * 100)}%` : ''}</span>
+              {object.provider === 'fallback' && (
+                <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] text-white/90">候选框</span>
+              )}
             </div>
           </div>
 

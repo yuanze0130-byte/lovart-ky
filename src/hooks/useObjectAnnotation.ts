@@ -64,7 +64,11 @@ export function useObjectAnnotation() {
         return null;
       }
 
-      const detected = data.object as DetectedObject;
+      const detected = {
+        ...(data.object as DetectedObject),
+        provider: typeof data.provider === 'string' ? data.provider : undefined,
+        details: typeof data.details === 'string' ? data.details : undefined,
+      } as DetectedObject;
       setSelectedObject(detected);
       return detected;
     } finally {
