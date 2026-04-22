@@ -123,6 +123,8 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const initializedElementIdRef = useRef<string | null>(null);
+    const syncedReferenceImageIdRef = useRef<string | null>(null);
 
     const sizes = useMemo<VideoSize[]>(() => ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'], []);
     const secondsOptions: VideoSeconds[] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -173,20 +175,28 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const selectedVideoModelOption = VIDEO_MODEL_MODE_OPTIONS.find((option) => option.value === videoModelMode) || VIDEO_MODEL_MODE_OPTIONS[0];
 
 
-    // Auto-fill reference image and prompt from source
+    // Initialize local panel state only when switching to a different generator node.
     useEffect(() => {
         if (!canvasElements || !currentElement) return;
+        if (initializedElementIdRef.current === currentElement.id) return;
+
+        initializedElementIdRef.current = currentElement.id;
 
         if (currentElement.referenceImageId) {
             const sourceImage = canvasElements.find(el => el.id === currentElement.referenceImageId);
-            if (sourceImage?.content && !referenceImage) {
+            if (sourceImage?.content) {
                 setReferenceImage(sourceImage.content);
+                syncedReferenceImageIdRef.current = currentElement.referenceImageId;
+            } else {
+                setReferenceImage(null);
+                syncedReferenceImageIdRef.current = null;
             }
+        } else {
+            setReferenceImage(null);
+            syncedReferenceImageIdRef.current = null;
         }
 
-        if (currentElement.prompt && !prompt) {
-            setPrompt(currentElement.prompt);
-        }
+        setPrompt(typeof currentElement.prompt === 'string' ? currentElement.prompt : '');
 
         if (currentElement.storyboardVideoSize) {
             setSize(currentElement.storyboardVideoSize);
@@ -195,26 +205,36 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         } else if (currentElement.prompt) {
             const promptText = currentElement.prompt;
             const inferredSize = STORYBOARD_SIZE_PRIORITY.find((candidate) => promptText.includes(candidate));
-            if (inferredSize) {
-                setSize(inferredSize);
-            }
+            setSize(inferredSize || '720x1280');
+        } else {
+            setSize('720x1280');
         }
 
         if (typeof currentElement.storyboardDurationSec === 'number') {
             const boundedSeconds = Math.min(15, Math.max(4, Math.round(currentElement.storyboardDurationSec))) as VideoSeconds;
             setSeconds(boundedSeconds);
+        } else {
+            setSeconds(10);
         }
 
         if (currentElement.videoModelMode === 'fast' || currentElement.videoModelMode === 'standard') {
             setVideoModelMode(currentElement.videoModelMode);
+        } else {
+            setVideoModelMode('standard');
         }
-    }, [
-        canvasElements,
-        currentElement,
-        prompt,
-        referenceImage,
-        sizes,
-    ]);
+    }, [canvasElements, currentElement, sizes]);
+
+    // Sync reference image only when the linked source image actually changes.
+    useEffect(() => {
+        if (!canvasElements || !currentElement?.referenceImageId) return;
+        if (syncedReferenceImageIdRef.current === currentElement.referenceImageId) return;
+
+        const sourceImage = canvasElements.find((el) => el.id === currentElement.referenceImageId);
+        if (sourceImage?.content) {
+            setReferenceImage(sourceImage.content);
+            syncedReferenceImageIdRef.current = currentElement.referenceImageId;
+        }
+    }, [canvasElements, currentElement?.referenceImageId]);
 
     useEffect(() => {
         if (videoModelMode !== 'fast') return;
