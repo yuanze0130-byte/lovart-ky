@@ -30,14 +30,14 @@ export function useCanvasElements({
   );
 
   const handleAddImage = useCallback(
-    (file: File) => {
+    (file: File, position?: { x: number; y: number }) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         appendElement({
           id: uuidv4(),
           type: 'image',
-          x: 100 - pan.x + elements.length * 20,
-          y: 100 - pan.y + elements.length * 20,
+          x: position?.x ?? (100 - pan.x + elements.length * 20),
+          y: position?.y ?? (100 - pan.y + elements.length * 20),
           width: 300,
           height: 200,
           content: e.target?.result as string,

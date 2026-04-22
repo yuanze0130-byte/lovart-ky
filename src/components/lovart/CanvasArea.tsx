@@ -140,6 +140,7 @@ interface CanvasAreaProps {
     onDeleteMany?: (ids: string[]) => void;
     onAddElement: (element: CanvasElement) => void;
     onCreateNodeAt?: (x: number, y: number) => void;
+    onDropImages?: (files: File[], point: { x: number; y: number }) => void;
     activeTool: string;
     backgroundColor?: string;
     onDragStart?: () => void;
@@ -179,6 +180,7 @@ export function CanvasArea({
     onDeleteMany,
     onAddElement,
     onCreateNodeAt,
+    onDropImages,
     activeTool,
     backgroundColor = '#F4F4F5',
     onDragStart,
@@ -203,6 +205,8 @@ export function CanvasArea({
     const [isPanning, setIsPanning] = useState(false);
     const [isDrawing, setIsDrawing] = useState(false);
     const [isSelecting, setIsSelecting] = useState(false);
+    const [isDragOverCanvas, setIsDragOverCanvas] = useState(false);
+    const dragDepthRef = useRef(0);
     const [selectionBox, setSelectionBox] = useState<{
         startX: number;
         startY: number;
@@ -234,6 +238,42 @@ export function CanvasArea({
         x: (clientX - pan.x) / scale,
         y: (clientY - 56 - pan.y) / scale,
     });
+
+    const handleCanvasDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        dragDepthRef.current += 1;
+        setIsDragOverCanvas(true);
+    };
+
+    const handleCanvasDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        if (!isDragOverCanvas) {
+            setIsDragOverCanvas(true);
+        }
+    };
+
+    const handleCanvasDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) {
+            setIsDragOverCanvas(false);
+        }
+    };
+
+    const handleCanvasDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        if (!e.dataTransfer.files?.length) return;
+        e.preventDefault();
+        dragDepthRef.current = 0;
+        setIsDragOverCanvas(false);
+
+        const imageFiles = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith('image/'));
+        if (!imageFiles.length) return;
+
+        const point = getCanvasPoint(e.clientX, e.clientY);
+        onDropImages?.(imageFiles, point);
+    };
 
     const getGroupedSelectionIds = (elementId: string | null) => {
         if (!elementId) return [] as string[];
@@ -860,7 +900,18 @@ export function CanvasArea({
             onMouseDown={(e) => handleMouseDown(e, null)}
             onWheel={handleWheel}
             onDoubleClick={handleDoubleClickCanvas}
+            onDragEnter={handleCanvasDragEnter}
+            onDragOver={handleCanvasDragOver}
+            onDragLeave={handleCanvasDragLeave}
+            onDrop={handleCanvasDrop}
         >
+            {isDragOverCanvas && (
+                <div className="pointer-events-none absolute inset-0 z-[140] flex items-center justify-center bg-sky-500/10 backdrop-blur-[1px]">
+                    <div className="rounded-2xl border border-sky-300 bg-white/92 px-5 py-3 text-sm font-medium text-sky-700 shadow-lg">
+                        拖入图片到画布
+                    </div>
+                </div>
+            )}
             {selectedIds.length === 1 && selectedElement && !isDragging && !isResizing && !isPanning && !isDrawing && selectedElement.type !== 'connector' && (
                 <div
                     style={{

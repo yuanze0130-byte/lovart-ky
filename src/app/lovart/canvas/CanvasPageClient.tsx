@@ -446,6 +446,15 @@ function LovartCanvasContent() {
         }));
     }, [annotationImageId, setElements]);
 
+    const handleDropImages = useCallback((files: File[], point: { x: number; y: number }) => {
+        files.forEach((file, index) => {
+            handleAddImage(file, {
+                x: point.x + index * 28,
+                y: point.y + index * 28,
+            });
+        });
+    }, [handleAddImage]);
+
     const handleOpenImageEditMode = useCallback((element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => {
         if (!element.content) return;
 
@@ -1654,6 +1663,7 @@ function LovartCanvasContent() {
                             y,
                         });
                     }}
+                    onDropImages={handleDropImages}
                     activeTool={activeTool}
                     onDragStart={() => setIsDraggingElement(true)}
                     onDragEnd={() => setIsDraggingElement(false)}
