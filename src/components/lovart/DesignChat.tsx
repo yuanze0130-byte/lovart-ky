@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Paperclip, AtSign, MapPin, Zap, Globe, Loader2, ArrowUp } from 'lucide-react';
+import { authedFetch } from '@/lib/authed-fetch';
 
 interface Message {
     id: string;
@@ -67,7 +68,7 @@ export function DesignChat({ initialPrompt }: DesignChatProps) {
         setIsLoading(true);
 
         try {
-            const response = await fetch('/api/generate-design', {
+            const response = await authedFetch('/api/generate-design', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -458,7 +458,7 @@ export function useCanvasGeneration({
     async (prompt: string, options?: { mode?: AgentMode }): Promise<AiChatResult> => {
       setIsGenerating(true);
       try {
-        const response = await fetch('/api/generate-design', {
+        const response = await authedFetch('/api/generate-design', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
