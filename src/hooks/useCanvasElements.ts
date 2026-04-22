@@ -2,6 +2,7 @@ import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
+import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 
 interface UseCanvasElementsParams {
   pan: CanvasPan;
@@ -32,15 +33,21 @@ export function useCanvasElements({
   const handleAddImage = useCallback(
     (file: File, position?: { x: number; y: number }) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = async (e) => {
+        const content = e.target?.result as string;
+        const dimensions = await getImageDimensions(content);
+        const displaySize = getSmartDisplaySize(dimensions);
+
         appendElement({
           id: uuidv4(),
           type: 'image',
           x: position?.x ?? (100 - pan.x + elements.length * 20),
           y: position?.y ?? (100 - pan.y + elements.length * 20),
-          width: 300,
-          height: 200,
-          content: e.target?.result as string,
+          width: displaySize.width,
+          height: displaySize.height,
+          originalWidth: displaySize.originalWidth,
+          originalHeight: displaySize.originalHeight,
+          content,
         });
       };
       reader.readAsDataURL(file);

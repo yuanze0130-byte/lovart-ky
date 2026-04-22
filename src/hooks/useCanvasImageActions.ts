@@ -63,7 +63,7 @@ async function pollUpscaleTask(taskId: string, timeoutMs = 300000, pollIntervalM
   const startedAt = Date.now();
 
   while (true) {
-    const response = await fetch(`/api/upscale-status?taskId=${encodeURIComponent(taskId)}`);
+    const response = await authedFetch(`/api/upscale-status?taskId=${encodeURIComponent(taskId)}`);
     const data = await response.json();
 
     if (!response.ok) {
