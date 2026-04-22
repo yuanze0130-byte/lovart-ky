@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
 import { CanvasArea, CanvasElement } from '@/components/lovart/CanvasArea';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
-import { VideoGeneratorPanel } from '@/components/lovart/VideoGeneratorPanel';
+import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { AgentPanel } from '@/components/lovart/AgentPanel';
@@ -1636,6 +1636,136 @@ function LovartCanvasContent() {
         }
     }, [setElements, setSelectedIds, storyboard, storyboardLayout]);
 
+    const handleAgentGenerateStoryboardVideo = useCallback(async (input: {
+        storyboardItemId: string;
+        storyboardOrder: number;
+        title: string;
+        prompt: string;
+        size: StoryboardVideoSize;
+        durationSeconds: number;
+        mode: VideoModelMode;
+    }) => {
+        const targetStoryboardItem = storyboard.find((item) => item.id === input.storyboardItemId);
+        const aspectRatio = inferStoryboardAspectRatioFromVideoSize(input.size) ?? targetStoryboardItem?.aspectRatio ?? '9:16';
+        const aspectMeta = getStoryboardAspectMeta(aspectRatio);
+        const nodeSize = getStoryboardNodeSize(aspectRatio, input.size);
+        const nextElementId = `agent-storyboard-video-${input.storyboardItemId}-${Date.now()}`;
+
+        const generatorElement: CanvasElement = {
+            id: nextElementId,
+            type: 'video-generator',
+            x: 120,
+            y: 120,
+            width: nodeSize.width,
+            height: nodeSize.height,
+            originalWidth: nodeSize.width,
+            originalHeight: nodeSize.height,
+            content: input.size,
+            prompt: input.prompt,
+            storyboardItemId: input.storyboardItemId,
+            storyboardShotLabel: `第 ${input.storyboardOrder} 镜`,
+            storyboardTitle: input.title,
+            storyboardBrief: targetStoryboardItem?.sourcePrompt || input.prompt,
+            storyboardAspectRatio: aspectRatio,
+            storyboardVideoSize: input.size,
+            storyboardOrientation: aspectMeta.orientation,
+            storyboardSourceAspectRatio: targetStoryboardItem?.sourceAspectRatio || aspectRatio,
+            storyboardSourceVideoSize: targetStoryboardItem?.sourceOutputSize || targetStoryboardItem?.outputSize || input.size,
+            storyboardSourceOrientation: targetStoryboardItem?.sourceOrientation || aspectMeta.orientation,
+            storyboardRenderProfile: targetStoryboardItem?.renderProfile || getStoryboardRenderProfile(input.size),
+            storyboardDurationSec: input.durationSeconds,
+            storyboardShotIndex: input.storyboardOrder,
+            storyboardShotCount: storyboard.length,
+            storyboardSequenceState: storyboard.length <= 1 ? 'single' : input.storyboardOrder === 1 ? 'first' : input.storyboardOrder === storyboard.length ? 'last' : 'middle',
+            storyboardSequenceHint: getStoryboardSequenceHint(storyboardLayout, storyboard.length <= 1 ? 'single' : input.storyboardOrder === 1 ? 'first' : input.storyboardOrder === storyboard.length ? 'last' : 'middle'),
+            storyboardBoardMode: getStoryboardBoardMode(storyboardLayout, storyboard.length <= 1 ? 'single' : input.storyboardOrder === 1 ? 'first' : input.storyboardOrder === storyboard.length ? 'last' : 'middle'),
+            videoModelMode: input.mode,
+        };
+
+        setElements((prev) => [...prev, generatorElement]);
+        setSelectedIds([generatorElement.id]);
+        setSelectedStoryboardItemId(input.storyboardItemId);
+
+        try {
+            const startResult = await startVideoGeneration({
+                prompt: input.prompt,
+                seconds: input.durationSeconds,
+                size: input.size,
+                modelMode: input.mode,
+            });
+
+            const startedAt = Date.now();
+            const timeoutMs = 10 * 60 * 1000;
+
+            while (true) {
+                if (Date.now() - startedAt > timeoutMs) {
+                    throw new Error('镜头视频生成超时');
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 3000));
+                const status = await getVideoGenerationStatus(startResult.taskId);
+
+                setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
+                    ...el,
+                    generationMetadata: {
+                        ...(el.generationMetadata || {}),
+                        taskId: startResult.taskId,
+                        videoStatus: status.status,
+                        progress: status.progress,
+                        model: status.model || startResult.model,
+                        videoModelMode: startResult.modelMode || input.mode,
+                    },
+                } : el));
+
+                if (status.status === 'failed') {
+                    throw new Error('镜头视频生成失败');
+                }
+
+                if (status.progress === 100 && status.videoUrl) {
+                    setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
+                        ...el,
+                        type: 'video',
+                        content: status.videoUrl,
+                        width: generatorElement.width,
+                        height: generatorElement.height,
+                        originalWidth: generatorElement.originalWidth,
+                        originalHeight: generatorElement.originalHeight,
+                        prompt: input.prompt,
+                        generationMetadata: {
+                            ...(el.generationMetadata || {}),
+                            taskId: startResult.taskId,
+                            videoStatus: status.status,
+                            progress: status.progress,
+                            model: status.model || startResult.model,
+                            videoModelMode: startResult.modelMode || input.mode,
+                        },
+                    } : el));
+
+                    setStoryboard((prev) => prev.map((item) => item.id === input.storyboardItemId ? {
+                        ...item,
+                        elementId: generatorElement.id,
+                        assetId: `agent-storyboard-video-${input.storyboardItemId}-${Date.now()}`,
+                        thumbnailUrl: status.videoUrl!,
+                        type: 'video',
+                        sourcePrompt: item.sourcePrompt || input.prompt,
+                        durationSec: input.durationSeconds,
+                        aspectRatio: item.aspectRatio || aspectRatio,
+                        orientation: item.orientation || aspectMeta.orientation,
+                        outputSize: item.outputSize || input.size,
+                        renderProfile: item.renderProfile || getStoryboardRenderProfile(input.size),
+                        sourceAspectRatio: item.sourceAspectRatio || aspectRatio,
+                        sourceOrientation: item.sourceOrientation || aspectMeta.orientation,
+                        sourceOutputSize: item.sourceOutputSize || item.outputSize || input.size,
+                    } : item));
+                    return;
+                }
+            }
+        } catch (error) {
+            setElements((prev) => prev.filter((el) => el.id !== generatorElement.id));
+            throw error;
+        }
+    }, [getStoryboardNodeSize, setElements, setSelectedIds, storyboard, storyboardLayout]);
+
     const handleAgentRun = useCallback(async (message: string) => {
         const response = await runAgent(message, agentContext);
         const nextResult = response.result;
@@ -1698,6 +1828,18 @@ function LovartCanvasContent() {
             });
         }
 
+        if (nextResult.kind === 'storyboard_video_generation_requested') {
+            await handleAgentGenerateStoryboardVideo({
+                storyboardItemId: nextResult.storyboardItemId,
+                storyboardOrder: nextResult.storyboardOrder,
+                title: nextResult.title,
+                prompt: nextResult.prompt,
+                size: nextResult.size,
+                durationSeconds: nextResult.durationSeconds,
+                mode: nextResult.mode,
+            });
+        }
+
         if (nextResult.kind === 'image_edited') {
             applyAgentCanvasDrafts([
                 {
@@ -1713,7 +1855,7 @@ function LovartCanvasContent() {
                 },
             ]);
         }
-    }, [agentContext, applyAgentCanvasDrafts, handleAgentGenerateStoryboardImage, handleCreateStoryboardFlow, runAgent]);
+    }, [agentContext, applyAgentCanvasDrafts, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
 
     const duplicateElements = useCallback((source: CanvasElement[]) => {
         const idMap = new Map<string, string>();

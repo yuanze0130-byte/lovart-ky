@@ -6,12 +6,66 @@ import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 import { getStoryboardNodeDimensions, getStoryboardRenderProfile, getStoryboardVideoSizeOptions, formatStoryboardMeta, getStoryboardFrameDeltaLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, getPreferredStoryboardVideoSize, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel } from '@/hooks/useProjectAssets';
 
+export type VideoModelMode = 'standard' | 'fast';
+export type VideoGenerationStartResult = {
+  taskId: string;
+  status?: string;
+  model?: string;
+  modelMode?: VideoModelMode;
+  ratio?: string;
+};
+
+export type VideoGenerationStatusResult = {
+  id?: string;
+  status?: string;
+  progress?: number;
+  videoUrl?: string;
+  model?: string;
+  createdAt?: string | number;
+  size?: string;
+  seconds?: number;
+};
+
+export async function startVideoGeneration(input: {
+  prompt: string;
+  seconds: number;
+  size: string;
+  modelMode?: VideoModelMode;
+  referenceImage?: string;
+}): Promise<VideoGenerationStartResult> {
+  const response = await authedFetch('/api/generate-video', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(input),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.taskId) {
+    throw new Error(data.details || data.error || '启动视频生成失败');
+  }
+
+  return data as VideoGenerationStartResult;
+}
+
+export async function getVideoGenerationStatus(taskId: string): Promise<VideoGenerationStatusResult> {
+  const response = await authedFetch(`/api/video-status?taskId=${encodeURIComponent(taskId)}`);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.details || data.error || '查询视频状态失败');
+  }
+
+  return data as VideoGenerationStatusResult;
+}
+
 type VideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024' | '1024x768' | '768x1024' | '1536x640' | '1152x768' | '768x1152';
 type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3';
 type StoryboardOrientation = 'portrait' | 'landscape' | 'square';
 const STORYBOARD_SIZE_PRIORITY: VideoSize[] = ['720x1280', '1024x1792', '1280x720', '1792x1024', '1024x1280', '1024x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'];
 type VideoSeconds = 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
-type VideoModelMode = 'standard' | 'fast';
 
 const VIDEO_MODEL_MODE_OPTIONS: Array<{ value: VideoModelMode; label: string; hint: string }> = [
     { value: 'standard', label: 'Seedance 2.0', hint: '更稳，适合最终出片' },
@@ -200,8 +254,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         if (taskId && isGenerating) {
             pollingIntervalRef.current = setInterval(async () => {
                 try {
-                    const response = await authedFetch(`/api/video-status?taskId=${taskId}`);
-                    const data = await response.json();
+                    const data = await getVideoGenerationStatus(taskId);
 
                     console.log('Video status:', data);
                     
@@ -273,25 +326,13 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         }
 
         try {
-            const response = await authedFetch('/api/generate-video', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    prompt,
-                    seconds,
-                    size,
-                    modelMode: videoModelMode,
-                    referenceImage: referenceImageBase64,
-                }),
+            const data = await startVideoGeneration({
+                prompt,
+                seconds,
+                size,
+                modelMode: videoModelMode,
+                referenceImage: referenceImageBase64,
             });
-
-            const data = await response.json();
-
-            if (!response.ok) {
-                throw new Error(data.details || data.error || '生成失败');
-            }
 
             console.log('Video generation started:', data);
             setTaskId(data.taskId);

@@ -110,6 +110,22 @@ export async function parseAgentCommand(input: {
     };
   }
 
+  if ((/第\s*\d+\s*(镜|个镜头|条分镜|格|张)/.test(raw) || Boolean(input.context.selectedStoryboardItemId)) && /视频|video/.test(lower)) {
+    const target = resolveStoryboardTarget(input.context, storyboardOrder);
+    const matchedItem = target.storyboardItemId
+      ? input.context.storyboardItems?.find((item) => item.id === target.storyboardItemId)
+      : undefined;
+    return {
+      type: 'generate_storyboard_video',
+      prompt: normalizePrompt(raw) || raw,
+      storyboardItemId: target.storyboardItemId,
+      storyboardOrder: target.storyboardOrder,
+      size: extractVideoSize(raw) || matchedItem?.outputSize || inferVideoSizeFromAspectRatio(aspectRatio || target.aspectRatio),
+      durationSeconds: /10秒/.test(raw) ? 10 : /8秒/.test(raw) ? 8 : /6秒/.test(raw) ? 6 : /4秒/.test(raw) ? 4 : 5,
+      mode: /fast|快速/.test(raw) ? 'fast' : 'standard',
+    };
+  }
+
   if ((/第\s*\d+\s*(镜|个镜头|条分镜|格|张)/.test(raw) || Boolean(input.context.selectedStoryboardItemId)) && /生成|出图|做图|画一下|画一张|做一张|渲染/.test(raw) && !/视频|video/.test(lower)) {
     const target = resolveStoryboardTarget(input.context, storyboardOrder);
     return {
