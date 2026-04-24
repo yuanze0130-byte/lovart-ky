@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     creditsConsumed = true;
 
-    const { prompt, size, referenceImage, modelMode } = body;
+    const { prompt, size, referenceImage } = body;
 
     if (!prompt || typeof prompt !== 'string') {
       throw new Error('Prompt is required');

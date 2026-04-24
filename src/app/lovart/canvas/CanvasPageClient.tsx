@@ -1128,6 +1128,7 @@ function LovartCanvasContent() {
         };
     }, []);
 
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- This builder intentionally reads current canvas/storyboard state; refactoring this fragile file is higher risk than the lint warning.
     function buildStoryboardVideoFlow(item: StoryboardItem, options?: { x?: number; y?: number; forceStandalone?: boolean; shotIndex?: number; sequenceState?: 'single' | 'first' | 'middle' | 'last'; layoutMode?: StoryboardLayoutMode }) {
         const source = elements.find((element) => element.id === item.elementId);
         const resolvedAspectRatio = item.aspectRatio ?? '9:16';

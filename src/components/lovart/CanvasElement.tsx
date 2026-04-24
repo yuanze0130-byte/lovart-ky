@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- Canvas elements render user-provided image data directly. */
 import React, { memo } from 'react';
 import { CanvasElement as CanvasElementType } from './CanvasArea';
 

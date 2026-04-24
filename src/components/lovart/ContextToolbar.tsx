@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- Toolbar previews render transient data URLs from canvas operations. */
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw } from 'lucide-react';
 import { CREDIT_COSTS, getUpscaleCreditCost } from '@/lib/credits';

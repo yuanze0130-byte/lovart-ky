@@ -1,4 +1,5 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+﻿/* eslint-disable @next/next/no-img-element -- The canvas renders user-provided/generated image data directly. */
+import React, { useState, useRef, useEffect } from 'react';
 import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
@@ -522,9 +523,6 @@ export function CanvasArea({
                     }
                 }
 
-                const scaleX = nextWidth / baseWidth;
-                const scaleY = nextHeight / baseHeight;
-
                 applyElementUpdates(dragStartRef.current.initialPositions.map((pos) => {
                     const relX = (pos.x - bounds.left) / baseWidth;
                     const relY = (pos.y - bounds.top) / baseHeight;
@@ -683,6 +681,7 @@ export function CanvasArea({
         };
         window.addEventListener('mouseup', handleGlobalMouseUp);
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMouseUp intentionally reads the current gesture state mirrored in these dependencies.
     }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath]);
 
     const selectedElement = elements.find((el) => selectedIds.includes(el.id));
@@ -1268,11 +1267,6 @@ export function CanvasArea({
                                                     ? '中心重裁'
                                                     : '重构为竖版')
                                         : '覆盖范围锁定';
-                                    const resolvedSourceAspect = (sourceAspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? ((aspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? '9:16');
-                                    const resolvedCurrentAspect = (aspectLabel as '9:16' | '16:9' | '4:5' | '1:1' | undefined) ?? '9:16';
-                                    const reviewRailState = getStoryboardReviewRailState(resolvedSourceAspect, resolvedCurrentAspect);
-                                    const reviewRailLabel = getStoryboardReviewRailLabel(resolvedSourceAspect, resolvedCurrentAspect);
-                                    const reviewRailToneClass = getReviewRailToneClass(reviewRailState);
                                     const chipPrimaryClass = 'rounded-full border border-blue-200/80 bg-white/88 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/85 shadow-sm dark:border-white/10 dark:bg-white/7 dark:text-sky-100/80';
                                     const chipSecondaryClass = 'rounded-full bg-blue-600/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-blue-700/85 dark:bg-sky-400/12 dark:text-sky-100/80';
                                     const infoCardClass = 'rounded-2xl border border-blue-100/80 bg-blue-50/70 px-3 py-2 dark:border-white/8 dark:bg-white/4';
@@ -1305,8 +1299,6 @@ export function CanvasArea({
                                             ? '方形轨道'
                                             : '竖版轨道';
                                     const outputRailLabel = sizeMeta ? `${sizeMeta} 渲染` : '分镜渲染';
-                                    const providerLabel = getProviderLabel(el.generationMetadata);
-                                    const modelLabel = getModelLabel(el.generationMetadata);
                                     const fallbackSummary = el.generationMetadata?.providerFallbackUsed
                                         ? (el.generationMetadata.fallbackReason || '已触发回退')
                                         : undefined;

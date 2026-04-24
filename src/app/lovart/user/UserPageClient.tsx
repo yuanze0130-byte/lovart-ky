@@ -6,11 +6,10 @@ import { Coins, Calendar, User as UserIcon, Bell, LogOut, ArrowDownRight, Gift, 
 import { LoginModal } from '@/components/auth/LoginModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserCredits } from '@/hooks/useUserCredits';
-import type { CreditTransactionRow } from '@/lib/supabase';
 
 export default function UserPage() {
     const { user, session, signOut } = useAuth();
-    const { credits, transactions, isLoading, refresh } = useUserCredits();
+    const { credits, transactions, isLoading } = useUserCredits();
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [adminIdentifier, setAdminIdentifier] = useState('');
     const [adminCredits, setAdminCredits] = useState('80');

@@ -1,5 +1,6 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element -- Canvas thumbnails use user-provided data URLs and object-fit behavior. */
 import React, { useMemo, useState } from 'react';
 import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2 } from 'lucide-react';
 import { getStoryboardAspectMeta, getStoryboardVideoSizeOptions, getStoryboardRenderProfile, getStoryboardRenderProfileLabel, getRecommendedStoryboardLayout, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel, getStoryboardNodeDimensions, getStoryboardOrientationLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, summarizeStoryboardBatchHealth, summarizeStoryboardNodeSizing, summarizeProductionBoard, type ProjectAsset, type StoryboardItem, type StoryboardLayoutMode, type StoryboardAspectRatio, type StoryboardVideoSize, type StoryboardRenderProfile } from '@/hooks/useProjectAssets';

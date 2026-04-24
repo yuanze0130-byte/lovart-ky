@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
 import React, { useMemo, useRef, useState } from 'react';
 import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2 } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';

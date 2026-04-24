@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
 import React, { useState, useRef } from 'react';
 import { X, Loader2, Sparkles, Image as ImageIcon, ChevronDown, Zap } from 'lucide-react';
 
