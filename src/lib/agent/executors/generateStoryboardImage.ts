@@ -1,10 +1,5 @@
 import type { AgentActionResult, AgentContext, GenerateStoryboardImageAction, StoryboardAspectRatio } from '@/lib/agent/actions';
 
-type GenerateImageApiResult = {
-  imageData?: string;
-  error?: string;
-};
-
 function resolveAspectRatio(value?: StoryboardAspectRatio): StoryboardAspectRatio {
   return value || '9:16';
 }

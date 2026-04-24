@@ -15,6 +15,19 @@ interface GeminiInlineDataPart {
     data?: string;
     mimeType?: string;
   };
+  inline_data?: {
+    data?: string;
+    mime_type?: string;
+  };
+}
+
+interface GeminiOfficialResponse {
+  candidates?: Array<{
+    content?: {
+      parts?: GeminiInlineDataPart[];
+    };
+  }>;
+  text?: string;
 }
 
 interface GeminiMessage {
@@ -162,16 +175,19 @@ function getProxyTargets() {
   return targets;
 }
 
-function extractImageFromGeminiResponse(response: any, baseResult: Record<string, unknown>) {
+function extractImageFromGeminiResponse(response: GeminiOfficialResponse, baseResult: Record<string, unknown>) {
   const candidates = response?.candidates || [];
   for (const candidate of candidates) {
     const responseParts = candidate?.content?.parts || [];
 
     for (const part of responseParts) {
-      const inlineData = part?.inlineData || part?.inline_data;
-      if (inlineData?.data) {
+      const inlineData = part?.inlineData;
+      const inlineDataSnakeCase = part?.inline_data;
+      const imageData = inlineData?.data || inlineDataSnakeCase?.data;
+      if (imageData) {
+        const mimeType = inlineData?.mimeType || inlineDataSnakeCase?.mime_type || 'image/png';
         return {
-          imageData: `data:${inlineData.mimeType || inlineData.mime_type || 'image/png'};base64,${inlineData.data}`,
+          imageData: `data:${mimeType};base64,${imageData}`,
           textResponse: '',
           ...baseResult,
         };

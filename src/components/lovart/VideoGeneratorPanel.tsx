@@ -1,5 +1,6 @@
 "use client";
 
+/* eslint-disable react-hooks/set-state-in-effect -- This panel mirrors persisted canvas node config into local form state when the selected generator node changes. */
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2 } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
@@ -71,18 +72,6 @@ const VIDEO_MODEL_MODE_OPTIONS: Array<{ value: VideoModelMode; label: string; hi
     { value: 'standard', label: 'Seedance 2.0', hint: '更稳，适合最终出片' },
     { value: 'fast', label: 'Seedance 2.0 Fast', hint: '更快，适合快速迭代' },
 ];
-
-const ASPECT_PRESET_TO_SIZE: Record<StoryboardAspectRatio, VideoSize> = {
-    '9:16': '720x1280',
-    '16:9': '1280x720',
-    '4:5': '1024x1280',
-    '1:1': '1024x1024',
-    '4:3': '1024x768',
-    '3:4': '768x1024',
-    '21:9': '1536x640',
-    '3:2': '1152x768',
-    '2:3': '768x1152',
-};
 
 const FAST_MODEL_SIZE_OPTIONS: Partial<Record<StoryboardAspectRatio, VideoSize[]>> = {
     '16:9': ['1280x720'],

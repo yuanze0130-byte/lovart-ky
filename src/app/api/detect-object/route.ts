@@ -17,7 +17,7 @@ function createFallbackObject(click: AnnotationPoint, imageWidth: number, imageH
 
   return {
     id: `detected-${Date.now()}`,
-    label: '????',
+    label: '对象',
     score: 0.5,
     bbox: { x, y, width: boxWidth, height: boxHeight },
   };
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       amount: CREDIT_COSTS.detectObject,
       type: 'manual_adjust',
-      description: '????????',
+      description: '对象标记识别',
     });
 
     if (!creditResult.ok) {
@@ -69,10 +69,10 @@ export async function POST(request: NextRequest) {
         object: {
           ...fallback,
           provider: 'fallback',
-          details: '????????????????????',
+          details: '未提供可识别的图片，已生成候选框',
         },
         provider: 'fallback',
-        details: '????????????????????',
+        details: '未提供可识别的图片，已生成候选框',
       });
     }
 
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         object: fallback,
         provider: 'fallback',
-        details: modelError instanceof Error ? modelError.message : '????????????????????',
+        details: modelError instanceof Error ? modelError.message : '对象识别失败，已生成候选框',
       });
     }
   } catch (error) {
@@ -105,8 +105,8 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json(
       {
-        error: 'Failed to detect object',
-        details: error instanceof Error ? error.message : 'Unknown error',
+        error: '对象识别失败',
+        details: error instanceof Error ? error.message : '未知错误',
       },
       { status: 500 }
     );
