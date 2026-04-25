@@ -64,7 +64,7 @@ export async function ensureUserCredits(userId: string): Promise<UserCreditsRow>
     .from('user_credits')
     .select('*')
     .eq('user_id', userId)
-    .single();
+    .maybeSingle();
 
   const existing = data as UserCreditsRow | null;
 
@@ -74,24 +74,39 @@ export async function ensureUserCredits(userId: string): Promise<UserCreditsRow>
 
   const { data: inserted, error: insertError } = await supabase
     .from('user_credits')
-    .insert({ user_id: userId, credits: DEFAULT_SIGNUP_CREDITS })
+    .upsert(
+      { user_id: userId, credits: DEFAULT_SIGNUP_CREDITS },
+      { onConflict: 'user_id', ignoreDuplicates: true }
+    )
     .select()
-    .single();
+    .maybeSingle();
 
   if (insertError) {
     throw insertError;
   }
 
-  const insertedRow = inserted as UserCreditsRow;
+  if (inserted) {
+    await logCreditTransaction({
+      userId,
+      amount: DEFAULT_SIGNUP_CREDITS,
+      type: 'signup_bonus',
+      description: `新用户赠送 ${DEFAULT_SIGNUP_CREDITS} 积分`,
+    });
 
-  await logCreditTransaction({
-    userId,
-    amount: DEFAULT_SIGNUP_CREDITS,
-    type: 'signup_bonus',
-    description: `新用户赠送 ${DEFAULT_SIGNUP_CREDITS} 积分`,
-  });
+    return inserted as UserCreditsRow;
+  }
 
-  return insertedRow;
+  const { data: fetched, error: fetchError } = await supabase
+    .from('user_credits')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (fetchError) {
+    throw fetchError;
+  }
+
+  return fetched as UserCreditsRow;
 }
 
 export async function getUserCredits(userId: string) {
@@ -109,42 +124,51 @@ export async function consumeCredits(params: {
   const { userId, amount, type, description, referenceId } = params;
   const supabase = createServiceRoleSupabaseClient();
 
-  const current = await ensureUserCredits(userId);
-  if (current.credits < amount) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const current = await ensureUserCredits(userId);
+    if (current.credits < amount) {
+      return {
+        ok: false as const,
+        currentCredits: current.credits,
+        requiredCredits: amount,
+      };
+    }
+
+    const nextCredits = current.credits - amount;
+    const { data, error } = await supabase
+      .from('user_credits')
+      .update({ credits: nextCredits })
+      .eq('user_id', userId)
+      .eq('credits', current.credits)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      continue;
+    }
+
+    const updatedRow = data as UserCreditsRow;
+
+    await logCreditTransaction({
+      userId,
+      amount: -amount,
+      type,
+      description,
+      referenceId,
+    });
+
     return {
-      ok: false as const,
-      currentCredits: current.credits,
+      ok: true as const,
+      currentCredits: updatedRow.credits,
       requiredCredits: amount,
     };
   }
 
-  const nextCredits = current.credits - amount;
-  const { data, error } = await supabase
-    .from('user_credits')
-    .update({ credits: nextCredits })
-    .eq('user_id', userId)
-    .select()
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  const updatedRow = data as UserCreditsRow;
-
-  await logCreditTransaction({
-    userId,
-    amount: -amount,
-    type,
-    description,
-    referenceId,
-  });
-
-  return {
-    ok: true as const,
-    currentCredits: updatedRow.credits,
-    requiredCredits: amount,
-  };
+  throw new Error('Credit update conflict, please retry');
 }
 
 export async function refundCredits(params: {
@@ -157,35 +181,44 @@ export async function refundCredits(params: {
   const { userId, amount, type, description, referenceId } = params;
   const supabase = createServiceRoleSupabaseClient();
 
-  const current = await ensureUserCredits(userId);
-  const nextCredits = current.credits + amount;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const current = await ensureUserCredits(userId);
+    const nextCredits = current.credits + amount;
 
-  const { data, error } = await supabase
-    .from('user_credits')
-    .update({ credits: nextCredits })
-    .eq('user_id', userId)
-    .select()
-    .single();
+    const { data, error } = await supabase
+      .from('user_credits')
+      .update({ credits: nextCredits })
+      .eq('user_id', userId)
+      .eq('credits', current.credits)
+      .select()
+      .maybeSingle();
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+
+    if (!data) {
+      continue;
+    }
+
+    const updatedRow = data as UserCreditsRow;
+
+    await logCreditTransaction({
+      userId,
+      amount,
+      type,
+      description,
+      referenceId,
+    });
+
+    return {
+      ok: true as const,
+      currentCredits: updatedRow.credits,
+      refundedCredits: amount,
+    };
   }
 
-  const updatedRow = data as UserCreditsRow;
-
-  await logCreditTransaction({
-    userId,
-    amount,
-    type,
-    description,
-    referenceId,
-  });
-
-  return {
-    ok: true as const,
-    currentCredits: updatedRow.credits,
-    refundedCredits: amount,
-  };
+  throw new Error('Credit refund conflict, please retry');
 }
 
 async function logCreditTransaction(params: {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import type { AnnotationObject, AnnotationPoint } from '@/lib/object-annotation';
 import { detectObjectWithProvider } from '@/lib/object-detection-provider';
 import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
@@ -30,25 +30,6 @@ export async function POST(request: NextRequest) {
     const user = await requireUser(request);
     chargedUserId = user.id;
 
-    const creditResult = await consumeCredits({
-      userId: user.id,
-      amount: CREDIT_COSTS.detectObject,
-      type: 'manual_adjust',
-      description: '对象标记识别',
-    });
-
-    if (!creditResult.ok) {
-      return NextResponse.json(
-        {
-          error: '积分不足',
-          details: `当前积分 ${creditResult.currentCredits}，标记编辑需 ${creditResult.requiredCredits} 积分`,
-        },
-        { status: 402 }
-      );
-    }
-
-    creditsConsumed = true;
-
     const { image, imageWidth, imageHeight, click } = await request.json() as {
       image?: string;
       imageWidth?: number;
@@ -76,6 +57,25 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const creditResult = await consumeCredits({
+      userId: user.id,
+      amount: CREDIT_COSTS.detectObject,
+      type: 'manual_adjust',
+      description: '对象标记识别',
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(
+        {
+          error: '积分不足',
+          details: `当前积分 ${creditResult.currentCredits}，标记编辑需 ${creditResult.requiredCredits} 积分`,
+        },
+        { status: 402 }
+      );
+    }
+
+    creditsConsumed = true;
+
     try {
       const result = await detectObjectWithProvider({
         image,
@@ -85,9 +85,28 @@ export async function POST(request: NextRequest) {
         fallback,
       });
 
+      if (result.provider === 'fallback' || result.provider === 'stub' || result.provider === 'sam-placeholder') {
+        await refundCredits({
+          userId: user.id,
+          amount: CREDIT_COSTS.detectObject,
+          type: 'manual_adjust',
+          description: '对象标记识别回退退款',
+        });
+        creditsConsumed = false;
+      }
+
       return NextResponse.json(result);
     } catch (modelError) {
       console.warn('Object detection failed, using fallback:', modelError);
+
+      await refundCredits({
+        userId: user.id,
+        amount: CREDIT_COSTS.detectObject,
+        type: 'manual_adjust',
+        description: '对象标记识别失败退款',
+      });
+      creditsConsumed = false;
+
       return NextResponse.json({
         object: fallback,
         provider: 'fallback',
@@ -95,6 +114,9 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     if (chargedUserId && creditsConsumed) {
       await refundCredits({
         userId: chargedUserId,

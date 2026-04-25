@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
 
 interface ReversePromptPayload {
@@ -31,6 +31,11 @@ export async function POST(request: NextRequest) {
     const user = await requireUser(request);
     chargedUserId = user.id;
 
+    const { imageData } = (await request.json()) as ReversePromptPayload;
+    if (!imageData || typeof imageData !== 'string') {
+      return NextResponse.json({ error: 'imageData is required' }, { status: 400 });
+    }
+
     const creditResult = await consumeCredits({
       userId: user.id,
       amount: CREDIT_COSTS.reversePrompt,
@@ -49,11 +54,6 @@ export async function POST(request: NextRequest) {
     }
 
     creditsConsumed = true;
-
-    const { imageData } = (await request.json()) as ReversePromptPayload;
-    if (!imageData || typeof imageData !== 'string') {
-      return NextResponse.json({ error: 'imageData is required' }, { status: 400 });
-    }
 
     const apiKey = process.env.GEMINI_API_KEY;
     const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
@@ -116,6 +116,9 @@ export async function POST(request: NextRequest) {
       notes: parsed.notes || '',
     });
   } catch (error: unknown) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     if (chargedUserId && creditsConsumed) {
       await refundCredits({
         userId: chargedUserId,

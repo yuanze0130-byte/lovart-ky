@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, getVideoCreditCost, refundCredits } from '@/lib/credits';
 
 type VideoModelMode = 'standard' | 'fast';
@@ -199,6 +199,9 @@ export async function POST(request: NextRequest) {
       ratio,
     });
   } catch (error: unknown) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     if (creditsConsumed && chargedUserId) {
       try {
         await refundCredits({

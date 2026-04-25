@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { queryUpscaleTask } from '@/lib/upscale';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,6 +13,9 @@ export async function GET(request: NextRequest) {
     const result = await queryUpscaleTask(taskId);
     return NextResponse.json(result);
   } catch (error: unknown) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Failed to get upscale status', details: message },

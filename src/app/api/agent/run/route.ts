@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import type { AgentRunRequest, AgentRunResponse } from '@/lib/agent/actions';
 import { parseAgentCommand } from '@/lib/agent/parseAgentCommand';
 import { executeAgentAction } from '@/lib/agent/executeAgentAction';
@@ -36,6 +36,9 @@ export async function POST(request: NextRequest) {
       result,
     });
   } catch (error) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     return NextResponse.json<AgentRunResponse>(
       {
         ok: false,

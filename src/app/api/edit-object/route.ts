@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { serializeAnnotationPrompt, type AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 
 export async function POST(request: NextRequest) {
@@ -55,6 +55,9 @@ export async function POST(request: NextRequest) {
       provider: data.provider || 'image-generation',
     });
   } catch (error) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     return NextResponse.json(
       {
         error: 'Failed to edit object',

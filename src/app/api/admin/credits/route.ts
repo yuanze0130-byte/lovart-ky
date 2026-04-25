@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { createClient } from '@supabase/supabase-js';
 
 type AdminTargetUser = {
@@ -141,6 +141,9 @@ export async function POST(request: NextRequest) {
       delta,
     });
   } catch (error) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
 
     if (message === 'TARGET_USER_NOT_FOUND') {

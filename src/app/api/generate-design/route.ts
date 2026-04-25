@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,6 +66,9 @@ export async function POST(request: NextRequest) {
       plan: parsed.plan && typeof parsed.plan === 'object' ? parsed.plan : {},
     });
   } catch (error: unknown) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     console.error('Error generating design:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
 

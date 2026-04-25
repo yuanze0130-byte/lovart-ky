@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 
 function stringifyErrorPayload(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -111,6 +111,9 @@ export async function GET(request: NextRequest) {
       seconds: data.seconds,
     });
   } catch (error: unknown) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Failed to get video status', details: message },

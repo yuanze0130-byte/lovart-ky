@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { submitUpscaleTask } from '@/lib/upscale';
-import { requireUser } from '@/lib/require-user';
+import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, getUpscaleCreditCost } from '@/lib/credits';
 
 export async function POST(request: NextRequest) {
@@ -38,6 +38,9 @@ export async function POST(request: NextRequest) {
     const result = await submitUpscaleTask(image, upscaleScale);
     return NextResponse.json(result);
   } catch (error: unknown) {
+    if (isNotAuthenticatedError(error)) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
       { error: 'Failed to start upscale task', details: message },
