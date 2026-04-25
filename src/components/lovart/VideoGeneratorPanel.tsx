@@ -27,6 +27,27 @@ export type VideoGenerationStatusResult = {
   seconds?: number;
 };
 
+const VIDEO_SUCCESS_STATUSES = new Set(['succeeded', 'completed', 'success']);
+const VIDEO_FAILURE_STATUSES = new Set(['failed', 'error', 'cancelled', 'canceled', 'timeout', 'expired']);
+
+export function normalizeVideoGenerationStatus(status?: string | null) {
+  return (status || '').trim().toLowerCase();
+}
+
+export function isVideoGenerationSuccessful(status?: string | null) {
+  return VIDEO_SUCCESS_STATUSES.has(normalizeVideoGenerationStatus(status));
+}
+
+export function isVideoGenerationFailed(status?: string | null) {
+  return VIDEO_FAILURE_STATUSES.has(normalizeVideoGenerationStatus(status));
+}
+
+export function isVideoGenerationReady(result: Pick<VideoGenerationStatusResult, 'status' | 'progress' | 'videoUrl'>) {
+  if (!result.videoUrl) return false;
+  if (typeof result.progress === 'number' && result.progress >= 100) return true;
+  return isVideoGenerationSuccessful(result.status);
+}
+
 export async function startVideoGeneration(input: {
   prompt: string;
   seconds: number;
@@ -268,8 +289,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                     console.log('Video status:', data);
                     setProgress(data.progress || 0);
 
-                    // 当 progress 达到 100 且有视频 URL 时，视频准备好了
-                    if (data.progress === 100 && data.videoUrl) {
+                    if (isVideoGenerationReady(data) && data.videoUrl) {
                         if (pollingIntervalRef.current) {
                             clearInterval(pollingIntervalRef.current);
                         }
@@ -278,7 +298,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                         setIsGenerating(false);
                         setTaskId(null);
                         setProgress(0);
-                    } else if (data.status === 'failed') {
+                    } else if (isVideoGenerationFailed(data.status)) {
                         if (pollingIntervalRef.current) {
                             clearInterval(pollingIntervalRef.current);
                         }
