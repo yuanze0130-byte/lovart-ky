@@ -109,6 +109,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const [showSecondsMenu, setShowSecondsMenu] = useState(false);
     const [showReferenceMenu, setShowReferenceMenu] = useState(false);
     const [showModelMenu, setShowModelMenu] = useState(false);
+    const [showAdvanced, setShowAdvanced] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -162,6 +163,23 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         : getPreferredStoryboardVideoSize(currentSizeMeta.aspectRatio, renderProfile);
     const isBoardFitSize = size === boardFitSize;
     const selectedVideoModelOption = VIDEO_MODEL_MODE_OPTIONS.find((option) => option.value === videoModelMode) || VIDEO_MODEL_MODE_OPTIONS[0];
+    const aspectRatioChips = useMemo<Array<{ label: string; ratio: StoryboardAspectRatio; defaultSize: VideoSize }>>(() => ([
+        { label: '竖屏', ratio: '9:16', defaultSize: '720x1280' },
+        { label: '横屏', ratio: '16:9', defaultSize: '1280x720' },
+        { label: '方形', ratio: '1:1', defaultSize: '1024x1024' },
+        { label: '分镜', ratio: sourceAspectRatio, defaultSize: boardFitSize },
+    ]), [boardFitSize, sourceAspectRatio]);
+    const handleAspectRatioSelect = useCallback((ratio: StoryboardAspectRatio, defaultSize: VideoSize) => {
+        const ratioOptions = getStoryboardVideoSizeOptions(ratio) as VideoSize[];
+        if (videoModelMode === 'fast') {
+            const fastOptions = (FAST_MODEL_SIZE_OPTIONS[ratio] || []) as VideoSize[];
+            if (fastOptions.length > 0) {
+                setSize(fastOptions[0]);
+                return;
+            }
+        }
+        setSize(ratioOptions[0] || defaultSize);
+    }, [videoModelMode]);
 
 
     // Initialize local panel state only when switching to a different generator node.
@@ -248,7 +266,6 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                     const data = await getVideoGenerationStatus(taskId);
 
                     console.log('Video status:', data);
-                    
                     setProgress(data.progress || 0);
 
                     // 当 progress 达到 100 且有视频 URL 时，视频准备好了
@@ -338,14 +355,26 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setReferenceImage(e.target.files[0]);
+            syncedReferenceImageIdRef.current = null;
             setShowReferenceMenu(false);
+            e.target.value = '';
         }
     };
 
-    const handleCanvasImageSelect = (imageContent: string) => {
+    const handleCanvasImageSelect = (imageId: string, imageContent: string) => {
         setReferenceImage(imageContent);
+        syncedReferenceImageIdRef.current = imageId;
         setShowReferenceMenu(false);
     };
+
+    const handleClearReferenceImage = () => {
+        setReferenceImage(null);
+        syncedReferenceImageIdRef.current = null;
+    };
+
+    const referenceSummary = referenceImage
+        ? (typeof referenceImage === 'string' ? '已添加画布参考图' : referenceImage.name)
+        : null;
 
     const getImageElements = () => {
         if (!canvasElements) return [];
@@ -375,6 +404,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             storyboardSourceVideoSize: currentElement?.storyboardSourceVideoSize || size,
             storyboardSourceOrientation: currentElement?.storyboardSourceOrientation || currentSizeMeta.orientation,
             storyboardRenderProfile: renderProfile,
+            referenceImageId: typeof referenceImage === 'string' ? syncedReferenceImageIdRef.current || undefined : undefined,
         });
     }, [
         currentElement?.storyboardSourceAspectRatio,
@@ -386,6 +416,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         getNodeDimensions,
         onConfigChange,
         prompt,
+        referenceImage,
         renderProfile,
         seconds,
         size,
@@ -394,11 +425,10 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
     return (
         <div
-            className="absolute z-50 w-[450px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:rounded-3xl dark:border-white/10 dark:bg-black/78 dark:shadow-[0_28px_80px_rgba(0,0,0,0.5)] dark:backdrop-blur-2xl"
+            className="absolute z-50 w-[450px] overflow-hidden rounded-3xl border border-gray-200/80 bg-white shadow-xl dark:border-white/10 dark:bg-black/80 dark:shadow-[0_28px_80px_rgba(0,0,0,0.5)] dark:backdrop-blur-2xl"
             style={style}
             onMouseDown={(e) => e.stopPropagation()}
         >
-            {/* Hidden file input */}
             <input
                 type="file"
                 ref={fileInputRef}
@@ -407,76 +437,273 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                 onChange={handleFileSelect}
             />
 
-            <div className="p-4 space-y-3">
-                {currentElement && (
-                    <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-3 dark:border-white/10 dark:bg-white/5">
-                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
-                            {currentElement.storyboardShotLabel && (
-                                <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentElement.storyboardShotLabel}</span>
-                            )}
-                            {currentElement.storyboardTitle && (
-                                <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentElement.storyboardTitle}</span>
-                            )}
-                            <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{currentSizeMeta.aspectRatio}</span>
-                            <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{size}</span>
-                            <span className="rounded-full bg-white px-2 py-1 shadow-sm dark:bg-white/8">{seconds}s</span>
-                            <span className={`rounded-full px-2 py-1 shadow-sm ${renderProfile === 'high' ? 'bg-violet-50 text-violet-700 dark:bg-violet-400/12 dark:text-violet-100' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-400/12 dark:text-emerald-100'}`}>{renderProfile === 'high' ? '高细节' : '标准细节'}</span>
+            <div className="space-y-4 p-4">
+                <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white">视频生成</div>
+                            <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                {currentElement?.storyboardTitle || currentElement?.storyboardShotLabel || '为当前分镜生成视频'}
+                            </div>
                         </div>
-                        <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">
                             {shotProgressLabel}
-                            {frameDeltaLabel ? ` · ${frameDeltaLabel}` : ''}
-                            {frameAdaptationLabel ? ` · ${frameAdaptationLabel}` : ''}
-                            {!isBoardFitSize ? ` · 建议 ${boardFitSize}` : ''}
                         </div>
                     </div>
-                )}
 
-                <div className="rounded-2xl border border-gray-200 bg-white/80 p-3 dark:border-white/10 dark:bg-white/5">
-                    <div className="mb-2 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
-                        <span>镜头说明</span>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-white/8">{currentSizeMeta.aspectRatio}</span>
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-white/8">{seconds}s</span>
+                        <span className="rounded-full bg-gray-100 px-2.5 py-1 dark:bg-white/8">{selectedVideoModelOption.label}</span>
                         {!isBoardFitSize && (
                             <button
                                 type="button"
                                 onClick={() => setSize(boardFitSize)}
-                                className="rounded-full border border-gray-200 px-2 py-1 text-[10px] font-medium text-gray-500 transition-colors hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:text-gray-300 dark:hover:border-sky-400/20 dark:hover:bg-white/8 dark:hover:text-sky-100"
+                                className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-medium text-blue-600 transition-colors hover:bg-blue-100 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100 dark:hover:bg-sky-400/15"
                             >
-                                使用推荐尺寸 {boardFitSize}
+                                跟随分镜推荐 {boardFitSize}
                             </button>
                         )}
+                    </div>
+                </div>
+
+                <div className="rounded-3xl border border-gray-200 bg-gray-50/70 p-4 dark:border-white/10 dark:bg-white/5">
+                    <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.18em] text-gray-400 dark:text-gray-500">
+                        描述视频
                     </div>
                     <textarea
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                         onKeyDown={handleKeyDown}
-                        placeholder="描述你想要生成的视频..."
-                        className="h-24 w-full resize-none bg-transparent text-base text-gray-900 outline-none placeholder:text-gray-400 dark:text-slate-100 dark:placeholder:text-slate-500"
+                        placeholder="描述主体动作、镜头运动、场景氛围、光线和节奏..."
+                        className="h-28 w-full resize-none bg-transparent text-[15px] leading-6 text-gray-900 outline-none placeholder:text-gray-400 dark:text-slate-100 dark:placeholder:text-slate-500"
                         disabled={isGenerating}
                     />
-                </div>
-            </div>
 
-            {/* Reference Image Preview */}
-            {referenceImage && (
-                <div className="px-4 pb-2">
-                    <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-white/10 dark:bg-white/5">
-                        <ImageIcon size={14} className="text-gray-500 dark:text-gray-300" />
-                        <span className="flex-1 truncate text-xs text-gray-600 dark:text-gray-300">
-                            {typeof referenceImage === 'string' ? '已添加画布参考图' : referenceImage.name}
-                        </span>
+                    {referenceSummary && (
+                        <div className="mt-3 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-black/20">
+                            <ImageIcon size={14} className="text-gray-500 dark:text-gray-300" />
+                            <span className="flex-1 truncate text-xs text-gray-600 dark:text-gray-300">{referenceSummary}</span>
+                            <button
+                                type="button"
+                                onClick={handleClearReferenceImage}
+                                className="rounded p-0.5 text-gray-400 transition-colors hover:text-gray-700 dark:hover:text-white"
+                            >
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-3 rounded-3xl border border-gray-200 bg-white/80 p-3 dark:border-white/10 dark:bg-white/5">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setShowReferenceMenu(!showReferenceMenu)}
+                                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    referenceImage
+                                        ? 'border-gray-300 bg-gray-100 text-gray-900 dark:border-white/15 dark:bg-white/10 dark:text-white'
+                                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-white/10 dark:bg-black/20 dark:text-gray-200 dark:hover:bg-white/8'
+                                }`}
+                            >
+                                <Upload size={14} />
+                                <span>{referenceImage ? '更换参考图' : '添加参考图'}</span>
+                            </button>
+                            {showReferenceMenu && (
+                                <div className="absolute left-0 top-full z-10 mt-2 min-w-[180px] rounded-2xl border border-gray-100 bg-white p-1 shadow-lg dark:border-white/10 dark:bg-gray-950/96">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            fileInputRef.current?.click();
+                                            setShowReferenceMenu(false);
+                                        }}
+                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
+                                    >
+                                        <Upload size={14} />
+                                        上传图片
+                                    </button>
+                                    {imageElements.length > 0 && (
+                                        <>
+                                            <div className="my-1 border-t border-gray-100 dark:border-white/10" />
+                                            <div className="px-3 py-1 text-[11px] text-gray-400 dark:text-gray-500">来自画布</div>
+                                            <div className="max-h-[200px] overflow-y-auto">
+                                                {imageElements.map((el, idx) => (
+                                                    <button
+                                                        type="button"
+                                                        key={el.id}
+                                                        onClick={() => handleCanvasImageSelect(el.id, el.content!)}
+                                                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
+                                                    >
+                                                        <ImageIcon size={14} />
+                                                        <span className="truncate">画布图片 {idx + 1}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {aspectRatioChips.map((chip) => {
+                            const active = currentSizeMeta.aspectRatio === chip.ratio;
+                            return (
+                                <button
+                                    key={`${chip.label}-${chip.ratio}`}
+                                    type="button"
+                                    onClick={() => handleAspectRatioSelect(chip.ratio, chip.defaultSize)}
+                                    className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                                        active
+                                            ? 'bg-black text-white dark:bg-white dark:text-black'
+                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-white/8 dark:text-gray-200 dark:hover:bg-white/12'
+                                    }`}
+                                >
+                                    {chip.label}
+                                </button>
+                            );
+                        })}
+
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setShowSecondsMenu(!showSecondsMenu)}
+                                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/8 dark:text-gray-200 dark:hover:bg-white/12"
+                            >
+                                <span>{seconds}s</span>
+                                <ChevronDown size={12} />
+                            </button>
+                            {showSecondsMenu && (
+                                <div className="absolute left-0 top-full z-10 mt-2 min-w-[72px] rounded-2xl border border-gray-100 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-gray-950/96">
+                                    {secondsOptions.map((sec) => (
+                                        <button
+                                            type="button"
+                                            key={sec}
+                                            onClick={() => {
+                                                setSeconds(sec);
+                                                setShowSecondsMenu(false);
+                                            }}
+                                            className={`block w-full px-3 py-1.5 text-left text-xs transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
+                                                seconds === sec ? 'font-medium text-black dark:text-white' : 'text-gray-700 dark:text-gray-200'
+                                            }`}
+                                        >
+                                            {sec}s
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
                         <button
-                            onClick={() => setReferenceImage(null)}
-                            className="rounded p-0.5 text-gray-400 transition-colors hover:text-gray-700 dark:hover:text-white"
+                            type="button"
+                            onClick={() => setShowAdvanced((prev) => !prev)}
+                            className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200 dark:bg-white/8 dark:text-gray-200 dark:hover:bg-white/12"
                         >
-                            <X size={14} />
+                            <span>高级</span>
+                            <ChevronDown size={12} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
                         </button>
                     </div>
-                </div>
-            )}
 
-            {/* Progress Bar with Loading UI */}
-            {isGenerating && taskId && (
-                <div className="px-4 pb-2">
-                    <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                    {showAdvanced && (
+                        <div className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-3 dark:border-white/10 dark:bg-black/20">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="relative">
+                                    <div className="mb-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">模型</div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowModelMenu(!showModelMenu)}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/8"
+                                    >
+                                        <span className="inline-flex items-center gap-2">
+                                            <Video size={14} />
+                                            {selectedVideoModelOption.label}
+                                        </span>
+                                        <ChevronDown size={14} />
+                                    </button>
+                                    {showModelMenu && (
+                                        <div className="absolute left-0 top-full z-10 mt-2 min-w-full rounded-2xl border border-gray-100 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-gray-950/96">
+                                            {VIDEO_MODEL_MODE_OPTIONS.map((option) => (
+                                                <button
+                                                    type="button"
+                                                    key={option.value}
+                                                    onClick={() => {
+                                                        setVideoModelMode(option.value);
+                                                        setShowModelMenu(false);
+                                                    }}
+                                                    className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
+                                                        videoModelMode === option.value ? 'font-medium text-black dark:text-white' : 'text-gray-700 dark:text-gray-200'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span>{option.label}</span>
+                                                        {videoModelMode === option.value && (
+                                                            <span className="rounded-full bg-black px-1.5 py-0.5 text-[10px] text-white dark:bg-white dark:text-black">当前</span>
+                                                        )}
+                                                    </div>
+                                                    <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{option.hint}</div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="relative">
+                                    <div className="mb-1 text-[11px] font-medium text-gray-500 dark:text-gray-400">尺寸</div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSizeMenu(!showSizeMenu)}
+                                        className="flex w-full items-center justify-between rounded-2xl border border-gray-200 bg-white px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:border-white/10 dark:bg-white/5 dark:text-gray-200 dark:hover:bg-white/8"
+                                    >
+                                        <span>{size}</span>
+                                        <span className="inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                                            {currentSizeMeta.aspectRatio}
+                                            <ChevronDown size={14} />
+                                        </span>
+                                    </button>
+                                    {showSizeMenu && (
+                                        <div className="absolute left-0 top-full z-10 mt-2 min-w-full rounded-2xl border border-gray-100 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-gray-950/96">
+                                            {sizes.map((s) => {
+                                                const sizeMeta = getSizeMeta(s);
+                                                const isRecommended = availableSizeOptions.includes(s);
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        key={s}
+                                                        onClick={() => {
+                                                            setSize(s);
+                                                            setShowSizeMenu(false);
+                                                        }}
+                                                        className={`block w-full px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
+                                                            size === s ? 'font-medium text-black dark:text-white' : 'text-gray-700 dark:text-gray-200'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <span>{s}</span>
+                                                            <span className="text-[11px] text-gray-500 dark:text-gray-400">{sizeMeta.aspectRatio}</span>
+                                                        </div>
+                                                        {isRecommended && (
+                                                            <div className="mt-1 text-[11px] text-blue-600 dark:text-sky-200">推荐尺寸</div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
+                                {!isBoardFitSize && <div>当前尺寸与分镜推荐不一致，可能会产生裁切或重构。</div>}
+                                {frameDeltaLabel && <div>{frameDeltaLabel}</div>}
+                                {frameAdaptationLabel && <div>{frameAdaptationLabel}</div>}
+                                <div>{renderProfile === 'high' ? '当前为高细节输出。' : '当前为标准细节输出。'}</div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {isGenerating && taskId && (
+                    <div className="rounded-2xl border border-gray-200 bg-gray-50/80 px-3 py-2 dark:border-white/10 dark:bg-white/5">
                         <div className="mb-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                             <Loader2 size={14} className="animate-spin" />
                             <span className="flex-1">{progress < 100 ? '正在生成视频' : '视频已完成'}</span>
@@ -489,196 +716,22 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                             />
                         </div>
                     </div>
+                )}
+
+                <div className="flex items-center justify-end">
+                    <button
+                        onClick={() => prompt.trim() && !isGenerating && handleGenerate()}
+                        disabled={!prompt.trim() || isGenerating}
+                        className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium transition-all ${
+                            prompt.trim() && !isGenerating
+                                ? 'bg-black text-white shadow-md hover:bg-gray-800 dark:bg-gradient-to-r dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500 dark:shadow-[0_12px_30px_rgba(37,99,235,0.35)] dark:hover:brightness-110'
+                                : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-white/8 dark:text-slate-500'
+                        }`}
+                    >
+                        {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} className="fill-current" />}
+                        <span>{isGenerating ? `正在生成 ${progress}%` : '生成视频 · 80'}</span>
+                    </button>
                 </div>
-            )}
-
-            {/* Footer Controls */}
-            <div className="flex items-center justify-between border-t border-gray-100 bg-gray-50/60 px-4 py-3 dark:border-white/10 dark:bg-gray-900/70">
-                <div className="flex items-center gap-1.5">
-                    {/* Model Selector */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowModelMenu(!showModelMenu)}
-                            className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-white/8"
-                        >
-                            <div className="w-3.5 h-3.5 rounded-full bg-black flex items-center justify-center">
-                                <Video size={8} className="text-white" />
-                            </div>
-                            <span>{selectedVideoModelOption.label}</span>
-                            <ChevronDown size={12} />
-                        </button>
-                        {showModelMenu && (
-                            <div className="absolute bottom-full mb-1 left-0 min-w-[220px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-10 dark:border-white/10 dark:bg-gray-950/96">
-                                {VIDEO_MODEL_MODE_OPTIONS.map((option) => (
-                                    <div
-                                        key={option.value}
-                                        onClick={() => {
-                                            setVideoModelMode(option.value);
-                                            setShowModelMenu(false);
-                                        }}
-                                        className={`px-3 py-2 text-xs cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
-                                            videoModelMode === option.value ? 'text-black font-medium bg-gray-50 dark:bg-white/8 dark:text-white' : 'text-gray-700 dark:text-gray-200'
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between gap-3">
-                                            <span>{option.label}</span>
-                                            {videoModelMode === option.value && (
-                                                <span className="rounded-full bg-black px-1.5 py-0.5 text-[10px] text-white dark:bg-white dark:text-black">当前</span>
-                                            )}
-                                        </div>
-                                        <div className="mt-1 text-[10px] text-gray-500 dark:text-gray-400">{option.value === 'fast' ? '更快' : option.hint}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Reference Image Button */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setShowReferenceMenu(!showReferenceMenu)}
-                            className={`rounded-lg p-1.5 transition-colors hover:bg-gray-100 dark:hover:bg-white/8 ${
-                                referenceImage ? 'bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-white' : 'text-gray-600 dark:text-gray-300'
-                            }`}
-                            title="参考图"
-                        >
-                            <Upload size={16} />
-                        </button>
-                        {showReferenceMenu && (
-                            <div className="absolute bottom-full mb-1 left-0 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-[140px]">
-                                <div
-                                    onClick={() => {
-                                        fileInputRef.current?.click();
-                                        setShowReferenceMenu(false);
-                                    }}
-                                    className="px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 text-gray-700 dark:text-gray-200 dark:hover:bg-white/8"
-                                >
-                                    上传参考图
-                                </div>
-                                {imageElements.length > 0 && (
-                                    <>
-                                        <div className="border-t border-gray-100 my-1"></div>
-                                        <div className="px-2 py-1 text-xs text-gray-500">画布图片</div>
-                                        <div className="max-h-[200px] overflow-y-auto">
-                                            {imageElements.map((el, idx) => (
-                                                <div
-                                                    key={el.id}
-                                                    onClick={() => handleCanvasImageSelect(el.content!)}
-                                                    className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
-                                                >
-                                                    <ImageIcon size={14} />
-                                                    <span>{idx + 1}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Size Selector */}
-                    <div className="relative">
-                        <div
-                            onClick={() => setShowSizeMenu(!showSizeMenu)}
-                            className="flex items-center gap-1 text-xs text-gray-600 font-medium cursor-pointer hover:bg-gray-100 px-1.5 py-1 rounded-lg transition-colors dark:text-gray-300 dark:hover:bg-white/8"
-                        >
-                            <span>{size}</span>
-                            <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-white/8 dark:text-gray-300">
-                                {getSizeMeta(size).aspectRatio}
-                            </span>
-                            <ChevronDown size={12} />
-                        </div>
-                        {showSizeMenu && (
-                            <div className="absolute bottom-full mb-1 min-w-[220px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg z-10 dark:border-white/10 dark:bg-gray-950/96">
-                                {sizes.map((s) => {
-                                    const sizeMeta = getSizeMeta(s);
-                                    const isRecommended = availableSizeOptions.includes(s);
-                                    const isBoardDefault = currentElement?.storyboardVideoSize === s;
-                                    return (
-                                        <div
-                                            key={s}
-                                            onClick={() => {
-                                                setSize(s);
-                                                setShowSizeMenu(false);
-                                            }}
-                                            className={`px-3 py-2 text-xs cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-white/8 ${
-                                                size === s ? 'text-black font-medium bg-gray-50 dark:bg-white/8 dark:text-white' : 'text-gray-700 dark:text-gray-200'
-                                            }`}
-                                        >
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div className="flex items-center gap-2">
-                                                    <span>{s}</span>
-                                                    {isRecommended && (
-                                                        <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:bg-sky-400/14 dark:text-sky-100">推荐</span>
-                                                    )}
-                                                    {isBoardDefault && (
-                                                        <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:bg-emerald-400/14 dark:text-emerald-200">默认</span>
-                                                    )}
-                                                </div>
-                                                <span className="text-[10px] text-gray-500 dark:text-gray-400">{sizeMeta.aspectRatio}</span>
-                                            </div>
-                                            <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500">
-                                                {isRecommended
-                                                    ? '当前镜头推荐尺寸'
-                                                    : isBoardDefault
-                                                        ? '制作板默认尺寸'
-                                                        : '手动覆盖'}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Seconds Selector */}
-                    <div className="relative">
-                        <div
-                            onClick={() => setShowSecondsMenu(!showSecondsMenu)}
-                            className="flex cursor-pointer items-center gap-1 rounded-lg px-1.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-white/8"
-                        >
-                            <span>{seconds}s</span>
-                            <ChevronDown size={12} />
-                        </div>
-                        {showSecondsMenu && (
-                            <div className="absolute bottom-full z-10 mb-1 min-w-[60px] rounded-lg border border-gray-100 bg-white py-1 shadow-lg dark:rounded-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
-                                {secondsOptions.map((sec) => (
-                                    <div
-                                        key={sec}
-                                        onClick={() => {
-                                            setSeconds(sec);
-                                            setShowSecondsMenu(false);
-                                        }}
-                                        className={`px-3 py-1 text-xs cursor-pointer hover:bg-gray-50 dark:hover:bg-white/8 ${
-                                            seconds === sec ? 'bg-gray-50 text-black font-medium dark:bg-white/8 dark:text-white' : 'text-gray-700 dark:text-gray-200'
-                                        }`}
-                                    >
-                                        {sec}s
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Generate Button */}
-                <button
-                    onClick={() => prompt.trim() && !isGenerating && handleGenerate()}
-                    disabled={!prompt.trim() || isGenerating}
-                    className={`flex items-center gap-1.5 rounded-xl px-4 py-1.5 transition-all ${
-                        prompt.trim() && !isGenerating
-                            ? 'bg-black text-white shadow-md hover:bg-gray-800 dark:bg-gradient-to-r dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500 dark:shadow-[0_12px_30px_rgba(37,99,235,0.35)] dark:hover:brightness-110'
-                            : 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-white/8 dark:text-slate-500'
-                    }`}
-                >
-                    {isGenerating ? (
-                        <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                        <Zap size={16} className="fill-current" />
-                    )}
-                    <span className="font-medium">80</span>
-                </button>
             </div>
         </div>
     );
