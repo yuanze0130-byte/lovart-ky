@@ -18,7 +18,7 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     promptPresetLabel?: string;
     promptDebug?: string;
     imageEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
-    modelVariant?: 'standard' | 'pro';
+    modelVariant?: 'standard' | 'pro' | 'gpt-image-2';
     provider?: 'official' | 'proxy';
     providerMode?: 'official' | 'proxy' | 'auto';
     providerFallbackUsed?: boolean;

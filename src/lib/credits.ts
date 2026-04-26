@@ -3,7 +3,7 @@ import type { UserCreditsRow } from '@/lib/supabase';
 
 export const DEFAULT_SIGNUP_CREDITS = 30;
 
-export type ImageModelVariant = 'standard' | 'pro';
+export type ImageModelVariant = 'standard' | 'pro' | 'gpt-image-2';
 export type ImageResolution = '1K' | '2K' | '4K';
 export type VideoModelMode = 'standard' | 'fast';
 export type UpscaleScale = 2 | 4 | 6;
@@ -19,6 +19,11 @@ export const CREDIT_COSTS = {
       '4K': 4,
     },
     pro: {
+      '1K': 4,
+      '2K': 5,
+      '4K': 6,
+    },
+    'gpt-image-2': {
       '1K': 4,
       '2K': 5,
       '4K': 6,

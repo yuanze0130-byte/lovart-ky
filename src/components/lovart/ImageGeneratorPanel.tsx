@@ -8,7 +8,7 @@ import { getImageCreditCost } from '@/lib/credits';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
-type BananaVariant = 'standard' | 'pro';
+type BananaVariant = 'standard' | 'pro' | 'gpt-image-2';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 
 interface ImageGeneratorPanelProps {
@@ -70,6 +70,7 @@ const MODE_META: Record<ImageEditMode, { title: string; subtitle: string; icon: 
 const MODEL_LABELS: Record<BananaVariant, string> = {
   standard: 'Nanobanana 2',
   pro: 'Nanobanana Pro',
+  'gpt-image-2': 'GPT Image 2',
 };
 
 export function ImageGeneratorPanel({
@@ -254,6 +255,7 @@ export function ImageGeneratorPanel({
             <select value={modelVariant} onChange={(e) => setModelVariant(e.target.value as BananaVariant)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
               <option value="pro">Nanobanana Pro</option>
               <option value="standard">Nanobanana 2</option>
+              <option value="gpt-image-2">GPT Image 2</option>
             </select>
           </label>
         </div>

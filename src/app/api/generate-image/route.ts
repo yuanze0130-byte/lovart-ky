@@ -5,7 +5,7 @@ import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, getImageCreditCost, refundCredits } from '@/lib/credits';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
-type ModelVariant = 'standard' | 'pro';
+type ModelVariant = 'standard' | 'pro' | 'gpt-image-2';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 type SupportedResolution = '1K' | '2K' | '4K';
@@ -138,6 +138,10 @@ function normalizeReferenceImages(referenceImages?: string[], referenceImage?: s
 function getProxyModel(payload: GenerateImagePayload) {
   const resolution = payload.resolution || '1K';
 
+  if (payload.modelVariant === 'gpt-image-2') {
+    return process.env.GEMINI_PROXY_GPT_IMAGE_2_MODEL || 'gpt-image-2';
+  }
+
   if (payload.modelVariant === 'standard') {
     if (resolution === '2K') {
       return process.env.GEMINI_PROXY_STANDARD_MODEL_2K || process.env.GEMINI_PROXY_STANDARD_MODEL_HD || 'nano-banana-hd';
@@ -159,6 +163,46 @@ function getProxyModel(payload: GenerateImagePayload) {
   }
 
   return process.env.GEMINI_PROXY_PRO_MODEL || process.env.GEMINI_PROXY_MODEL || 'nano-banana-pro';
+}
+
+function roundToStep(value: number, step: number) {
+  return Math.max(step, Math.round(value / step) * step);
+}
+
+function getGptImage2Size(
+  aspectRatio: SupportedAspectRatio,
+  resolution: SupportedResolution
+) {
+  const shortEdge = resolution === '4K' ? 2048 : resolution === '2K' ? 1536 : 1024;
+
+  if (aspectRatio === 'auto') {
+    return `${shortEdge}x${shortEdge}`;
+  }
+
+  const ratioMatch = aspectRatio.match(/^(\d+):(\d+)$/);
+  if (!ratioMatch) {
+    return `${shortEdge}x${shortEdge}`;
+  }
+
+  const widthRatio = Number(ratioMatch[1]);
+  const heightRatio = Number(ratioMatch[2]);
+
+  if (!Number.isFinite(widthRatio) || !Number.isFinite(heightRatio) || widthRatio <= 0 || heightRatio <= 0) {
+    return `${shortEdge}x${shortEdge}`;
+  }
+
+  const normalizedRatio = widthRatio / heightRatio;
+  if (normalizedRatio > 1.15) {
+    const width = roundToStep(shortEdge * normalizedRatio, 32);
+    return `${width}x${shortEdge}`;
+  }
+
+  if (normalizedRatio < 0.87) {
+    const height = roundToStep(shortEdge / normalizedRatio, 32);
+    return `${shortEdge}x${height}`;
+  }
+
+  return `${shortEdge}x${shortEdge}`;
 }
 
 function getProxyTargets() {
@@ -389,11 +433,51 @@ async function generateViaProxy(payload: GenerateImagePayload) {
         referenceCount: references.length,
       });
 
-      const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL });
-      const response = (await client.chat.completions.create({
-        model: proxyModel,
-        messages: [{ role: 'user', content }],
-      })) as unknown as GeminiChatCompletion;
+      let response: GeminiChatCompletion;
+
+      if (payload.modelVariant === 'gpt-image-2') {
+        const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/generations`;
+        const imageResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${target.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: proxyModel,
+            prompt: finalPrompt,
+            size: getGptImage2Size(payload.aspectRatio || '1:1', payload.resolution || '1K'),
+            response_format: 'b64_json',
+            ...(references.length > 0
+              ? {
+                  image: references.map((reference) =>
+                    reference.kind === 'url'
+                      ? reference.url!
+                      : `data:${reference.mimeType || 'image/jpeg'};base64,${reference.data || ''}`
+                  ),
+                  n: 1,
+                }
+              : {}),
+          }),
+        });
+
+        const rawText = await imageResponse.text();
+        if (!imageResponse.ok) {
+          throw new Error(`gpt-image-2 proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+        }
+
+        try {
+          response = JSON.parse(rawText) as GeminiChatCompletion;
+        } catch {
+          throw new Error(`gpt-image-2 proxy returned non-JSON: ${rawText.slice(0, 500)}`);
+        }
+      } else {
+        const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL });
+        response = (await client.chat.completions.create({
+          model: proxyModel,
+          messages: [{ role: 'user', content }],
+        })) as unknown as GeminiChatCompletion;
+      }
 
       const baseResult = {
         requestedAspectRatio: payload.aspectRatio || '1:1',

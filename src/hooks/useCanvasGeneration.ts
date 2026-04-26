@@ -6,7 +6,7 @@ import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 
-type BananaVariant = 'standard' | 'pro';
+type BananaVariant = 'standard' | 'pro' | 'gpt-image-2';
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
@@ -30,7 +30,7 @@ function isAspectRatio(value: unknown): value is AspectRatio {
 }
 
 function isBananaVariant(value: unknown): value is BananaVariant {
-  return value === 'standard' || value === 'pro';
+  return value === 'standard' || value === 'pro' || value === 'gpt-image-2';
 }
 
 function updateProjectThumbnail(projectId: string | undefined, thumbnail: string) {
