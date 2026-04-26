@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Create user_credits table
 CREATE TABLE IF NOT EXISTS user_credits (
   user_id TEXT PRIMARY KEY,
-  credits INTEGER NOT NULL DEFAULT 1000,
+  credits INTEGER NOT NULL DEFAULT 30,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

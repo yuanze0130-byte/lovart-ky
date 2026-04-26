@@ -18,7 +18,7 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     promptPresetLabel?: string;
     promptDebug?: string;
     imageEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
-    modelVariant?: 'standard' | 'pro' | 'gpt-image-2';
+    modelVariant?: 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
     provider?: 'official' | 'proxy';
     providerMode?: 'official' | 'proxy' | 'auto';
     providerFallbackUsed?: boolean;
@@ -28,6 +28,10 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     referenceCount?: number;
     resolution?: '1K' | '2K' | '4K';
     aspectRatio?: 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
+    officialQuality?: 'auto' | 'high' | 'medium' | 'low';
+    officialBackground?: 'auto' | 'transparent' | 'opaque';
+    officialOutputFormat?: 'png' | 'jpeg' | 'webp';
+    officialModeration?: 'auto' | 'low';
 }
 
 export interface CanvasElement extends Record<string, Json | undefined> {
@@ -122,6 +126,43 @@ function getProviderLabel(metadata?: GenerationMetadata) {
 function getModelLabel(metadata?: GenerationMetadata) {
     if (!metadata?.model) return undefined;
     return metadata.model;
+}
+
+function getOfficialOptionChips(metadata?: GenerationMetadata) {
+    if (metadata?.modelVariant !== 'gpt-image-2-official') return [] as string[];
+
+    const chips: string[] = [];
+
+    if (metadata.officialQuality) {
+        const qualityLabel = metadata.officialQuality === 'high'
+            ? '高质量'
+            : metadata.officialQuality === 'medium'
+                ? '中质量'
+                : metadata.officialQuality === 'low'
+                    ? '低质量'
+                    : '自动质量';
+        chips.push(qualityLabel);
+    }
+
+    if (metadata.officialBackground) {
+        const backgroundLabel = metadata.officialBackground === 'transparent'
+            ? '透明背景'
+            : metadata.officialBackground === 'opaque'
+                ? '实色背景'
+                : '自动背景';
+        chips.push(backgroundLabel);
+    }
+
+    if (metadata.officialOutputFormat) {
+        const formatLabel = metadata.officialOutputFormat.toUpperCase();
+        chips.push(formatLabel);
+    }
+
+    if (metadata.officialModeration) {
+        chips.push(metadata.officialModeration === 'low' ? '低审查' : '自动审查');
+    }
+
+    return chips;
 }
 
 interface CanvasAreaProps {
@@ -1451,7 +1492,43 @@ export function CanvasArea({
                                     </>
                                 )}
 
-                                {el.type === 'image' && el.content && <img src={el.content} alt="Upload" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />}
+                                {el.type === 'image' && el.content && (() => {
+                                    const metadata = el.generationMetadata;
+                                    const providerLabel = getProviderLabel(metadata);
+                                    const modelLabel = getModelLabel(metadata);
+                                    const officialOptionChips = getOfficialOptionChips(metadata);
+                                    const fallbackSummary = metadata?.providerFallbackUsed
+                                        ? (metadata.fallbackReason || '已触发回退')
+                                        : undefined;
+                                    const promptPreview = typeof metadata?.sourcePrompt === 'string' && metadata.sourcePrompt
+                                        ? metadata.sourcePrompt
+                                        : typeof el.prompt === 'string' && el.prompt
+                                            ? el.prompt
+                                            : undefined;
+
+                                    return (
+                                        <div className="relative w-full h-full overflow-hidden rounded-lg bg-slate-950">
+                                            <img src={el.content} alt="Upload" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />
+                                            {(providerLabel || modelLabel || officialOptionChips.length > 0 || fallbackSummary || promptPreview) && (
+                                                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/88 via-slate-950/48 to-transparent p-3 text-white">
+                                                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
+                                                        {providerLabel && <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/88">{providerLabel}</span>}
+                                                        {modelLabel && <span className="rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-white/82">{modelLabel}</span>}
+                                                        {officialOptionChips.map((chip) => (
+                                                            <span key={chip} className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-2.5 py-1 text-cyan-50">{chip}</span>
+                                                        ))}
+                                                    </div>
+                                                    {promptPreview && (
+                                                        <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/82">{promptPreview}</div>
+                                                    )}
+                                                    {fallbackSummary && (
+                                                        <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/12 px-2.5 py-2 text-[11px] leading-5 text-amber-50">回退说明：{fallbackSummary}</div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
 
                                 {el.type === 'video' && el.content && (() => {
                                     const hasStoryboardMeta = Boolean(el.storyboardShotLabel || el.storyboardTitle || el.storyboardAspectRatio || el.storyboardVideoSize);

@@ -8,8 +8,12 @@ import { getImageCreditCost } from '@/lib/credits';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
-type BananaVariant = 'standard' | 'pro' | 'gpt-image-2';
+type BananaVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
+type OfficialQuality = 'auto' | 'high' | 'medium' | 'low';
+type OfficialBackground = 'auto' | 'transparent' | 'opaque';
+type OfficialOutputFormat = 'png' | 'jpeg' | 'webp';
+type OfficialModeration = 'auto' | 'low';
 
 interface ImageGeneratorPanelProps {
   elementId: string;
@@ -26,6 +30,12 @@ interface ImageGeneratorPanelProps {
     promptPresetId?: string,
     promptPresetLabel?: string,
     promptDebug?: string,
+    officialOptions?: {
+      quality?: OfficialQuality;
+      background?: OfficialBackground;
+      outputFormat?: OfficialOutputFormat;
+      moderation?: OfficialModeration;
+    },
   ) => Promise<void>;
   isGenerating: boolean;
   style?: React.CSSProperties;
@@ -33,7 +43,8 @@ interface ImageGeneratorPanelProps {
 }
 
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
-const GPT_IMAGE_2_ASPECT_RATIO_OPTIONS: AspectRatio[] = ['1:1', '2:3', '3:2'];
+const GPT_IMAGE_2_ASPECT_RATIO_OPTIONS: AspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
+const GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS: AspectRatio[] = ['1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '16:9', '9:16', '21:9'];
 
 const MODE_META: Record<ImageEditMode, { title: string; subtitle: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
   generate: {
@@ -72,6 +83,7 @@ const MODEL_LABELS: Record<BananaVariant, string> = {
   standard: 'Nanobanana 2',
   pro: 'Nanobanana Pro',
   'gpt-image-2': 'GPT Image 2',
+  'gpt-image-2-official': 'GPT Image 2 Official',
 };
 
 export function ImageGeneratorPanel({
@@ -91,6 +103,10 @@ export function ImageGeneratorPanel({
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [editMode] = useState<ImageEditMode>(initialMode);
   const [progress, setProgress] = useState(0);
+  const [officialQuality, setOfficialQuality] = useState<OfficialQuality>('auto');
+  const [officialBackground, setOfficialBackground] = useState<OfficialBackground>('auto');
+  const [officialOutputFormat, setOfficialOutputFormat] = useState<OfficialOutputFormat>('png');
+  const [officialModeration, setOfficialModeration] = useState<OfficialModeration>('auto');
 
   const selectedElement = useMemo(
     () => canvasElements.find((item) => item.id === elementId),
@@ -98,14 +114,36 @@ export function ImageGeneratorPanel({
   );
 
   const activeMeta = MODE_META[editMode];
-  const availableAspectRatios = modelVariant === 'gpt-image-2' ? GPT_IMAGE_2_ASPECT_RATIO_OPTIONS : ASPECT_RATIO_OPTIONS;
+  const availableAspectRatios = modelVariant === 'gpt-image-2'
+    ? GPT_IMAGE_2_ASPECT_RATIO_OPTIONS
+    : modelVariant === 'gpt-image-2-official'
+      ? GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS
+      : ASPECT_RATIO_OPTIONS;
   const imageCreditCost = useMemo(() => getImageCreditCost(modelVariant, resolution), [modelVariant, resolution]);
+  const isOfficialModel = modelVariant === 'gpt-image-2-official';
 
   useEffect(() => {
     if (!availableAspectRatios.includes(aspectRatio)) {
       setAspectRatio(availableAspectRatios[0]);
     }
   }, [aspectRatio, availableAspectRatios]);
+
+  useEffect(() => {
+    if (!isOfficialModel) return;
+
+    setOfficialQuality((prev) => (prev === 'auto' ? 'high' : prev));
+    setOfficialOutputFormat((prev) => (prev === 'png' ? 'png' : prev));
+
+    if (editMode === 'background') {
+      setOfficialBackground('opaque');
+      return;
+    }
+
+    if (editMode === 'enhance' || editMode === 'relight' || editMode === 'restyle' || editMode === 'angle') {
+      setOfficialBackground('auto');
+      return;
+    }
+  }, [editMode, isOfficialModel]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -168,6 +206,14 @@ export function ImageGeneratorPanel({
         editMode === 'generate' ? undefined : editMode,
         editMode === 'generate' ? undefined : activeMeta.title,
         editMode === 'generate' ? undefined : promptPatch,
+        isOfficialModel
+          ? {
+              quality: officialQuality,
+              background: officialBackground,
+              outputFormat: officialOutputFormat,
+              moderation: officialModeration,
+            }
+          : undefined,
       );
     } finally {
       window.clearInterval(timer);
@@ -264,9 +310,65 @@ export function ImageGeneratorPanel({
               <option value="pro">Nanobanana Pro</option>
               <option value="standard">Nanobanana 2</option>
               <option value="gpt-image-2">GPT Image 2</option>
+              <option value="gpt-image-2-official">GPT Image 2 Official</option>
             </select>
           </label>
         </div>
+
+        {isOfficialModel && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-gray-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-slate-200">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-amber-700 dark:text-amber-200">Official 参数</div>
+                <div className="mt-1 text-xs text-amber-900/80 dark:text-amber-100/80">
+                  更适合精细控制输出质量、背景和格式。默认建议：高质量 + PNG。
+                </div>
+              </div>
+              <div className="rounded-full bg-white/80 px-2 py-1 text-[11px] font-medium text-amber-700 shadow-sm dark:bg-white/10 dark:text-amber-200">
+                推荐精修 / 商业稿
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label>
+                质量
+                <select value={officialQuality} onChange={(e) => setOfficialQuality(e.target.value as OfficialQuality)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+                  <option value="auto">Auto</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">High 更稳，Low 更快，Auto 交给接口策略。</div>
+              </label>
+              <label>
+                背景
+                <select value={officialBackground} onChange={(e) => setOfficialBackground(e.target.value as OfficialBackground)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+                  <option value="auto">Auto</option>
+                  <option value="transparent">Transparent</option>
+                  <option value="opaque">Opaque</option>
+                </select>
+                <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">透明背景适合贴纸、电商主图素材；Opaque 更适合完整场景图。</div>
+              </label>
+              <label>
+                输出格式
+                <select value={officialOutputFormat} onChange={(e) => setOfficialOutputFormat(e.target.value as OfficialOutputFormat)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+                  <option value="png">PNG</option>
+                  <option value="jpeg">JPEG</option>
+                  <option value="webp">WEBP</option>
+                </select>
+                <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">PNG 保细节最好；JPEG 更轻；WEBP 适合网页展示。</div>
+              </label>
+              <label>
+                审核强度
+                <select value={officialModeration} onChange={(e) => setOfficialModeration(e.target.value as OfficialModeration)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+                  <option value="auto">Auto</option>
+                  <option value="low">Low</option>
+                </select>
+                <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">默认 Auto 更稳；只有明确需要放宽时再切 Low。</div>
+              </label>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
           当前：<span className="font-medium text-gray-900 dark:text-white">{MODEL_LABELS[modelVariant]}</span>

@@ -6,8 +6,14 @@ import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 
-type BananaVariant = 'standard' | 'pro' | 'gpt-image-2';
+type BananaVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
+type OfficialImageOptions = {
+  quality?: 'auto' | 'high' | 'medium' | 'low';
+  background?: 'auto' | 'transparent' | 'opaque';
+  outputFormat?: 'png' | 'jpeg' | 'webp';
+  moderation?: 'auto' | 'low';
+};
 type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
 export type Resolution = '1K' | '2K' | '4K';
@@ -30,7 +36,7 @@ function isAspectRatio(value: unknown): value is AspectRatio {
 }
 
 function isBananaVariant(value: unknown): value is BananaVariant {
-  return value === 'standard' || value === 'pro' || value === 'gpt-image-2';
+  return value === 'standard' || value === 'pro' || value === 'gpt-image-2' || value === 'gpt-image-2-official';
 }
 
 function updateProjectThumbnail(projectId: string | undefined, thumbnail: string) {
@@ -70,6 +76,7 @@ function buildGenerationMetadata({
   referenceCount,
   resolution,
   aspectRatio,
+  officialOptions,
 }: {
   prompt: string;
   finalPrompt: string;
@@ -82,6 +89,7 @@ function buildGenerationMetadata({
   referenceCount: number;
   resolution: Resolution;
   aspectRatio: AspectRatio;
+  officialOptions?: OfficialImageOptions;
 }): GenerationMetadata {
   return {
     sourcePrompt: prompt,
@@ -95,6 +103,14 @@ function buildGenerationMetadata({
     referenceCount,
     resolution,
     aspectRatio,
+    ...(modelVariant === 'gpt-image-2-official'
+      ? {
+          officialQuality: officialOptions?.quality || 'auto',
+          officialBackground: officialOptions?.background || 'auto',
+          officialOutputFormat: officialOptions?.outputFormat || 'png',
+          officialModeration: officialOptions?.moderation || 'auto',
+        }
+      : {}),
   };
 }
 
@@ -125,6 +141,7 @@ export async function requestImageGeneration(input: {
   promptPresetId?: string;
   promptPresetLabel?: string;
   promptDebug?: string;
+  officialOptions?: OfficialImageOptions;
 }) {
   const {
     prompt,
@@ -137,6 +154,7 @@ export async function requestImageGeneration(input: {
     promptPresetId,
     promptPresetLabel,
     promptDebug,
+    officialOptions,
   } = input;
 
   const finalPrompt = promptPatch ? `${prompt}\n\n[编辑意图]\n${promptPatch}` : prompt;
@@ -152,6 +170,7 @@ export async function requestImageGeneration(input: {
     referenceCount: referenceImages.length,
     resolution,
     aspectRatio,
+    officialOptions,
   });
   const primaryReference = referenceImages[0];
 
@@ -169,6 +188,7 @@ export async function requestImageGeneration(input: {
       modelVariant,
       editMode,
       mimeType: primaryReference ? 'image/jpeg' : undefined,
+      officialOptions,
     }),
   });
 
@@ -387,7 +407,8 @@ export function useCanvasGeneration({
       promptPatch?: string,
       promptPresetId?: string,
       promptPresetLabel?: string,
-      promptDebug?: string
+      promptDebug?: string,
+      officialOptions?: OfficialImageOptions
     ) => {
       setIsGenerating(true);
       try {
@@ -402,6 +423,7 @@ export function useCanvasGeneration({
           promptPresetId,
           promptPresetLabel,
           promptDebug,
+          officialOptions,
         });
 
         const generatorElementId = selectedIds.find(

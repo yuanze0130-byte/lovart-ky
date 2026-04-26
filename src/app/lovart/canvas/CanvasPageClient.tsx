@@ -1535,7 +1535,7 @@ function LovartCanvasContent() {
         prompt: string;
         aspectRatio: AspectRatio;
         resolution: Resolution;
-        modelVariant: 'standard' | 'pro' | 'gpt-image-2';
+        modelVariant: 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
     }) => {
         const targetStoryboardItem = storyboard.find((item) => item.id === input.storyboardItemId);
         const aspectMeta = getStoryboardAspectMeta(input.aspectRatio as StoryboardAspectRatio);
