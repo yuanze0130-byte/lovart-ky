@@ -247,7 +247,19 @@ function extractImageFromGeminiResponse(response: GeminiOfficialResponse, baseRe
   throw new Error('No image data in Gemini response');
 }
 
-function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>) {
+async function fetchImageUrlAsDataUrl(imageUrl: string) {
+  const upstreamResponse = await fetch(imageUrl);
+  if (!upstreamResponse.ok) {
+    throw new Error(`Failed to fetch generated image URL (${upstreamResponse.status} ${upstreamResponse.statusText}): ${imageUrl}`);
+  }
+
+  const contentType = upstreamResponse.headers.get('content-type') || 'image/png';
+  const arrayBuffer = await upstreamResponse.arrayBuffer();
+  const base64Data = Buffer.from(arrayBuffer).toString('base64');
+  return `data:${contentType};base64,${base64Data}`;
+}
+
+async function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>) {
   try {
     console.log('[generate-image] proxy response summary:', {
       proxyTarget: baseResult.proxyTarget,
@@ -295,7 +307,7 @@ function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResul
   const directUrl = response.data?.[0]?.url || response.images?.[0]?.url;
   if (directUrl) {
     return {
-      imageData: directUrl,
+      imageData: await fetchImageUrlAsDataUrl(directUrl),
       textResponse: '',
       ...baseResult,
     };
@@ -309,7 +321,7 @@ function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResul
       const b64 = item?.b64_json || item?.image_base64;
       if (imageUrl) {
         return {
-          imageData: imageUrl,
+          imageData: await fetchImageUrlAsDataUrl(imageUrl),
           textResponse: '',
           ...baseResult,
         };
@@ -338,7 +350,7 @@ function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResul
     const urlMatch = messageContent.match(/https?:\/\/[^\s\)]+\.(jpg|jpeg|png|webp|gif)/i);
     if (urlMatch) {
       return {
-        imageData: urlMatch[0],
+        imageData: await fetchImageUrlAsDataUrl(urlMatch[0]),
         textResponse: '',
         ...baseResult,
       };
