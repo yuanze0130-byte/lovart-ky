@@ -9,6 +9,9 @@ type ModelVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 type SupportedResolution = '1K' | '2K' | '4K';
+type OfficialImageSizeValidationResult =
+  | { ok: true; width: number; height: number; pixels: number }
+  | { ok: false; reason: string };
 
 interface GeminiInlineDataPart {
   inlineData?: {
@@ -176,6 +179,8 @@ function getProxyModel(payload: GenerateImagePayload) {
 }
 
 const GPT_IMAGE_2_DEFAULT_ASPECT_RATIOS: SupportedAspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
+const DEFAULT_GPT_IMAGE_2_POLL_INTERVAL_MS = Number(process.env.GEMINI_PROXY_GPT_IMAGE_2_POLL_INTERVAL_MS || 3000);
+const DEFAULT_GPT_IMAGE_2_POLL_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_GPT_IMAGE_2_POLL_TIMEOUT_MS || 300000);
 const GPT_IMAGE_2_OFFICIAL_SIZE_MAP: Record<string, string> = {
   '1:1|1K': '1024x1024',
   '1:1|2K': '2048x2048',
@@ -222,6 +227,37 @@ function getOfficialGptImage2Size(
   resolution: SupportedResolution,
 ) {
   return GPT_IMAGE_2_OFFICIAL_SIZE_MAP[`${aspectRatio}|${resolution}`] || '1024x1024';
+}
+
+function validateOfficialGptImage2Size(size: string): OfficialImageSizeValidationResult {
+  const match = size.match(/^(\d+)x(\d+)$/);
+  if (!match) {
+    return { ok: false, reason: '官方 gpt-image-2 size 格式无效，必须为 宽x高' };
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return { ok: false, reason: '官方 gpt-image-2 size 宽高必须为正整数' };
+  }
+
+  const longEdge = Math.max(width, height);
+  const shortEdge = Math.min(width, height);
+  const pixels = width * height;
+
+  if (longEdge > 3840) {
+    return { ok: false, reason: `官方 gpt-image-2 size 长边超限: ${size} (最大 3840)` };
+  }
+
+  if (longEdge / shortEdge > 3) {
+    return { ok: false, reason: `官方 gpt-image-2 size 比例超限: ${size} (最大 3:1)` };
+  }
+
+  if (pixels < 655360 || pixels > 8294400) {
+    return { ok: false, reason: `官方 gpt-image-2 size 像素数超限: ${size} (${pixels})` };
+  }
+
+  return { ok: true, width, height, pixels };
 }
 
 function getProxyTargets() {
@@ -420,14 +456,23 @@ async function pollGptImage2Task(params: {
   apiKey: string;
   taskId: string;
   timeoutMs?: number;
+  intervalMs?: number;
 }) {
-  const { baseURL, apiKey, taskId, timeoutMs = 300000 } = params;
+  const {
+    baseURL,
+    apiKey,
+    taskId,
+    timeoutMs = DEFAULT_GPT_IMAGE_2_POLL_TIMEOUT_MS,
+    intervalMs = DEFAULT_GPT_IMAGE_2_POLL_INTERVAL_MS,
+  } = params;
   const queryUrl = `${baseURL.replace(/\/+$/, '')}/images/tasks/${taskId}`;
   const startedAt = Date.now();
+  let attemptCount = 0;
   let lastPayload: unknown = null;
 
   while (Date.now() - startedAt < timeoutMs) {
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    attemptCount += 1;
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
 
     const statusResponse = await fetch(queryUrl, {
       headers: {
@@ -461,6 +506,15 @@ async function pollGptImage2Task(params: {
       return {
         response: nested,
         taskPayload: statusPayload,
+        pollMetadata: {
+          taskId,
+          status,
+          intervalMs,
+          timeoutMs,
+          attemptCount,
+          durationMs: Date.now() - startedAt,
+          completedAt: new Date().toISOString(),
+        },
       };
     }
 
@@ -576,6 +630,18 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 
       let response: GeminiChatCompletion;
       let taskId: string | undefined;
+      let taskPayload: Record<string, unknown> | undefined;
+      let taskMetadata:
+        | {
+            taskId: string;
+            status: string;
+            intervalMs: number;
+            timeoutMs: number;
+            attemptCount: number;
+            durationMs: number;
+            completedAt: string;
+          }
+        | undefined;
 
       if (payload.modelVariant === 'gpt-image-2') {
         const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/generations?async=true`;
@@ -631,12 +697,20 @@ async function generateViaProxy(payload: GenerateImagePayload) {
           taskId,
         });
         response = taskResult.response;
+        taskPayload = taskResult.taskPayload as Record<string, unknown>;
+        taskMetadata = taskResult.pollMetadata;
       } else if (payload.modelVariant === 'gpt-image-2-official') {
         const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/edits?async=true`;
+        const officialSize = getOfficialGptImage2Size(normalizedAspectRatio, payload.resolution || '1K');
+        const officialSizeValidation = validateOfficialGptImage2Size(officialSize);
+        if (!officialSizeValidation.ok) {
+          throw new Error(officialSizeValidation.reason);
+        }
+
         const formData = buildOfficialGptImage2FormData({
           prompt: translatedPrompt,
           references,
-          size: getOfficialGptImage2Size(normalizedAspectRatio, payload.resolution || '1K'),
+          size: officialSize,
           model: proxyModel,
           quality: payload.officialOptions?.quality,
           background: payload.officialOptions?.background,
@@ -680,6 +754,8 @@ async function generateViaProxy(payload: GenerateImagePayload) {
           taskId,
         });
         response = taskResult.response;
+        taskPayload = taskResult.taskPayload as Record<string, unknown>;
+        taskMetadata = taskResult.pollMetadata;
       } else {
         const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL });
         response = (await client.chat.completions.create({
@@ -701,6 +777,8 @@ async function generateViaProxy(payload: GenerateImagePayload) {
         referenceCount: references.length,
         proxyTarget: target.label,
         ...(taskId ? { taskId } : {}),
+        ...(taskMetadata ? taskMetadata : {}),
+        ...(taskPayload ? { taskPayload } : {}),
       };
 
       return extractImageFromProxyResponse(response, baseResult);
@@ -915,6 +993,7 @@ export async function POST(request: NextRequest) {
       aspectRatio = '1:1',
       modelVariant = 'pro',
       editMode = 'generate',
+      officialOptions,
     } = body;
 
     if (!prompt || typeof prompt !== 'string') {
@@ -949,6 +1028,7 @@ export async function POST(request: NextRequest) {
       aspectRatio,
       modelVariant,
       editMode,
+      officialOptions,
     };
 
     const provider = getProvider();

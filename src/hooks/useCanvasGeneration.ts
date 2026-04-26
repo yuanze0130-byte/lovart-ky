@@ -233,6 +233,45 @@ export async function requestImageGeneration(input: {
   const returnedModel: string | undefined = typeof data.model === 'string'
     ? data.model
     : undefined;
+  const returnedTaskId: string | undefined = typeof data.taskId === 'string'
+    ? data.taskId
+    : undefined;
+  const returnedProxyTarget: 'primary' | 'fallback' | undefined = data.proxyTarget === 'primary' || data.proxyTarget === 'fallback'
+    ? data.proxyTarget
+    : undefined;
+  const returnedTaskStatus: string | undefined = typeof data.status === 'string'
+    ? data.status
+    : typeof data.taskStatus === 'string'
+      ? data.taskStatus
+      : undefined;
+  const returnedTaskPollIntervalMs: number | undefined = typeof data.intervalMs === 'number'
+    ? data.intervalMs
+    : typeof data.taskPollIntervalMs === 'number'
+      ? data.taskPollIntervalMs
+      : undefined;
+  const returnedTaskPollTimeoutMs: number | undefined = typeof data.timeoutMs === 'number'
+    ? data.timeoutMs
+    : typeof data.taskPollTimeoutMs === 'number'
+      ? data.taskPollTimeoutMs
+      : undefined;
+  const returnedTaskPollAttemptCount: number | undefined = typeof data.attemptCount === 'number'
+    ? data.attemptCount
+    : typeof data.taskPollAttemptCount === 'number'
+      ? data.taskPollAttemptCount
+      : undefined;
+  const returnedTaskDurationMs: number | undefined = typeof data.durationMs === 'number'
+    ? data.durationMs
+    : typeof data.taskDurationMs === 'number'
+      ? data.taskDurationMs
+      : undefined;
+  const returnedTaskCompletedAt: string | undefined = typeof data.completedAt === 'string'
+    ? data.completedAt
+    : typeof data.taskCompletedAt === 'string'
+      ? data.taskCompletedAt
+      : undefined;
+  const returnedTaskPayload = data.taskPayload && typeof data.taskPayload === 'object'
+    ? data.taskPayload
+    : undefined;
 
   return {
     imageData,
@@ -248,6 +287,15 @@ export async function requestImageGeneration(input: {
     fallbackFrom,
     fallbackReason,
     returnedModel,
+    returnedTaskId,
+    returnedProxyTarget,
+    returnedTaskStatus,
+    returnedTaskPollIntervalMs,
+    returnedTaskPollTimeoutMs,
+    returnedTaskPollAttemptCount,
+    returnedTaskDurationMs,
+    returnedTaskCompletedAt,
+    returnedTaskPayload,
     referenceImages,
     editMode,
   };
@@ -444,6 +492,15 @@ export function useCanvasGeneration({
           fallbackFrom,
           fallbackReason,
           returnedModel,
+          returnedTaskId,
+          returnedProxyTarget,
+          returnedTaskStatus,
+          returnedTaskPollIntervalMs,
+          returnedTaskPollTimeoutMs,
+          returnedTaskPollAttemptCount,
+          returnedTaskDurationMs,
+          returnedTaskCompletedAt,
+          returnedTaskPayload,
         } = result;
 
         if (imageData) {
@@ -490,6 +547,15 @@ export function useCanvasGeneration({
                       fallbackFrom,
                       fallbackReason,
                       model: returnedModel,
+                      taskId: returnedTaskId,
+                      proxyTarget: returnedProxyTarget,
+                      taskStatus: returnedTaskStatus,
+                      taskPollIntervalMs: returnedTaskPollIntervalMs,
+                      taskPollTimeoutMs: returnedTaskPollTimeoutMs,
+                      taskPollAttemptCount: returnedTaskPollAttemptCount,
+                      taskDurationMs: returnedTaskDurationMs,
+                      taskCompletedAt: returnedTaskCompletedAt,
+                      taskPayload: returnedTaskPayload as GenerationMetadata['taskPayload'],
                     },
                     requestedAspectRatio,
                     requestedResolution,
@@ -522,6 +588,15 @@ export function useCanvasGeneration({
                 fallbackFrom,
                 fallbackReason,
                 model: returnedModel,
+                taskId: returnedTaskId,
+                proxyTarget: returnedProxyTarget,
+                taskStatus: returnedTaskStatus,
+                taskPollIntervalMs: returnedTaskPollIntervalMs,
+                taskPollTimeoutMs: returnedTaskPollTimeoutMs,
+                taskPollAttemptCount: returnedTaskPollAttemptCount,
+                taskDurationMs: returnedTaskDurationMs,
+                taskCompletedAt: returnedTaskCompletedAt,
+                taskPayload: returnedTaskPayload as GenerationMetadata['taskPayload'],
               },
               content: imageData,
             };

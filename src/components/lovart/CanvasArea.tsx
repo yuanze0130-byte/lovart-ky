@@ -25,6 +25,15 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     fallbackFrom?: 'official' | 'proxy';
     fallbackReason?: string;
     model?: string;
+    taskId?: string;
+    proxyTarget?: 'primary' | 'fallback';
+    taskStatus?: string;
+    taskPollIntervalMs?: number;
+    taskPollTimeoutMs?: number;
+    taskPollAttemptCount?: number;
+    taskDurationMs?: number;
+    taskCompletedAt?: string;
+    taskPayload?: Json;
     referenceCount?: number;
     resolution?: '1K' | '2K' | '4K';
     aspectRatio?: 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
