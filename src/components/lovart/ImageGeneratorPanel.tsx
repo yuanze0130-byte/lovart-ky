@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2 } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageCreditCost } from '@/lib/credits';
@@ -33,6 +33,7 @@ interface ImageGeneratorPanelProps {
 }
 
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
+const GPT_IMAGE_2_ASPECT_RATIO_OPTIONS: AspectRatio[] = ['1:1', '2:3', '3:2'];
 
 const MODE_META: Record<ImageEditMode, { title: string; subtitle: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
   generate: {
@@ -97,7 +98,14 @@ export function ImageGeneratorPanel({
   );
 
   const activeMeta = MODE_META[editMode];
+  const availableAspectRatios = modelVariant === 'gpt-image-2' ? GPT_IMAGE_2_ASPECT_RATIO_OPTIONS : ASPECT_RATIO_OPTIONS;
   const imageCreditCost = useMemo(() => getImageCreditCost(modelVariant, resolution), [modelVariant, resolution]);
+
+  useEffect(() => {
+    if (!availableAspectRatios.includes(aspectRatio)) {
+      setAspectRatio(availableAspectRatios[0]);
+    }
+  }, [aspectRatio, availableAspectRatios]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -245,7 +253,7 @@ export function ImageGeneratorPanel({
           <label className="text-xs text-gray-600">
             比例
             <select value={aspectRatio} onChange={(e) => setAspectRatio(e.target.value as AspectRatio)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
-              {ASPECT_RATIO_OPTIONS.map((ratio) => (
+              {availableAspectRatios.map((ratio) => (
                 <option key={ratio} value={ratio}>{ratio === 'auto' ? '自适应' : ratio}</option>
               ))}
             </select>
