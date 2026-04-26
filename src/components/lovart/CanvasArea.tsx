@@ -174,6 +174,46 @@ function getOfficialOptionChips(metadata?: GenerationMetadata) {
     return chips;
 }
 
+function getTaskDebugChips(metadata?: GenerationMetadata) {
+    if (!metadata?.taskId) return [] as string[];
+
+    const chips: string[] = [];
+
+    if (metadata.proxyTarget) {
+        chips.push(metadata.proxyTarget === 'fallback' ? '备用通道' : '主通道');
+    }
+
+    if (typeof metadata.taskPollAttemptCount === 'number') {
+        chips.push(`轮询 ${metadata.taskPollAttemptCount} 次`);
+    }
+
+    if (typeof metadata.taskDurationMs === 'number') {
+        chips.push(`耗时 ${(metadata.taskDurationMs / 1000).toFixed(metadata.taskDurationMs >= 10000 ? 0 : 1)}s`);
+    }
+
+    return chips;
+}
+
+function getTaskDebugSummary(metadata?: GenerationMetadata) {
+    if (!metadata?.taskId) return undefined;
+
+    const parts: string[] = [`Task ${metadata.taskId}`];
+
+    if (metadata.taskStatus) {
+        parts.push(`状态 ${metadata.taskStatus}`);
+    }
+
+    if (typeof metadata.taskPollIntervalMs === 'number') {
+        parts.push(`间隔 ${metadata.taskPollIntervalMs}ms`);
+    }
+
+    if (typeof metadata.taskPollTimeoutMs === 'number') {
+        parts.push(`超时 ${Math.round(metadata.taskPollTimeoutMs / 1000)}s`);
+    }
+
+    return parts.join(' · ');
+}
+
 interface CanvasAreaProps {
     scale: number;
     pan: { x: number; y: number };
@@ -1506,6 +1546,8 @@ export function CanvasArea({
                                     const providerLabel = getProviderLabel(metadata);
                                     const modelLabel = getModelLabel(metadata);
                                     const officialOptionChips = getOfficialOptionChips(metadata);
+                                    const taskDebugChips = getTaskDebugChips(metadata);
+                                    const taskDebugSummary = getTaskDebugSummary(metadata);
                                     const fallbackSummary = metadata?.providerFallbackUsed
                                         ? (metadata.fallbackReason || '已触发回退')
                                         : undefined;
@@ -1518,7 +1560,7 @@ export function CanvasArea({
                                     return (
                                         <div className="relative w-full h-full overflow-hidden rounded-lg bg-slate-950">
                                             <img src={el.content} alt="Upload" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />
-                                            {(providerLabel || modelLabel || officialOptionChips.length > 0 || fallbackSummary || promptPreview) && (
+                                            {(providerLabel || modelLabel || officialOptionChips.length > 0 || taskDebugChips.length > 0 || taskDebugSummary || fallbackSummary || promptPreview) && (
                                                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/88 via-slate-950/48 to-transparent p-3 text-white">
                                                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                         {providerLabel && <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/88">{providerLabel}</span>}
@@ -1526,9 +1568,15 @@ export function CanvasArea({
                                                         {officialOptionChips.map((chip) => (
                                                             <span key={chip} className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-2.5 py-1 text-cyan-50">{chip}</span>
                                                         ))}
+                                                        {taskDebugChips.map((chip) => (
+                                                            <span key={chip} className="rounded-full border border-violet-300/20 bg-violet-400/15 px-2.5 py-1 text-violet-50 normal-case tracking-normal">{chip}</span>
+                                                        ))}
                                                     </div>
                                                     {promptPreview && (
                                                         <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/82">{promptPreview}</div>
+                                                    )}
+                                                    {taskDebugSummary && (
+                                                        <div className="mt-2 rounded-xl border border-violet-300/20 bg-violet-400/12 px-2.5 py-2 text-[11px] leading-5 text-violet-50 normal-case">{taskDebugSummary}</div>
                                                     )}
                                                     {fallbackSummary && (
                                                         <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/12 px-2.5 py-2 text-[11px] leading-5 text-amber-50">回退说明：{fallbackSummary}</div>
