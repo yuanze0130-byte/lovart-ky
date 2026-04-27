@@ -64,6 +64,7 @@ type CreditAction =
   | 'generate_image'
   | 'generate_video'
   | 'remove_background'
+  | 'reverse_prompt'
   | 'upscale'
   | 'signup_bonus'
   | 'manual_adjust'

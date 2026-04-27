@@ -8,8 +8,16 @@ export async function POST(request: NextRequest) {
     const user = await requireUser(request);
 
     const { image, scale } = await request.json();
-
     const upscaleScale = typeof scale === 'number' ? scale : Number(scale || 2);
+
+    if (!image || typeof image !== 'string') {
+      return NextResponse.json({ error: 'Image is required' }, { status: 400 });
+    }
+
+    if (!Number.isFinite(upscaleScale) || upscaleScale <= 0) {
+      return NextResponse.json({ error: 'Scale must be a positive number' }, { status: 400 });
+    }
+
     const creditResult = await consumeCredits({
       userId: user.id,
       amount: getUpscaleCreditCost(upscaleScale),
@@ -25,14 +33,6 @@ export async function POST(request: NextRequest) {
         },
         { status: 402 }
       );
-    }
-
-    if (!image || typeof image !== 'string') {
-      return NextResponse.json({ error: 'Image is required' }, { status: 400 });
-    }
-
-    if (!Number.isFinite(upscaleScale) || upscaleScale <= 0) {
-      return NextResponse.json({ error: 'Scale must be a positive number' }, { status: 400 });
     }
 
     const result = await submitUpscaleTask(image, upscaleScale);

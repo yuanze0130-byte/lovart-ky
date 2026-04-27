@@ -36,10 +36,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'imageData is required' }, { status: 400 });
     }
 
+    const normalized = normalizeReferenceImage(imageData);
+    if (!normalized) {
+      return NextResponse.json({ error: 'invalid imageData' }, { status: 400 });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
+    if (!apiKey) {
+      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
+    }
+
     const creditResult = await consumeCredits({
       userId: user.id,
       amount: CREDIT_COSTS.reversePrompt,
-      type: 'manual_adjust',
+      type: 'reverse_prompt',
       description: '反推提示词',
     });
 
@@ -55,17 +66,7 @@ export async function POST(request: NextRequest) {
 
     creditsConsumed = true;
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    const baseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
-    if (!apiKey) {
-      return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 });
-    }
-
     const client = new OpenAI({ apiKey, baseURL });
-    const normalized = normalizeReferenceImage(imageData);
-    if (!normalized) {
-      return NextResponse.json({ error: 'invalid imageData' }, { status: 400 });
-    }
 
     const response = await client.chat.completions.create({
       model: process.env.GEMINI_PROXY_TEXT_MODEL || 'gpt-4o',
