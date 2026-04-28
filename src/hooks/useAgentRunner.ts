@@ -4,6 +4,18 @@ import { useCallback, useState } from 'react';
 import { authedFetch } from '@/lib/authed-fetch';
 import type { AgentActionResult, AgentChatResult, AgentContext, AgentMode, AgentRunResponse } from '@/lib/agent/actions';
 
+async function parseAgentRunError(response: Response): Promise<never> {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    const data = (await response.json().catch(() => null)) as Partial<AgentRunResponse> | null;
+    throw new Error(data?.error || `Agent run failed (${response.status})`);
+  }
+
+  const text = await response.text().catch(() => '');
+  throw new Error(text || `Agent run failed (${response.status})`);
+}
+
 export function useAgentRunner() {
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<AgentActionResult | null>(null);
@@ -23,8 +35,12 @@ export function useAgentRunner() {
         body: JSON.stringify({ message, context, mode: options?.mode }),
       });
 
+      if (!response.ok) {
+        await parseAgentRunError(response);
+      }
+
       const data = (await response.json()) as AgentRunResponse;
-      if (!response.ok || !data.ok || (!data.result && !data.chat)) {
+      if (!data.ok || (!data.result && !data.chat)) {
         throw new Error(data.error || 'Agent run failed');
       }
 

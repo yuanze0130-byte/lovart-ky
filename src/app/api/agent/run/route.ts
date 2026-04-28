@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+      return NextResponse.json<AgentRunResponse>({ ok: false, error: 'Not authenticated' }, { status: 401 });
     }
     return NextResponse.json<AgentRunResponse>(
       {
