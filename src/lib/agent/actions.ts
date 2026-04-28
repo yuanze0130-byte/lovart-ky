@@ -200,6 +200,13 @@ export type AgentChatResult = {
   plan?: Record<string, unknown>;
 };
 
+export type AgentPanelResponse = {
+  kind: 'chat' | 'action';
+  reply: string;
+  summary?: string;
+  plan?: Record<string, unknown>;
+};
+
 export type AgentRunResponse = {
   ok: boolean;
   action?: AgentAction;

@@ -3,10 +3,10 @@ import {
     Paperclip, AtSign, Lightbulb, Zap, Globe, Box, ArrowUp,
     RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X, Bot
 } from 'lucide-react';
-import type { AgentMode } from '@/lib/agent/actions';
+import type { AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
 
 interface AiDesignerPanelProps {
-    onGenerate: (prompt: string, options?: { mode?: AgentMode }) => Promise<{ reply: string; summary?: string; plan?: Record<string, unknown> } | string>;
+    onGenerate: (prompt: string, options?: { mode?: AgentMode }) => Promise<AgentPanelResponse>;
     isGenerating: boolean;
     onClose?: () => void;
     initialPrompt?: string;
@@ -16,6 +16,7 @@ interface AiDesignerPanelProps {
 interface Message {
     role: 'user' | 'assistant';
     content: string;
+    kind?: AgentPanelResponse['kind'];
 }
 
 export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
@@ -85,13 +86,13 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
 
             try {
                 const response = await onGenerate(prompt, { mode: agentMode });
-                const reply = typeof response === 'string' ? response : response.reply;
-                setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+                setMessages((prev) => [...prev, { role: 'assistant', content: response.reply, kind: response.kind }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
                 setMessages((prev) => [...prev, {
                     role: 'assistant',
                     content: `抱歉，这个 Agent 没有成功响应：${error instanceof Error ? error.message : '未知错误'}`,
+                    kind: 'chat',
                 }]);
             }
         }
@@ -115,17 +116,16 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
         if (initialPrompt && !hasAutoSent && !isGenerating) {
             setHasAutoSent(true);
             void onGenerate(initialPrompt, { mode: initialMode }).then((response) => {
-                const reply = typeof response === 'string' ? response : response.reply;
                 setMessages([
                     { role: 'user', content: initialPrompt },
-                    { role: 'assistant', content: reply },
+                    { role: 'assistant', content: response.reply, kind: response.kind },
                 ]);
                 setInputValue('');
             }).catch((error) => {
                 console.error('Failed to auto-start agent:', error);
                 setMessages([
                     { role: 'user', content: initialPrompt },
-                    { role: 'assistant', content: `抱歉，这个 Agent 自动启动失败：${error instanceof Error ? error.message : '未知错误'}` },
+                    { role: 'assistant', content: `抱歉，这个 Agent 自动启动失败：${error instanceof Error ? error.message : '未知错误'}`, kind: 'chat' },
                 ]);
             });
         }
@@ -187,18 +187,34 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                     </>
                 ) : (
                     <div className="space-y-6">
-                        {messages.map((msg, index) => (
-                            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div
-                                    className={`max-w-[85%] p-4 rounded-2xl ${msg.role === 'user'
-                                            ? 'bg-gray-100 text-gray-900 rounded-tr-sm'
-                                            : 'bg-white border border-gray-100 text-gray-800 shadow-sm rounded-tl-sm'
-                                        }`}
-                                >
-                                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                        {messages.map((msg, index) => {
+                            const isUser = msg.role === 'user';
+                            const isAction = msg.role === 'assistant' && msg.kind === 'action';
+                            const badgeLabel = msg.role === 'assistant' ? (isAction ? '已执行' : '建议') : null;
+
+                            return (
+                                <div key={index} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+                                    <div
+                                        className={`max-w-[85%] p-4 rounded-2xl ${isUser
+                                                ? 'bg-gray-100 text-gray-900 rounded-tr-sm'
+                                                : isAction
+                                                    ? 'bg-emerald-50 border border-emerald-200 text-emerald-950 shadow-sm rounded-tl-sm'
+                                                    : 'bg-blue-50 border border-blue-100 text-slate-800 shadow-sm rounded-tl-sm'
+                                            }`}
+                                    >
+                                        {badgeLabel && (
+                                            <div className={`mb-2 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${isAction
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-blue-100 text-blue-700'
+                                                }`}>
+                                                {badgeLabel}
+                                            </div>
+                                        )}
+                                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                         {isGenerating && (
                             <div className="flex justify-start">
                                 <div className="bg-white border border-gray-100 p-4 rounded-2xl rounded-tl-sm shadow-sm">

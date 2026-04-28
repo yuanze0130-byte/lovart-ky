@@ -22,7 +22,7 @@ import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { useObjectAnnotation } from '@/hooks/useObjectAnnotation';
 import { useAgentRunner } from '@/hooks/useAgentRunner';
 import { useAgentContext } from '@/hooks/useAgentContext';
-import type { DraftCanvasElement, AgentMode } from '@/lib/agent/actions';
+import type { DraftCanvasElement, AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 
 function LovartCanvasContent() {
@@ -1761,7 +1761,7 @@ function LovartCanvasContent() {
         }
     }, [getStoryboardNodeSize, setElements, setSelectedIds, storyboard, storyboardLayout]);
 
-    const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode }) => {
+    const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
         const response = await runAgent(message, agentContext, options);
         const nextResult = response.result;
         const chat = response.chat;
@@ -1777,6 +1777,7 @@ function LovartCanvasContent() {
                 });
             }
             return {
+                kind: 'chat',
                 reply: chat.reply,
                 summary: chat.summary,
                 plan: chat.plan || {},
@@ -1785,6 +1786,7 @@ function LovartCanvasContent() {
 
         if (!nextResult) {
             return {
+                kind: 'action',
                 reply: 'Agent 已执行，但没有返回结果。',
                 summary: 'Agent 已执行，但没有返回结果。',
                 plan: {},
@@ -1883,10 +1885,10 @@ function LovartCanvasContent() {
                 : '';
 
         const reply = `${nextResult.message}${detailSuffix}`;
-        return { reply, summary: reply, plan: {} };
+        return { kind: 'action', reply, summary: reply, plan: {} };
     }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
 
-    const handleUnifiedAgentSubmit = useCallback(async (message: string, options?: { mode?: AgentMode }) => {
+    const handleUnifiedAgentSubmit = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
         setAgentStage('analyzing');
         try {
             const response = await handleAgentRun(message.trim(), options);
