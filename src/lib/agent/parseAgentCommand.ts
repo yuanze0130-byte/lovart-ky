@@ -1,4 +1,13 @@
 import type { AgentAction, AgentContext, StoryboardAspectRatio, StoryboardVideoSize } from '@/lib/agent/actions';
+import {
+  hasCanvasInsertIntent,
+  hasEditIntent,
+  hasImageGenerationIntent,
+  hasStoryboardBoardIntent,
+  hasStoryboardIntent,
+  hasStoryboardTarget,
+  hasVideoIntent,
+} from '@/lib/agent/intent';
 
 const ASPECT_RATIOS: StoryboardAspectRatio[] = ['9:16', '16:9', '4:5', '1:1', '4:3', '3:4', '21:9', '3:2', '2:3'];
 const VIDEO_SIZES: StoryboardVideoSize[] = ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'];
@@ -100,17 +109,16 @@ export async function parseAgentCommand(input: {
   userId: string;
 }): Promise<AgentAction> {
   const raw = input.message.trim();
-  const lower = raw.toLowerCase();
   const aspectRatio = extractAspectRatio(raw);
   const storyboardOrder = extractStoryboardOrder(raw);
 
-  if (/制作板|production board|展开.*分镜|分镜.*展开|生成.*板|创建.*板/.test(raw)) {
+  if (hasStoryboardBoardIntent(raw)) {
     return {
       type: 'create_storyboard_board',
     };
   }
 
-  if ((/第\s*\d+\s*(镜|个镜头|条分镜|格|张)/.test(raw) || Boolean(input.context.selectedStoryboardItemId)) && /视频|video/.test(lower)) {
+  if ((hasStoryboardTarget(raw) || Boolean(input.context.selectedStoryboardItemId)) && hasVideoIntent(raw)) {
     const target = resolveStoryboardTarget(input.context, storyboardOrder);
     const matchedItem = target.storyboardItemId
       ? input.context.storyboardItems?.find((item) => item.id === target.storyboardItemId)
@@ -126,7 +134,7 @@ export async function parseAgentCommand(input: {
     };
   }
 
-  if ((/第\s*\d+\s*(镜|个镜头|条分镜|格|张)/.test(raw) || Boolean(input.context.selectedStoryboardItemId)) && /生成|出图|做图|画一下|画一张|做一张|渲染/.test(raw) && !/视频|video/.test(lower)) {
+  if ((hasStoryboardTarget(raw) || Boolean(input.context.selectedStoryboardItemId)) && hasImageGenerationIntent(raw) && !hasVideoIntent(raw)) {
     const target = resolveStoryboardTarget(input.context, storyboardOrder);
     return {
       type: 'generate_storyboard_image',
@@ -137,7 +145,7 @@ export async function parseAgentCommand(input: {
     };
   }
 
-  if (/分镜|storyboard|镜头/.test(raw)) {
+  if (hasStoryboardIntent(raw)) {
     return {
       type: 'create_storyboard',
       prompt: normalizePrompt(raw) || raw,
@@ -146,7 +154,7 @@ export async function parseAgentCommand(input: {
     };
   }
 
-  if (/加到画布|加进画布|加入画布|放到画布|放进项目|加到项目/.test(raw)) {
+  if (hasCanvasInsertIntent(raw)) {
     return {
       type: 'add_to_canvas',
       assetIds: input.context.assetIds || [],
@@ -154,7 +162,7 @@ export async function parseAgentCommand(input: {
     };
   }
 
-  if (/改成|换成|编辑|调成|变成/.test(raw)) {
+  if (hasEditIntent(raw)) {
     return {
       type: 'edit_selected_image',
       prompt: normalizePrompt(raw) || raw,
@@ -163,7 +171,7 @@ export async function parseAgentCommand(input: {
     };
   }
 
-  if (/视频|video/.test(lower)) {
+  if (hasVideoIntent(raw)) {
     const size = extractVideoSize(raw) || inferVideoSizeFromAspectRatio(aspectRatio);
     return {
       type: 'generate_video',
