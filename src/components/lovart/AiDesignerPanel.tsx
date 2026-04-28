@@ -17,6 +17,7 @@ interface Message {
     role: 'user' | 'assistant';
     content: string;
     kind?: AgentPanelResponse['kind'];
+    meta?: AgentPanelResponse['meta'];
 }
 
 export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
@@ -86,7 +87,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
 
             try {
                 const response = await onGenerate(prompt, { mode: agentMode });
-                setMessages((prev) => [...prev, { role: 'assistant', content: response.reply, kind: response.kind }]);
+                setMessages((prev) => [...prev, { role: 'assistant', content: response.reply, kind: response.kind, meta: response.meta }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
                 setMessages((prev) => [...prev, {
@@ -118,7 +119,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
             void onGenerate(initialPrompt, { mode: initialMode }).then((response) => {
                 setMessages([
                     { role: 'user', content: initialPrompt },
-                    { role: 'assistant', content: response.reply, kind: response.kind },
+                    { role: 'assistant', content: response.reply, kind: response.kind, meta: response.meta },
                 ]);
                 setInputValue('');
             }).catch((error) => {
@@ -208,6 +209,22 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                     : 'bg-blue-100 text-blue-700'
                                                 }`}>
                                                 {badgeLabel}
+                                            </div>
+                                        )}
+                                        {msg.meta && msg.meta.length > 0 && (
+                                            <div className="mb-3 flex flex-wrap gap-2">
+                                                {msg.meta.map((item, metaIndex) => (
+                                                    <div
+                                                        key={`${item.label}-${item.value}-${metaIndex}`}
+                                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] ${isAction
+                                                                ? 'bg-white/80 text-emerald-800 border border-emerald-200'
+                                                                : 'bg-white/80 text-blue-800 border border-blue-200'
+                                                            }`}
+                                                    >
+                                                        <span className="opacity-70">{item.label}</span>
+                                                        <span className="font-medium">{item.value}</span>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
                                         <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>

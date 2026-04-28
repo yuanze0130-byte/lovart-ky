@@ -22,10 +22,62 @@ import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { useObjectAnnotation } from '@/hooks/useObjectAnnotation';
 import { useAgentRunner } from '@/hooks/useAgentRunner';
 import { useAgentContext } from '@/hooks/useAgentContext';
-import type { DraftCanvasElement, AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
+import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 
 function LovartCanvasContent() {
+    const buildAgentActionMeta = useCallback((result: AgentActionResult): Array<{ label: string; value: string }> => {
+        switch (result.kind) {
+            case 'storyboard_created':
+                return [
+                    { label: '动作', value: '创建分镜' },
+                    { label: '数量', value: `${result.count} 镜` },
+                ];
+            case 'storyboard_board_requested':
+                return [
+                    { label: '动作', value: '生成制作板' },
+                    { label: '数量', value: `${result.count} 项` },
+                ];
+            case 'images_generated':
+                return [
+                    { label: '动作', value: '批量生图' },
+                    { label: '数量', value: `${result.count} 张` },
+                ];
+            case 'storyboard_image_generation_requested':
+                return [
+                    { label: '动作', value: '分镜出图' },
+                    { label: '镜头', value: `第 ${result.storyboardOrder} 镜` },
+                    { label: '比例', value: result.aspectRatio },
+                    { label: '清晰度', value: result.resolution },
+                ];
+            case 'storyboard_video_generation_requested':
+                return [
+                    { label: '动作', value: '分镜视频' },
+                    { label: '镜头', value: `第 ${result.storyboardOrder} 镜` },
+                    { label: '尺寸', value: result.size },
+                    { label: '时长', value: `${result.durationSeconds}s` },
+                ];
+            case 'video_started':
+                return [
+                    { label: '动作', value: '视频任务' },
+                    { label: 'Task', value: result.taskId },
+                    ...(result.status ? [{ label: '状态', value: result.status }] : []),
+                ];
+            case 'canvas_update_planned':
+                return [
+                    { label: '动作', value: '加入画布' },
+                    { label: '目标', value: result.target },
+                    { label: '元素', value: `${result.elementDrafts.length} 个` },
+                ];
+            case 'image_edited':
+                return [
+                    { label: '动作', value: '编辑图片' },
+                    { label: '资源', value: result.assetId.slice(0, 8) },
+                ];
+            default:
+                return [];
+        }
+    }, []);
     const { user } = useAuth();
     const searchParams = useSearchParams();
     const projectId = searchParams.get('id');
@@ -1790,6 +1842,7 @@ function LovartCanvasContent() {
                 reply: 'Agent 已执行，但没有返回结果。',
                 summary: 'Agent 已执行，但没有返回结果。',
                 plan: {},
+                meta: [{ label: '动作', value: '未知执行' }],
             };
         }
 
@@ -1885,8 +1938,15 @@ function LovartCanvasContent() {
                 : '';
 
         const reply = `${nextResult.message}${detailSuffix}`;
-        return { kind: 'action', reply, summary: reply, plan: {} };
-    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
+        return {
+            kind: 'action',
+            actionKind: nextResult.kind,
+            reply,
+            summary: reply,
+            plan: {},
+            meta: buildAgentActionMeta(nextResult),
+        };
+    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
 
     const handleUnifiedAgentSubmit = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
         setAgentStage('analyzing');
