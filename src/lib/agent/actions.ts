@@ -3,6 +3,8 @@ export type AgentPage = 'home' | 'canvas' | 'projects' | 'user';
 export type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3';
 export type StoryboardVideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x1024' | '1024x1792' | '1792x1024' | '1024x768' | '768x1024' | '1536x640' | '1152x768' | '768x1152';
 
+export type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
+
 export type AgentContext = {
   page: AgentPage;
   projectId?: string | null;
@@ -188,11 +190,20 @@ export type AgentActionResult =
 export type AgentRunRequest = {
   message: string;
   context: AgentContext;
+  mode?: AgentMode;
+};
+
+export type AgentChatResult = {
+  kind: 'chat';
+  reply: string;
+  summary?: string;
+  plan?: Record<string, unknown>;
 };
 
 export type AgentRunResponse = {
   ok: boolean;
   action?: AgentAction;
   result?: AgentActionResult;
+  chat?: AgentChatResult;
   error?: string;
 };

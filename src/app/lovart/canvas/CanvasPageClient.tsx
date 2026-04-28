@@ -11,7 +11,6 @@ import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
-import { AgentPanel } from '@/components/lovart/AgentPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
@@ -23,7 +22,7 @@ import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { useObjectAnnotation } from '@/hooks/useObjectAnnotation';
 import { useAgentRunner } from '@/hooks/useAgentRunner';
 import { useAgentContext } from '@/hooks/useAgentContext';
-import type { DraftCanvasElement } from '@/lib/agent/actions';
+import type { DraftCanvasElement, AgentMode } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 
 function LovartCanvasContent() {
@@ -39,9 +38,8 @@ function LovartCanvasContent() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
-    const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as 'design' | 'branding' | 'image-editing' | 'research' | null) || 'design', [searchParams]);
+    const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as AgentMode | null) || 'design', [searchParams]);
     const [showChat, setShowChat] = useState(Boolean(promptFromUrl));
-    const [showAgentPanel, setShowAgentPanel] = useState(false);
     const [assetsCollapsed, setAssetsCollapsed] = useState(false);
     const [showMiniMap, setShowMiniMap] = useState(false);
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
@@ -102,7 +100,6 @@ function LovartCanvasContent() {
         handleConnectFlow,
         handleGenerateFromImage,
         handleGenerateImage,
-        handleAiChat,
     } = useCanvasGeneration({
         pan,
         elements,
@@ -129,12 +126,15 @@ function LovartCanvasContent() {
         setSelectedObject,
     } = useObjectAnnotation();
 
-    const handleAgentGenerate = useCallback(async (prompt: string, options?: { mode?: 'design' | 'branding' | 'image-editing' | 'research' }) => {
-        const resolvedMode = options?.mode || 'design';
-        setAgentStage('analyzing');
-        const result = await handleAiChat(prompt, options);
-        setAgentStage('planning');
-        const plan = result.plan || {};
+    const applyAgentPlanToCanvas = useCallback((input: {
+        prompt: string;
+        mode: AgentMode;
+        reply: string;
+        summary?: string;
+        plan?: Record<string, unknown>;
+    }) => {
+        const resolvedMode = input.mode;
+        const plan = input.plan || {};
 
         if (plan.recommendedTitle && typeof plan.recommendedTitle === 'string') {
             setTitle(plan.recommendedTitle);
@@ -248,7 +248,7 @@ function LovartCanvasContent() {
                 x: baseX,
                 y: baseY,
                 width: 560,
-                content: typeof plan.recommendedTitle === 'string' ? plan.recommendedTitle : prompt,
+                content: typeof plan.recommendedTitle === 'string' ? plan.recommendedTitle : input.prompt,
                 fontSize: 34,
             });
             nextNodes.push({
@@ -258,12 +258,12 @@ function LovartCanvasContent() {
                 y: baseY + 56,
                 width: 620,
                 content: resolvedMode === 'branding'
-                    ? `品牌工作区 · 从定位、调性到视觉方向\n${typeof result.summary === 'string' ? result.summary : result.reply}`
+                    ? `品牌工作区 · 从定位、调性到视觉方向\n${typeof input.summary === 'string' ? input.summary : input.reply}`
                     : resolvedMode === 'image-editing'
-                        ? `图像编辑工作区 · 从问题诊断到修改执行\n${typeof result.summary === 'string' ? result.summary : result.reply}`
+                        ? `图像编辑工作区 · 从问题诊断到修改执行\n${typeof input.summary === 'string' ? input.summary : input.reply}`
                         : resolvedMode === 'research'
-                            ? `研究工作区 · 从参考采样到创意线索\n${typeof result.summary === 'string' ? result.summary : result.reply}`
-                            : `设计工作区 · 从概念到生成执行\n${typeof result.summary === 'string' ? result.summary : result.reply}`,
+                            ? `研究工作区 · 从参考采样到创意线索\n${typeof input.summary === 'string' ? input.summary : input.reply}`
+                            : `设计工作区 · 从概念到生成执行\n${typeof input.summary === 'string' ? input.summary : input.reply}`,
                 fontSize: 18,
                 color: '#6B7280',
             });
@@ -287,8 +287,8 @@ function LovartCanvasContent() {
                 ...imageNode,
                 x: preset.generatorX,
                 y: preset.generatorY,
-                initialPrompt: prompt,
-                prompt,
+                initialPrompt: input.prompt,
+                prompt: input.prompt,
             });
         }
 
@@ -298,10 +298,10 @@ function LovartCanvasContent() {
             videoGeneratorId = videoNode.id;
             nextNodes.push({
                 ...videoNode,
-                x: resolvedMode === 'research' ? preset.generatorX : preset.generatorX,
+                x: preset.generatorX,
                 y: resolvedMode === 'research' ? preset.generatorY : preset.generatorY + 360,
-                initialPrompt: prompt,
-                prompt,
+                initialPrompt: input.prompt,
+                prompt: input.prompt,
             });
         }
 
@@ -312,12 +312,10 @@ function LovartCanvasContent() {
                 ...imageNode,
                 x: preset.generatorX,
                 y: preset.generatorY,
-                initialPrompt: prompt,
-                prompt,
+                initialPrompt: input.prompt,
+                prompt: input.prompt,
             });
         }
-
-        setAgentStage('building');
 
         const firstTextNode = nextNodes.find((node) => node.type === 'text');
         const sectionTextNodes = nextNodes.filter((node) => node.type === 'text').slice(2);
@@ -376,11 +374,7 @@ function LovartCanvasContent() {
                 y: viewportSize.height / 2 - centerY * scale,
             });
         }
-
-        setAgentStage('done');
-        window.setTimeout(() => setAgentStage('idle'), 1200);
-        return result.reply;
-    }, [createImageGeneratorElement, createVideoGeneratorElement, elements, handleAiChat, pan.x, pan.y, scale, setElements, setPan, setSelectedIds, setTitle, viewportSize.height, viewportSize.width]);
+    }, [createImageGeneratorElement, createVideoGeneratorElement, elements, pan.x, pan.y, scale, setElements, setPan, setSelectedIds, setTitle, viewportSize.height, viewportSize.width]);
 
     const handleDetectObjectAt = useCallback((element: CanvasElement, point: { x: number; y: number }) => {
         void detectObject({ image: element, point })
@@ -502,7 +496,7 @@ function LovartCanvasContent() {
             thumbnailUrl: item.thumbnailUrl,
         })),
     });
-    const { runAgent, isRunning: isAgentRunning, result: agentResult, error: agentError } = useAgentRunner();
+    const { runAgent, isRunning: isAgentRunning } = useAgentRunner();
     const storyboardStorageKey = useMemo(() => `lovart:storyboard:${projectId || 'draft'}`, [projectId]);
 
     useEffect(() => {
@@ -1767,10 +1761,35 @@ function LovartCanvasContent() {
         }
     }, [getStoryboardNodeSize, setElements, setSelectedIds, storyboard, storyboardLayout]);
 
-    const handleAgentRun = useCallback(async (message: string) => {
-        const response = await runAgent(message, agentContext);
+    const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode }) => {
+        const response = await runAgent(message, agentContext, options);
         const nextResult = response.result;
-        if (!nextResult) return;
+        const chat = response.chat;
+
+        if (chat) {
+            if (chat.plan && Object.keys(chat.plan).length > 0) {
+                applyAgentPlanToCanvas({
+                    prompt: message,
+                    mode: options?.mode || 'design',
+                    reply: chat.reply,
+                    summary: chat.summary,
+                    plan: chat.plan,
+                });
+            }
+            return {
+                reply: chat.reply,
+                summary: chat.summary,
+                plan: chat.plan || {},
+            };
+        }
+
+        if (!nextResult) {
+            return {
+                reply: 'Agent 已执行，但没有返回结果。',
+                summary: 'Agent 已执行，但没有返回结果。',
+                plan: {},
+            };
+        }
 
         if (nextResult.kind === 'storyboard_created') {
             setStoryboard(normalizeStoryboardItems(nextResult.items.map((item, index) => ({
@@ -1856,7 +1875,32 @@ function LovartCanvasContent() {
                 },
             ]);
         }
-    }, [agentContext, applyAgentCanvasDrafts, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
+
+        const detailSuffix = 'count' in nextResult && typeof nextResult.count === 'number'
+            ? `\n已处理数量：${nextResult.count}`
+            : nextResult.kind === 'video_started' && nextResult.taskId
+                ? `\nTask ID: ${nextResult.taskId}`
+                : '';
+
+        const reply = `${nextResult.message}${detailSuffix}`;
+        return { reply, summary: reply, plan: {} };
+    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
+
+    const handleUnifiedAgentSubmit = useCallback(async (message: string, options?: { mode?: AgentMode }) => {
+        setAgentStage('analyzing');
+        try {
+            const response = await handleAgentRun(message.trim(), options);
+            if (response.plan && Object.keys(response.plan).length > 0) {
+                setAgentStage('planning');
+            } else {
+                setAgentStage('building');
+            }
+            return response;
+        } finally {
+            setAgentStage('done');
+            window.setTimeout(() => setAgentStage('idle'), 1200);
+        }
+    }, [handleAgentRun]);
 
     const duplicateElements = useCallback((source: CanvasElement[]) => {
         const idMap = new Map<string, string>();
@@ -2003,14 +2047,9 @@ function LovartCanvasContent() {
                 <div className="flex items-center gap-2 pointer-events-auto">
                     <ThemeToggle />
                     <button
-                        onClick={() => setShowAgentPanel((prev) => !prev)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showAgentPanel ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
-                    >
-                        <Sparkles size={18} className="text-black" />
-                    </button>
-                    <button
-                        onClick={() => setShowChat(!showChat)}
+                        onClick={() => setShowChat((prev) => !prev)}
                         className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showChat ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
+                        title="Agent"
                     >
                         <Sparkles size={18} className="text-black" />
                     </button>
@@ -2024,25 +2063,13 @@ function LovartCanvasContent() {
             )}
 
             {showChat && (
-                <div className={`absolute top-20 bottom-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300 ${showAgentPanel ? 'right-[420px]' : 'right-4'}`}>
+                <div className="absolute top-20 bottom-4 right-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300">
                     <AiDesignerPanel
-                        onGenerate={handleAgentGenerate}
-                        isGenerating={isGenerating}
+                        onGenerate={handleUnifiedAgentSubmit}
+                        isGenerating={isGenerating || isAgentRunning}
                         onClose={() => setShowChat(false)}
                         initialPrompt={promptFromUrl}
                         initialMode={agentModeFromUrl}
-                    />
-                </div>
-            )}
-
-            {showAgentPanel && (
-                <div className={`absolute top-20 bottom-4 w-[380px] z-40 animate-in slide-in-from-right-4 duration-300 ${showChat ? 'right-[836px]' : 'right-[420px]'}`}>
-                    <AgentPanel
-                        isRunning={isAgentRunning}
-                        result={agentResult}
-                        error={agentError}
-                        onRun={handleAgentRun}
-                        onClose={() => setShowAgentPanel(false)}
                     />
                 </div>
             )}
@@ -2239,7 +2266,7 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? (showAgentPanel ? 'right-[1220px]' : 'right-[420px]') : (showAgentPanel ? 'right-[420px]' : 'right-4')}`}>
+                <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? 'right-[420px]' : 'right-4'}`}>
                     <AssetsPanel
                         assets={projectAssets}
                         storyboard={storyboard}

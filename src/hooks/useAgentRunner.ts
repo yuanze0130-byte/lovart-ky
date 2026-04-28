@@ -2,14 +2,15 @@
 
 import { useCallback, useState } from 'react';
 import { authedFetch } from '@/lib/authed-fetch';
-import type { AgentActionResult, AgentContext, AgentRunResponse } from '@/lib/agent/actions';
+import type { AgentActionResult, AgentChatResult, AgentContext, AgentMode, AgentRunResponse } from '@/lib/agent/actions';
 
 export function useAgentRunner() {
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<AgentActionResult | null>(null);
+  const [chat, setChat] = useState<AgentChatResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const runAgent = useCallback(async (message: string, context: AgentContext) => {
+  const runAgent = useCallback(async (message: string, context: AgentContext, options?: { mode?: AgentMode }) => {
     setIsRunning(true);
     setError(null);
 
@@ -19,17 +20,20 @@ export function useAgentRunner() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message, context }),
+        body: JSON.stringify({ message, context, mode: options?.mode }),
       });
 
       const data = (await response.json()) as AgentRunResponse;
-      if (!response.ok || !data.ok || !data.result) {
+      if (!response.ok || !data.ok || (!data.result && !data.chat)) {
         throw new Error(data.error || 'Agent run failed');
       }
 
-      setResult(data.result);
+      setResult(data.result || null);
+      setChat(data.chat || null);
       return data;
     } catch (err) {
+      setResult(null);
+      setChat(null);
       const message = err instanceof Error ? err.message : 'Agent run failed';
       setError(message);
       throw err;
@@ -42,6 +46,7 @@ export function useAgentRunner() {
     runAgent,
     isRunning,
     result,
+    chat,
     error,
   };
 }

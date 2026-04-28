@@ -14,18 +14,9 @@ type OfficialImageOptions = {
   outputFormat?: 'png' | 'jpeg' | 'webp';
   moderation?: 'auto' | 'low';
 };
-type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
 export type Resolution = '1K' | '2K' | '4K';
 export type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
-
-type DesignPlan = Record<string, unknown>;
-
-type AiChatResult = {
-  reply: string;
-  summary?: string;
-  plan?: DesignPlan;
-};
 
 function isResolution(value: unknown): value is Resolution {
   return value === '1K' || value === '2K' || value === '4K';
@@ -624,50 +615,10 @@ export function useCanvasGeneration({
     [elements, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
   );
 
-  const handleAiChat = useCallback(
-    async (prompt: string, options?: { mode?: AgentMode }): Promise<AiChatResult> => {
-      setIsGenerating(true);
-      try {
-        const response = await authedFetch('/api/generate-design', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ prompt, mode: options?.mode || 'design' }),
-        });
-
-        const data = await readResponsePayload(response);
-
-        if (!response.ok) {
-          throw new Error(
-            typeof data.details === 'string'
-              ? data.details
-              : typeof data.error === 'string'
-                ? data.error
-                : '生成失败'
-          );
-        }
-
-        return {
-          reply: typeof data.suggestion === 'string' ? data.suggestion : '未收到回复',
-          summary: typeof data.summary === 'string' ? data.summary : undefined,
-          plan: data.plan && typeof data.plan === 'object' ? (data.plan as DesignPlan) : {},
-        };
-      } catch (error) {
-        console.error('Chat generation failed:', error);
-        throw error;
-      } finally {
-        setIsGenerating(false);
-      }
-    },
-    [setIsGenerating]
-  );
-
   return {
     handleGenerateVideo,
     handleConnectFlow,
     handleGenerateFromImage,
     handleGenerateImage,
-    handleAiChat,
   };
 }

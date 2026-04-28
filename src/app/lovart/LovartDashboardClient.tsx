@@ -10,10 +10,9 @@ import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useUserCredits } from '@/hooks/useUserCredits';
 import type { ProjectRow } from '@/lib/supabase';
+import type { AgentMode } from '@/lib/agent/actions';
 import Link from 'next/link';
 import { v4 as uuidv4 } from 'uuid';
-
-type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
 

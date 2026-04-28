@@ -1,10 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import {
     Paperclip, AtSign, Lightbulb, Zap, Globe, Box, ArrowUp,
-    RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X
+    RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X, Bot
 } from 'lucide-react';
-
-type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
+import type { AgentMode } from '@/lib/agent/actions';
 
 interface AiDesignerPanelProps {
     onGenerate: (prompt: string, options?: { mode?: AgentMode }) => Promise<{ reply: string; summary?: string; plan?: Record<string, unknown> } | string>;
@@ -28,9 +27,9 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     const modeConfig: Record<AgentMode, { label: string; greeting: string; subtitle: string; placeholder: string }> = {
         design: {
             label: 'Design',
-            greeting: 'Hi，我是你的 AI 设计助手',
-            subtitle: '我会帮你拆解需求、生成版式方向与视觉方案',
-            placeholder: '描述你想做的设计内容、风格和用途',
+            greeting: 'Hi，我是你的创作 Agent',
+            subtitle: '我可以跟你聊创意方向，也可以直接帮你生图、修图、做分镜和视频',
+            placeholder: '比如：先给我想 3 个海报方向 / 生成 4 张封面 / 把这张图改成黄昏暖色',
         },
         branding: {
             label: 'Branding',
@@ -41,8 +40,8 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
         'image-editing': {
             label: 'Image Editing',
             greeting: 'Hi，我是你的图像编辑助手',
-            subtitle: '我会帮你拆解修图目标、修改方向与执行步骤',
-            placeholder: '描述你想对图片做什么修改',
+            subtitle: '我会帮你拆解修图目标，也可以直接执行改图和生图动作',
+            placeholder: '比如：把这张图改成更高级的展陈空间，保持主体不变',
         },
         research: {
             label: 'Research',
@@ -151,10 +150,10 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 {messages.length === 0 ? (
                     <>
                         <div className="mb-8">
-                            <div className="relative w-12 h-12 bg-black rounded-full flex items-center justify-center text-white text-xl font-bold mb-6">
-                                D
-                                <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white rounded-full flex items-center justify-center">
-                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                            <div className="relative mb-6 flex h-12 w-12 items-center justify-center rounded-full bg-black text-white text-xl font-bold">
+                                <Bot size={22} />
+                                <div className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-white">
+                                    <div className="h-2 w-2 rounded-full bg-green-500"></div>
                                 </div>
                             </div>
                             <h1 className="text-3xl font-bold text-gray-900 mb-2">{modeConfig[agentMode].greeting}</h1>
@@ -162,6 +161,9 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                         </div>
 
                         <div className="space-y-4 mb-6">
+                            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                                你可以把我当成一个统一 Agent：既能聊创意/策略，也能直接执行生图、修图、分镜、视频动作。
+                            </div>
                             {suggestions.map((item, index) => (
                                 <div
                                     key={index}
