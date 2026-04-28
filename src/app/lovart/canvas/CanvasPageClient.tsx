@@ -1833,6 +1833,7 @@ function LovartCanvasContent() {
                 reply: chat.reply,
                 summary: chat.summary,
                 plan: chat.plan || {},
+                meta: [],
             };
         }
 

@@ -19,6 +19,8 @@ interface Message {
     kind?: AgentPanelResponse['kind'];
     actionKind?: AgentPanelResponse['actionKind'];
     meta?: AgentPanelResponse['meta'];
+    summary?: string;
+    plan?: Record<string, unknown>;
     errorState?: {
         title: string;
         tone: 'warning' | 'critical';
@@ -88,6 +90,32 @@ function renderErrorIcon(icon: NonNullable<Message['errorState']>['icon']) {
         default:
             return <AlertTriangle size={14} />;
     }
+}
+
+function getPlanMeta(plan?: Record<string, unknown>): Array<{ label: string; value: string }> {
+    if (!plan) return [];
+
+    const meta: Array<{ label: string; value: string }> = [];
+    if (typeof plan.layout === 'string' && plan.layout.trim()) {
+        meta.push({ label: '布局', value: plan.layout.trim() });
+    }
+    if (Array.isArray(plan.sections) && plan.sections.length > 0) {
+        meta.push({ label: '内容块', value: `${plan.sections.length} 个` });
+    }
+    if (Array.isArray(plan.createTextNodes) && plan.createTextNodes.length > 0) {
+        meta.push({ label: '文本节点', value: `${plan.createTextNodes.length} 个` });
+    }
+    if (plan.createImageGenerator === true) {
+        meta.push({ label: '建议动作', value: '加入生图器' });
+    }
+    if (plan.createVideoGenerator === true) {
+        meta.push({ label: '建议动作', value: '加入视频器' });
+    }
+    if (typeof plan.recommendedTitle === 'string' && plan.recommendedTitle.trim()) {
+        meta.push({ label: '标题', value: plan.recommendedTitle.trim() });
+    }
+
+    return meta;
 }
 
 export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
@@ -163,6 +191,8 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                     kind: response.kind,
                     actionKind: response.actionKind,
                     meta: response.meta,
+                    summary: response.summary,
+                    plan: response.plan,
                 }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
@@ -203,6 +233,8 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                         kind: response.kind,
                         actionKind: response.actionKind,
                         meta: response.meta,
+                        summary: response.summary,
+                        plan: response.plan,
                     },
                 ]);
                 setInputValue('');
@@ -286,6 +318,8 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                 ? actionTitleMap[msg.actionKind ?? 'images_generated'] ?? '执行完成'
                                 : null;
                             const errorState = msg.role === 'assistant' ? msg.errorState : undefined;
+                            const planMeta = !isAction ? getPlanMeta(msg.plan) : [];
+                            const showSummary = !isAction && typeof msg.summary === 'string' && msg.summary.trim() && msg.summary.trim() !== msg.content.trim();
 
                             return (
                                 <div key={index} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -318,6 +352,19 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                     <div>
                                                         <div className="text-xs font-medium uppercase tracking-wide text-emerald-600">Execution Result</div>
                                                         <div className="text-sm font-semibold">{actionTitle}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                        {!isUser && !isAction && !errorState && (
+                                            <div className="mb-3 rounded-xl border border-blue-200 bg-white/80 px-3 py-2.5">
+                                                <div className="flex items-center gap-2 text-blue-900">
+                                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100">
+                                                        <Lightbulb size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xs font-medium uppercase tracking-wide text-blue-600">Creative Direction</div>
+                                                        <div className="text-sm font-semibold">策略建议已整理</div>
                                                     </div>
                                                 </div>
                                             </div>
@@ -357,6 +404,25 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                         <span className="font-medium">{item.value}</span>
                                                     </div>
                                                 ))}
+                                            </div>
+                                        )}
+                                        {!isAction && planMeta.length > 0 && (
+                                            <div className="mb-3 flex flex-wrap gap-2">
+                                                {planMeta.map((item, metaIndex) => (
+                                                    <div
+                                                        key={`plan-${item.label}-${item.value}-${metaIndex}`}
+                                                        className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-white/80 px-2.5 py-1 text-[11px] text-blue-800"
+                                                    >
+                                                        <span className="opacity-70">{item.label}</span>
+                                                        <span className="font-medium">{item.value}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {showSummary && (
+                                            <div className="mb-3 rounded-xl border border-blue-100 bg-white/70 px-3 py-2.5">
+                                                <div className="mb-1 text-xs font-medium uppercase tracking-wide text-blue-600">Summary</div>
+                                                <p className="text-sm leading-relaxed text-slate-700">{msg.summary}</p>
                                             </div>
                                         )}
                                         <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
