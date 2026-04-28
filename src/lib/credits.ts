@@ -68,7 +68,9 @@ type CreditAction =
   | 'upscale'
   | 'signup_bonus'
   | 'manual_adjust'
-  | 'redeem_code';
+  | 'redeem_code'
+  | 'recharge'
+  | 'refund';
 
 export async function ensureUserCredits(userId: string): Promise<UserCreditsRow> {
   const supabase = createServiceRoleSupabaseClient();
