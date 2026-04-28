@@ -17,8 +17,20 @@ interface Message {
     role: 'user' | 'assistant';
     content: string;
     kind?: AgentPanelResponse['kind'];
+    actionKind?: AgentPanelResponse['actionKind'];
     meta?: AgentPanelResponse['meta'];
 }
+
+const actionTitleMap: Partial<Record<NonNullable<AgentPanelResponse['actionKind']>, string>> = {
+    storyboard_created: '已创建分镜',
+    storyboard_board_requested: '已生成制作板',
+    images_generated: '已生成图片',
+    storyboard_image_generation_requested: '已发起分镜出图',
+    storyboard_video_generation_requested: '已发起分镜视频',
+    video_started: '视频任务已启动',
+    canvas_update_planned: '已更新画布',
+    image_edited: '已完成图片编辑',
+};
 
 export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
     const [inputValue, setInputValue] = useState(initialPrompt || '');
@@ -87,7 +99,13 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
 
             try {
                 const response = await onGenerate(prompt, { mode: agentMode });
-                setMessages((prev) => [...prev, { role: 'assistant', content: response.reply, kind: response.kind, meta: response.meta }]);
+                setMessages((prev) => [...prev, {
+                    role: 'assistant',
+                    content: response.reply,
+                    kind: response.kind,
+                    actionKind: response.actionKind,
+                    meta: response.meta,
+                }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
                 setMessages((prev) => [...prev, {
@@ -119,7 +137,13 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
             void onGenerate(initialPrompt, { mode: initialMode }).then((response) => {
                 setMessages([
                     { role: 'user', content: initialPrompt },
-                    { role: 'assistant', content: response.reply, kind: response.kind, meta: response.meta },
+                    {
+                        role: 'assistant',
+                        content: response.reply,
+                        kind: response.kind,
+                        actionKind: response.actionKind,
+                        meta: response.meta,
+                    },
                 ]);
                 setInputValue('');
             }).catch((error) => {
@@ -192,6 +216,9 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             const isUser = msg.role === 'user';
                             const isAction = msg.role === 'assistant' && msg.kind === 'action';
                             const badgeLabel = msg.role === 'assistant' ? (isAction ? '已执行' : '建议') : null;
+                            const actionTitle = isAction
+                                ? actionTitleMap[msg.actionKind ?? 'images_generated'] ?? '执行完成'
+                                : null;
 
                             return (
                                 <div key={index} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -209,6 +236,19 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                     : 'bg-blue-100 text-blue-700'
                                                 }`}>
                                                 {badgeLabel}
+                                            </div>
+                                        )}
+                                        {isAction && actionTitle && (
+                                            <div className="mb-3 rounded-xl border border-emerald-200 bg-white/80 px-3 py-2.5">
+                                                <div className="flex items-center gap-2 text-emerald-900">
+                                                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-100">
+                                                        <Zap size={14} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xs font-medium uppercase tracking-wide text-emerald-600">Execution Result</div>
+                                                        <div className="text-sm font-semibold">{actionTitle}</div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         )}
                                         {msg.meta && msg.meta.length > 0 && (

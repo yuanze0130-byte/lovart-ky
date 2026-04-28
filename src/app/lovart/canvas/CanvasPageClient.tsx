@@ -1842,6 +1842,7 @@ function LovartCanvasContent() {
                 reply: 'Agent 已执行，但没有返回结果。',
                 summary: 'Agent 已执行，但没有返回结果。',
                 plan: {},
+                actionKind: undefined,
                 meta: [{ label: '动作', value: '未知执行' }],
             };
         }
