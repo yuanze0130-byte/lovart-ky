@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
     Paperclip, AtSign, Lightbulb, Zap, Globe, Box, ArrowUp,
-    RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X, Bot
+    RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X, Bot, AlertTriangle, ShieldAlert, KeyRound, TimerReset
 } from 'lucide-react';
 import type { AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
 
@@ -19,6 +19,12 @@ interface Message {
     kind?: AgentPanelResponse['kind'];
     actionKind?: AgentPanelResponse['actionKind'];
     meta?: AgentPanelResponse['meta'];
+    errorState?: {
+        title: string;
+        tone: 'warning' | 'critical';
+        hint?: string;
+        icon: 'warning' | 'auth' | 'config' | 'timeout';
+    };
 }
 
 const actionTitleMap: Partial<Record<NonNullable<AgentPanelResponse['actionKind']>, string>> = {
@@ -31,6 +37,58 @@ const actionTitleMap: Partial<Record<NonNullable<AgentPanelResponse['actionKind'
     canvas_update_planned: '已更新画布',
     image_edited: '已完成图片编辑',
 };
+
+function getAgentErrorState(error: unknown): NonNullable<Message['errorState']> {
+    const message = error instanceof Error ? error.message : '未知错误';
+    const lower = message.toLowerCase();
+
+    if (lower.includes('not authenticated') || lower.includes('401')) {
+        return {
+            title: '登录状态已失效',
+            tone: 'warning',
+            hint: '请先重新登录，再重试这条指令。',
+            icon: 'auth',
+        };
+    }
+
+    if (lower.includes('api_key') || lower.includes('not configured') || lower.includes('missing')) {
+        return {
+            title: 'Agent 配置不完整',
+            tone: 'critical',
+            hint: '后端缺少模型或密钥配置，先补齐环境变量再试。',
+            icon: 'config',
+        };
+    }
+
+    if (lower.includes('timeout') || lower.includes('timed out') || message.includes('超时')) {
+        return {
+            title: 'Agent 执行超时',
+            tone: 'warning',
+            hint: '通常是上游生成较慢或任务卡住，可以直接再试一次。',
+            icon: 'timeout',
+        };
+    }
+
+    return {
+        title: 'Agent 响应失败',
+        tone: 'warning',
+        hint: '如果连续失败，优先检查网络、登录态和后端配置。',
+        icon: 'warning',
+    };
+}
+
+function renderErrorIcon(icon: NonNullable<Message['errorState']>['icon']) {
+    switch (icon) {
+        case 'auth':
+            return <ShieldAlert size={14} />;
+        case 'config':
+            return <KeyRound size={14} />;
+        case 'timeout':
+            return <TimerReset size={14} />;
+        default:
+            return <AlertTriangle size={14} />;
+    }
+}
 
 export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
     const [inputValue, setInputValue] = useState(initialPrompt || '');
@@ -108,10 +166,12 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
+                const errorState = getAgentErrorState(error);
                 setMessages((prev) => [...prev, {
                     role: 'assistant',
                     content: `抱歉，这个 Agent 没有成功响应：${error instanceof Error ? error.message : '未知错误'}`,
                     kind: 'chat',
+                    errorState,
                 }]);
             }
         }
@@ -148,9 +208,15 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                 setInputValue('');
             }).catch((error) => {
                 console.error('Failed to auto-start agent:', error);
+                const errorState = getAgentErrorState(error);
                 setMessages([
                     { role: 'user', content: initialPrompt },
-                    { role: 'assistant', content: `抱歉，这个 Agent 自动启动失败：${error instanceof Error ? error.message : '未知错误'}`, kind: 'chat' },
+                    {
+                        role: 'assistant',
+                        content: `抱歉，这个 Agent 自动启动失败：${error instanceof Error ? error.message : '未知错误'}`,
+                        kind: 'chat',
+                        errorState,
+                    },
                 ]);
             });
         }
@@ -219,6 +285,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             const actionTitle = isAction
                                 ? actionTitleMap[msg.actionKind ?? 'images_generated'] ?? '执行完成'
                                 : null;
+                            const errorState = msg.role === 'assistant' ? msg.errorState : undefined;
 
                             return (
                                 <div key={index} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -227,13 +294,17 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                 ? 'bg-gray-100 text-gray-900 rounded-tr-sm'
                                                 : isAction
                                                     ? 'bg-emerald-50 border border-emerald-200 text-emerald-950 shadow-sm rounded-tl-sm'
-                                                    : 'bg-blue-50 border border-blue-100 text-slate-800 shadow-sm rounded-tl-sm'
+                                                    : errorState?.tone === 'critical'
+                                                        ? 'bg-amber-50 border border-amber-200 text-amber-950 shadow-sm rounded-tl-sm'
+                                                        : 'bg-blue-50 border border-blue-100 text-slate-800 shadow-sm rounded-tl-sm'
                                             }`}
                                     >
                                         {badgeLabel && (
                                             <div className={`mb-2 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-medium ${isAction
                                                     ? 'bg-emerald-100 text-emerald-700'
-                                                    : 'bg-blue-100 text-blue-700'
+                                                    : errorState?.tone === 'critical'
+                                                        ? 'bg-amber-100 text-amber-700'
+                                                        : 'bg-blue-100 text-blue-700'
                                                 }`}>
                                                 {badgeLabel}
                                             </div>
@@ -251,6 +322,25 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                 </div>
                                             </div>
                                         )}
+                                        {errorState && (
+                                            <div className={`mb-3 rounded-xl px-3 py-2.5 ${errorState.tone === 'critical'
+                                                    ? 'border border-amber-200 bg-white/80 text-amber-900'
+                                                    : 'border border-blue-200 bg-white/80 text-blue-900'
+                                                }`}>
+                                                <div className="flex items-start gap-2">
+                                                    <div className={`mt-0.5 flex h-7 w-7 items-center justify-center rounded-full ${errorState.tone === 'critical' ? 'bg-amber-100' : 'bg-blue-100'}`}>
+                                                        {renderErrorIcon(errorState.icon)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-xs font-medium uppercase tracking-wide opacity-70">Agent Issue</div>
+                                                        <div className="text-sm font-semibold">{errorState.title}</div>
+                                                        {errorState.hint && (
+                                                            <div className="mt-1 text-xs opacity-80">{errorState.hint}</div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                         {msg.meta && msg.meta.length > 0 && (
                                             <div className="mb-3 flex flex-wrap gap-2">
                                                 {msg.meta.map((item, metaIndex) => (
@@ -258,7 +348,9 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                         key={`${item.label}-${item.value}-${metaIndex}`}
                                                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] ${isAction
                                                                 ? 'bg-white/80 text-emerald-800 border border-emerald-200'
-                                                                : 'bg-white/80 text-blue-800 border border-blue-200'
+                                                                : errorState?.tone === 'critical'
+                                                                    ? 'bg-white/80 text-amber-800 border border-amber-200'
+                                                                    : 'bg-white/80 text-blue-800 border border-blue-200'
                                                             }`}
                                                     >
                                                         <span className="opacity-70">{item.label}</span>
