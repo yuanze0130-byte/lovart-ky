@@ -100,6 +100,18 @@ create index if not exists payment_events_order_no_idx
 create index if not exists payment_events_provider_order_id_idx
   on public.payment_events (provider_order_id, created_at desc);
 
+drop policy if exists "Users can view their own credit transactions"
+on public.credit_transactions;
+
+drop policy if exists "Users can insert their own credit transactions"
+on public.credit_transactions;
+
+drop policy if exists "Users can update their own credit transactions"
+on public.credit_transactions;
+
+drop policy if exists "Users can delete their own credit transactions"
+on public.credit_transactions;
+
 alter table public.credit_transactions
   alter column user_id type text using user_id::text;
 
@@ -109,6 +121,13 @@ alter table public.credit_transactions
 
 create index if not exists credit_transactions_order_no_idx
   on public.credit_transactions (order_no);
+
+alter table public.credit_transactions enable row level security;
+
+create policy "Users can view their own credit transactions"
+  on public.credit_transactions
+  for select
+  using (auth.jwt()->>'sub' = user_id);
 
 insert into public.credit_packages
   (code, name, price, credits, bonus_credits, currency, payment_provider, payment_channel, enabled, is_recommended, sort_order, description)
