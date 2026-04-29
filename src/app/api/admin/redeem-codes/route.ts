@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError } from '@/lib/require-user';
 import { createAdminServiceRoleClient, requireAdminUser } from '@/lib/admin-auth';
 
+type RedeemCodeImportInput = {
+  code_hash?: string;
+  code_mask?: string;
+  note?: string;
+};
+
 function normalizeCode(input: string) {
   return input.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -66,7 +72,7 @@ export async function POST(request: NextRequest) {
     const creditAmount = Number(body.creditAmount);
     const channel = String(body.channel || '').trim() || null;
     const expiresAt = body.expiresAt ? String(body.expiresAt) : null;
-    const codes = Array.isArray(body.codes) ? body.codes : [];
+    const codes: RedeemCodeImportInput[] = Array.isArray(body.codes) ? body.codes as RedeemCodeImportInput[] : [];
 
     if (!name) {
       return NextResponse.json({ error: '批次名称不能为空' }, { status: 400 });
