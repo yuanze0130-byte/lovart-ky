@@ -35,6 +35,42 @@ type BatchSummary = {
   expiredCodes: number;
 };
 
+type BatchCodeDetail = {
+  id: string;
+  code_mask: string;
+  status: string;
+  redeemed_by: string | null;
+  redeemed_at: string | null;
+  created_at: string;
+  note: string | null;
+  redemption: {
+    id: string;
+    code_id: string;
+    user_id: string;
+    credit_amount: number;
+    transaction_id: string | null;
+    created_at: string;
+  } | null;
+};
+
+type BatchDetailResponse = {
+  success: boolean;
+  batch: BatchSummary;
+  codes: BatchCodeDetail[];
+  counts: {
+    totalCodes: number;
+    unusedCodes: number;
+    redeemedCodes: number;
+    disabledCodes: number;
+    expiredCodes: number;
+  };
+  filters: {
+    q: string;
+    status: string;
+    limit: number;
+  };
+};
+
 export default function UserPage() {
   const { user, session, signOut } = useAuth();
   const { credits, transactions, redemptions, isLoading, isRedeeming, redeemCode } = useUserCredits();
@@ -62,6 +98,12 @@ export default function UserPage() {
   const [batchResult, setBatchResult] = useState<string | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
   const [batchSummaries, setBatchSummaries] = useState<BatchSummary[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+  const [batchDetailLoading, setBatchDetailLoading] = useState(false);
+  const [batchDetailError, setBatchDetailError] = useState<string | null>(null);
+  const [batchDetail, setBatchDetail] = useState<BatchDetailResponse | null>(null);
+  const [batchDetailKeyword, setBatchDetailKeyword] = useState('');
+  const [batchDetailStatus, setBatchDetailStatus] = useState('all');
 
   const adminEmails = useMemo(
     () =>
@@ -189,6 +231,40 @@ export default function UserPage() {
       setBatchError(error instanceof Error ? error.message : '创建批次失败');
     } finally {
       setBatchLoading(false);
+    }
+  };
+
+  const loadBatchDetail = async (batchId: string, options?: { keyword?: string; status?: string }) => {
+    if (!session?.access_token) return;
+
+    const nextKeyword = options?.keyword ?? batchDetailKeyword;
+    const nextStatus = options?.status ?? batchDetailStatus;
+
+    setBatchDetailLoading(true);
+    setBatchDetailError(null);
+
+    try {
+      const search = new URLSearchParams();
+      if (nextKeyword.trim()) search.set('q', nextKeyword.trim());
+      if (nextStatus && nextStatus !== 'all') search.set('status', nextStatus);
+      search.set('limit', '200');
+
+      const response = await fetch(`/api/admin/redeem-codes/${batchId}?${search.toString()}`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || '加载批次详情失败');
+      }
+
+      setSelectedBatchId(batchId);
+      setBatchDetail(result as BatchDetailResponse);
+    } catch (error) {
+      setBatchDetailError(error instanceof Error ? error.message : '加载批次详情失败');
+    } finally {
+      setBatchDetailLoading(false);
     }
   };
 
@@ -567,22 +643,106 @@ export default function UserPage() {
                           <div className="space-y-3">
                             {batchSummaries.map((item) => (
                               <div key={item.id} className="rounded-xl border border-gray-100 px-4 py-4">
-                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                   <div>
                                     <div className="text-sm font-semibold text-gray-900">{item.name}</div>
                                     <div className="text-xs text-gray-400">
                                       {item.channel || '未标记渠道'} · {item.credit_amount} 积分/张 · 创建于 {formatDateTime(item.created_at)}
                                     </div>
+                                    <div className="mt-1 text-xs text-gray-500">
+                                      未用 {item.unusedCodes} / 已兑 {item.redeemedCodes} / 失效 {item.expiredCodes} / 禁用 {item.disabledCodes} / 总数 {item.totalCodes}
+                                    </div>
                                   </div>
-                                  <div className="text-xs text-gray-500">
-                                    未用 {item.unusedCodes} / 已兑 {item.redeemedCodes} / 总数 {item.totalCodes}
-                                  </div>
+                                  <button
+                                    onClick={() => void loadBatchDetail(item.id, { keyword: '', status: 'all' })}
+                                    className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    {selectedBatchId === item.id ? '刷新详情' : '查看详情'}
+                                  </button>
                                 </div>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
+
+                      {selectedBatchId && (
+                        <div className="mt-6 rounded-2xl border border-gray-100 bg-gray-50 p-5">
+                          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div>
+                              <h4 className="text-base font-semibold text-gray-900">批次详情 / 单码状态</h4>
+                              <p className="text-sm text-gray-500">
+                                {batchDetail?.batch?.name || '正在加载批次详情'}
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-2 md:flex-row">
+                              <input
+                                value={batchDetailKeyword}
+                                onChange={(e) => setBatchDetailKeyword(e.target.value.toUpperCase())}
+                                placeholder="搜索 code_mask"
+                                className="rounded-xl border border-gray-200 px-4 py-2 text-sm outline-none focus:border-gray-400"
+                              />
+                              <select
+                                value={batchDetailStatus}
+                                onChange={(e) => setBatchDetailStatus(e.target.value)}
+                                className="rounded-xl border border-gray-200 px-4 py-2 text-sm outline-none focus:border-gray-400"
+                              >
+                                <option value="all">全部状态</option>
+                                <option value="unused">未使用</option>
+                                <option value="redeemed">已兑换</option>
+                                <option value="disabled">已禁用</option>
+                                <option value="expired">已过期</option>
+                              </select>
+                              <button
+                                onClick={() => selectedBatchId && void loadBatchDetail(selectedBatchId)}
+                                className="rounded-xl bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
+                              >
+                                筛选
+                              </button>
+                            </div>
+                          </div>
+
+                          {batchDetailError && <div className="mb-3 text-sm text-red-600">{batchDetailError}</div>}
+
+                          {batchDetail && (
+                            <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+                              <div className="rounded-xl bg-white px-4 py-3 text-sm"><div className="text-gray-400">总数</div><div className="font-semibold text-gray-900">{batchDetail.counts.totalCodes}</div></div>
+                              <div className="rounded-xl bg-white px-4 py-3 text-sm"><div className="text-gray-400">未使用</div><div className="font-semibold text-gray-900">{batchDetail.counts.unusedCodes}</div></div>
+                              <div className="rounded-xl bg-white px-4 py-3 text-sm"><div className="text-gray-400">已兑换</div><div className="font-semibold text-gray-900">{batchDetail.counts.redeemedCodes}</div></div>
+                              <div className="rounded-xl bg-white px-4 py-3 text-sm"><div className="text-gray-400">已禁用</div><div className="font-semibold text-gray-900">{batchDetail.counts.disabledCodes}</div></div>
+                              <div className="rounded-xl bg-white px-4 py-3 text-sm"><div className="text-gray-400">已过期</div><div className="font-semibold text-gray-900">{batchDetail.counts.expiredCodes}</div></div>
+                            </div>
+                          )}
+
+                          {batchDetailLoading ? (
+                            <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-400">加载详情中...</div>
+                          ) : batchDetail?.codes?.length ? (
+                            <div className="space-y-2">
+                              {batchDetail.codes.map((code) => (
+                                <div key={code.id} className="rounded-xl border border-gray-200 bg-white px-4 py-3">
+                                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                      <div className="text-sm font-semibold text-gray-900">{code.code_mask}</div>
+                                      <div className="text-xs text-gray-400">
+                                        状态 {code.status} · 创建于 {formatDateTime(code.created_at)}
+                                        {code.redeemed_at ? ` · 兑换于 ${formatDateTime(code.redeemed_at)}` : ''}
+                                      </div>
+                                      {code.note && <div className="mt-1 text-xs text-gray-500">备注：{code.note}</div>}
+                                    </div>
+                                    <div className="text-xs text-gray-500 md:text-right">
+                                      <div>redeemed_by: {code.redeemed_by || '-'}</div>
+                                      <div>transaction: {code.redemption?.transaction_id?.slice(0, 8) || '-'}</div>
+                                      <div>user: {code.redemption?.user_id || '-'}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-400">没有匹配到单码记录</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
