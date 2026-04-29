@@ -13,6 +13,14 @@ type RedeemResultRow = {
   batch_name: string | null;
 };
 
+type ErrorWithDetails = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+  error_description?: string;
+};
+
 function normalizeRedeemCode(input: string) {
   return input.toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
@@ -42,6 +50,34 @@ function mapRedeemError(code: string | null) {
     default:
       return { status: 400, error: '卡密无效或不可使用' };
   }
+}
+
+function getErrorDetails(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object') {
+    const candidate = error as ErrorWithDetails;
+    const parts = [candidate.message, candidate.details, candidate.hint, candidate.code, candidate.error_description]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+
+    if (parts.length > 0) {
+      return parts.join(' | ');
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return 'Unknown error object';
+    }
+  }
+
+  if (typeof error === 'string' && error.trim()) {
+    return error;
+  }
+
+  return 'Unknown error';
 }
 
 export async function POST(request: NextRequest) {
@@ -93,7 +129,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       error: '卡密兑换失败',
-      details: error instanceof Error ? error.message : 'Unknown error',
+      details: getErrorDetails(error),
     }, { status: 500 });
   }
 }
