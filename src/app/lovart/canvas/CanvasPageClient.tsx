@@ -1813,6 +1813,56 @@ function LovartCanvasContent() {
         }
     }, [getStoryboardNodeSize, setElements, setSelectedIds, storyboard, storyboardLayout]);
 
+    const buildAgentFollowUps = useCallback((result: AgentActionResult): string[] => {
+        switch (result.kind) {
+            case 'storyboard_created':
+                return [
+                    '把这个分镜扩展成 6 镜头，并补每镜头的画面描述',
+                    '基于这套分镜，继续为每个镜头生成出图提示词',
+                    '把这套分镜整理成更偏商业广告的节奏',
+                ];
+            case 'storyboard_board_requested':
+                return [
+                    '继续生成 4 镜头品牌短片分镜',
+                    '给这个制作板补一版更电影感的镜头语言',
+                    '把这个方向改成更适合竖屏短视频',
+                ];
+            case 'images_generated':
+                return [
+                    '把这组图统一成同一视觉风格',
+                    '基于这组图继续生成一版更高级冷调的变体',
+                    '从这组图里挑一个方向继续做成视频分镜',
+                ];
+            case 'storyboard_image_generation_requested':
+                return [
+                    '继续为剩下镜头批量生成图片',
+                    '把这一镜改成更强对比和更电影感的光影',
+                    '基于当前镜头继续生成对应的视频提示词',
+                ];
+            case 'storyboard_video_generation_requested':
+            case 'video_started':
+                return [
+                    '继续为下一镜生成视频',
+                    '把这个视频方向改得更适合品牌广告',
+                    '基于这个视频镜头补一版配套封面图',
+                ];
+            case 'canvas_update_planned':
+                return [
+                    '继续把这些内容整理成更清晰的版式层级',
+                    '在当前画布上补一套标题和卖点文案',
+                    '把当前画布延展成一页完整提案',
+                ];
+            case 'image_edited':
+                return [
+                    '继续把这张图统一成更高级的商业质感',
+                    '保持主体不变，再给我一版更简洁的背景',
+                    '基于这张图继续扩展两版不同风格变体',
+                ];
+            default:
+                return [];
+        }
+    }, []);
+
     const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
         const response = await runAgent(message, agentContext, options);
         const nextResult = response.result;
@@ -1834,6 +1884,11 @@ function LovartCanvasContent() {
                 summary: chat.summary,
                 plan: chat.plan || {},
                 meta: [],
+                followUps: [
+                    '把这个方向整理成可直接放到画布里的方案',
+                    '基于这个思路继续给我 3 个不同风格方向',
+                    '按这个方向直接开始生成图片或分镜',
+                ],
             };
         }
 
@@ -1941,8 +1996,9 @@ function LovartCanvasContent() {
             summary: reply,
             plan: {},
             meta: buildAgentActionMeta(nextResult),
+            followUps: buildAgentFollowUps(nextResult),
         };
-    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
+    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, buildAgentFollowUps, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent]);
 
     const handleUnifiedAgentSubmit = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
         setAgentStage('analyzing');

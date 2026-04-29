@@ -207,6 +207,7 @@ export type AgentPanelResponse = {
   plan?: Record<string, unknown>;
   actionKind?: AgentActionResult['kind'];
   meta?: Array<{ label: string; value: string }>;
+  followUps?: string[];
 };
 
 export type AgentRunResponse = {

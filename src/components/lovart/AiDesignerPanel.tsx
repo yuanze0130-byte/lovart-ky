@@ -21,6 +21,7 @@ interface Message {
     meta?: AgentPanelResponse['meta'];
     summary?: string;
     plan?: Record<string, unknown>;
+    followUps?: string[];
     errorState?: {
         title: string;
         tone: 'warning' | 'critical';
@@ -240,6 +241,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                     meta: response.meta,
                     summary: response.summary,
                     plan: response.plan,
+                    followUps: response.followUps,
                 }]);
             } catch (error) {
                 console.error('Failed to generate response:', error);
@@ -282,6 +284,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                         meta: response.meta,
                         summary: response.summary,
                         plan: response.plan,
+                        followUps: response.followUps,
                     },
                 ]);
                 setInputValue('');
@@ -369,6 +372,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             const showSummary = !isAction && typeof msg.summary === 'string' && msg.summary.trim() && msg.summary.trim() !== msg.content.trim();
                             const detailContent = !isUser ? stripRepeatedSummary(msg.content, msg.summary) : msg.content;
                             const showDetailContent = Boolean(detailContent.trim());
+                            const showFollowUps = !isUser && !errorState && Array.isArray(msg.followUps) && msg.followUps.length > 0;
 
                             return (
                                 <div key={index} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -482,6 +486,28 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                     </div>
                                                 )}
                                                 <p className="whitespace-pre-wrap text-sm leading-relaxed">{detailContent}</p>
+                                            </div>
+                                        )}
+                                        {showFollowUps && (
+                                            <div className="mt-3">
+                                                <div className={`mb-2 text-xs font-medium uppercase tracking-wide ${isAction ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                                    Next Step
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {msg.followUps!.map((followUp, followUpIndex) => (
+                                                        <button
+                                                            key={`${followUp}-${followUpIndex}`}
+                                                            type="button"
+                                                            onClick={() => setInputValue(followUp)}
+                                                            className={`rounded-full border px-3 py-1.5 text-xs transition-colors ${isAction
+                                                                    ? 'border-emerald-200 bg-white/80 text-emerald-800 hover:bg-emerald-100'
+                                                                    : 'border-blue-200 bg-white/80 text-blue-800 hover:bg-blue-100'
+                                                                }`}
+                                                        >
+                                                            {followUp}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
