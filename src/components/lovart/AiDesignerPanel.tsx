@@ -118,6 +118,51 @@ function getPlanMeta(plan?: Record<string, unknown>): Array<{ label: string; val
     return meta;
 }
 
+function stripRepeatedSummary(content: string, summary?: string): string {
+    const normalizedContent = content.trim();
+    const normalizedSummary = summary?.trim();
+    if (!normalizedContent || !normalizedSummary) {
+        return normalizedContent;
+    }
+
+    if (normalizedContent === normalizedSummary) {
+        return '';
+    }
+
+    const escapedSummary = normalizedSummary.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const summaryPrefixPattern = new RegExp(`^${escapedSummary}[：:：\-—\s\n]*`, 'i');
+    const stripped = normalizedContent.replace(summaryPrefixPattern, '').trim();
+
+    return stripped === normalizedContent ? normalizedContent : stripped;
+}
+
+function getGeneratingState(mode: AgentMode, prompt?: string) {
+    const promptHint = prompt?.trim();
+
+    switch (mode) {
+        case 'branding':
+            return {
+                title: 'Agent 正在梳理品牌方向',
+                hint: promptHint ? `正在提炼品牌气质与视觉语言：${promptHint.slice(0, 36)}${promptHint.length > 36 ? '…' : ''}` : '正在提炼品牌气质与视觉语言',
+            };
+        case 'image-editing':
+            return {
+                title: 'Agent 正在准备图像操作',
+                hint: promptHint ? `正在分析你的改图目标：${promptHint.slice(0, 36)}${promptHint.length > 36 ? '…' : ''}` : '正在分析你的改图目标',
+            };
+        case 'research':
+            return {
+                title: 'Agent 正在整理参考线索',
+                hint: promptHint ? `正在抽取风格关键词与参考方向：${promptHint.slice(0, 36)}${promptHint.length > 36 ? '…' : ''}` : '正在抽取风格关键词与参考方向',
+            };
+        default:
+            return {
+                title: 'Agent 正在构思并执行',
+                hint: promptHint ? `正在拆解你的创意需求：${promptHint.slice(0, 36)}${promptHint.length > 36 ? '…' : ''}` : '正在拆解你的创意需求',
+            };
+    }
+}
+
 export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
     const [inputValue, setInputValue] = useState(initialPrompt || '');
     const [messages, setMessages] = useState<Message[]>([]);
@@ -175,6 +220,8 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     };
 
     const suggestions = suggestionsByMode[agentMode];
+    const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content;
+    const generatingState = getGeneratingState(agentMode, latestUserMessage || inputValue || initialPrompt);
 
     const handleSend = useCallback(async () => {
         if (inputValue.trim() && !isGenerating) {
@@ -320,6 +367,8 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             const errorState = msg.role === 'assistant' ? msg.errorState : undefined;
                             const planMeta = !isAction ? getPlanMeta(msg.plan) : [];
                             const showSummary = !isAction && typeof msg.summary === 'string' && msg.summary.trim() && msg.summary.trim() !== msg.content.trim();
+                            const detailContent = !isUser ? stripRepeatedSummary(msg.content, msg.summary) : msg.content;
+                            const showDetailContent = Boolean(detailContent.trim());
 
                             return (
                                 <div key={index} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -425,18 +474,37 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                 <p className="text-sm leading-relaxed text-slate-700">{msg.summary}</p>
                                             </div>
                                         )}
-                                        <p className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</p>
+                                        {showDetailContent && (
+                                            <div>
+                                                {!isUser && (showSummary || isAction) && (
+                                                    <div className={`mb-1 text-xs font-medium uppercase tracking-wide ${isAction ? 'text-emerald-600' : 'text-blue-600'}`}>
+                                                        {isAction ? 'Detail' : 'Expanded Notes'}
+                                                    </div>
+                                                )}
+                                                <p className="whitespace-pre-wrap text-sm leading-relaxed">{detailContent}</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             );
                         })}
                         {isGenerating && (
                             <div className="flex justify-start">
-                                <div className="bg-white border border-gray-100 p-4 rounded-2xl rounded-tl-sm shadow-sm">
+                                <div className="rounded-2xl rounded-tl-sm border border-blue-100 bg-white p-4 shadow-sm">
+                                    <div className="mb-2 flex items-center gap-2 text-blue-900">
+                                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100">
+                                            <Bot size={14} />
+                                        </div>
+                                        <div>
+                                            <div className="text-xs font-medium uppercase tracking-wide text-blue-600">Working</div>
+                                            <div className="text-sm font-semibold">{generatingState.title}</div>
+                                        </div>
+                                    </div>
+                                    <div className="mb-3 text-sm leading-relaxed text-slate-600">{generatingState.hint}</div>
                                     <div className="flex gap-1">
-                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                        <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                        <div className="h-2 w-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                        <div className="h-2 w-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                        <div className="h-2 w-2 rounded-full bg-gray-400 animate-bounce" style={{ animationDelay: '300ms' }}></div>
                                     </div>
                                 </div>
                             </div>

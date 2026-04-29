@@ -1933,13 +1933,7 @@ function LovartCanvasContent() {
             ]);
         }
 
-        const detailSuffix = 'count' in nextResult && typeof nextResult.count === 'number'
-            ? `\n已处理数量：${nextResult.count}`
-            : nextResult.kind === 'video_started' && nextResult.taskId
-                ? `\nTask ID: ${nextResult.taskId}`
-                : '';
-
-        const reply = `${nextResult.message}${detailSuffix}`;
+        const reply = nextResult.message;
         return {
             kind: 'action',
             actionKind: nextResult.kind,
