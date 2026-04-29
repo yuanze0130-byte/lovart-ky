@@ -89,7 +89,7 @@ export default function UserPage() {
   const [adminError, setAdminError] = useState<string | null>(null);
 
   const [batchName, setBatchName] = useState('');
-  const [batchCreditAmount, setBatchCreditAmount] = useState('100');
+  const [batchCreditAmount, setBatchCreditAmount] = useState('50');
   const [batchChannel, setBatchChannel] = useState('manual');
   const [batchExpiresAt, setBatchExpiresAt] = useState('');
   const [batchCodesCsv, setBatchCodesCsv] = useState('');
@@ -572,6 +572,39 @@ export default function UserPage() {
                             min="1"
                             className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm outline-none focus:border-gray-400"
                           />
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBatchCreditAmount('10');
+                                if (!batchName.trim()) setBatchName('体验卡-10积分-首批');
+                              }}
+                              className="rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                            >
+                              新用户体验卡 · 10
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBatchCreditAmount('50');
+                                if (!batchName.trim()) setBatchName('普通充值卡-50积分-首批');
+                              }}
+                              className="rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                            >
+                              普通充值卡 · 50
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBatchCreditAmount('100');
+                                if (!batchName.trim()) setBatchName('活动卡-100积分-首批');
+                              }}
+                              className="rounded-full border border-gray-200 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                            >
+                              活动卡 · 100
+                            </button>
+                          </div>
+                          <p className="mt-2 text-xs text-gray-400">默认建议：普通充值卡 50 积分；也可用快捷按钮切到 10 / 100。</p>
                         </div>
                         <div>
                           <label className="mb-2 block text-sm font-medium text-gray-700">渠道标记</label>
