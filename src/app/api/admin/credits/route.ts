@@ -1,91 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
-import { createClient } from '@supabase/supabase-js';
-
-type AdminTargetUser = {
-  id: string;
-  email?: string;
-};
-
-function createServiceRoleClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !serviceRoleKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY_NOT_CONFIGURED');
-  }
-
-  return createClient(url, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
-function getAdminEmails() {
-  return (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-async function resolveTargetUser(identifier: string) {
-  const supabase = createServiceRoleClient();
-  const trimmed = identifier.trim();
-
-  if (!trimmed) {
-    throw new Error('TARGET_IDENTIFIER_REQUIRED');
-  }
-
-  if (!trimmed.includes('@')) {
-    const { data, error } = await supabase.auth.admin.getUserById(trimmed);
-    if (error || !data.user) {
-      throw new Error('TARGET_USER_NOT_FOUND');
-    }
-
-    return {
-      id: data.user.id,
-      email: data.user.email,
-    } satisfies AdminTargetUser;
-  }
-
-  let page = 1;
-  const email = trimmed.toLowerCase();
-
-  while (true) {
-    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 200 });
-    if (error) {
-      throw error;
-    }
-
-    const matched = data.users.find((user) => (user.email || '').toLowerCase() === email);
-    if (matched) {
-      return {
-        id: matched.id,
-        email: matched.email,
-      } satisfies AdminTargetUser;
-    }
-
-    if (!data.users.length || data.users.length < 200) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  throw new Error('TARGET_USER_NOT_FOUND');
-}
+import { isNotAuthenticatedError } from '@/lib/require-user';
+import { createAdminServiceRoleClient, requireAdminUser, resolveTargetUser } from '@/lib/admin-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    const currentUser = await requireUser(request);
-    const adminEmails = getAdminEmails();
-    const currentEmail = (currentUser.email || '').toLowerCase();
-
-    if (!currentEmail || !adminEmails.includes(currentEmail)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
+    const currentUser = await requireAdminUser(request);
 
     const body = await request.json();
     const identifier = String(body.identifier || '').trim();
@@ -101,7 +20,7 @@ export async function POST(request: NextRequest) {
     }
 
     const targetUser = await resolveTargetUser(identifier);
-    const supabase = createServiceRoleClient();
+    const supabase = createAdminServiceRoleClient();
 
     const { data: existingCredits } = await supabase
       .from('user_credits')
@@ -145,6 +64,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
+
+    if (message === 'FORBIDDEN') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     if (message === 'TARGET_USER_NOT_FOUND') {
       return NextResponse.json({ error: '未找到该用户' }, { status: 404 });

@@ -66,7 +66,8 @@ type CreditAction =
   | 'remove_background'
   | 'upscale'
   | 'signup_bonus'
-  | 'manual_adjust';
+  | 'manual_adjust'
+  | 'redeem_code';
 
 export async function ensureUserCredits(userId: string): Promise<UserCreditsRow> {
   const supabase = createServiceRoleSupabaseClient();
@@ -237,6 +238,8 @@ async function logCreditTransaction(params: {
   type: CreditAction;
   description: string;
   referenceId?: string;
+  referenceType?: string;
+  balanceAfter?: number;
 }) {
   const supabase = createServiceRoleSupabaseClient();
 
@@ -247,6 +250,8 @@ async function logCreditTransaction(params: {
       type: params.type,
       description: params.description,
       reference_id: params.referenceId || null,
+      reference_type: params.referenceType || null,
+      balance_after: params.balanceAfter ?? null,
     } as never);
   } catch {
     // 流水表尚未创建时忽略，不阻塞主流程。

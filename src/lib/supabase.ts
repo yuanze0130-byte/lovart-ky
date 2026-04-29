@@ -67,6 +67,8 @@ export interface Database {
           type: string;
           description: string | null;
           reference_id: string | null;
+          reference_type: string | null;
+          balance_after: number | null;
           created_at: string;
         };
         Insert: {
@@ -76,6 +78,8 @@ export interface Database {
           type: string;
           description?: string | null;
           reference_id?: string | null;
+          reference_type?: string | null;
+          balance_after?: number | null;
           created_at?: string;
         };
         Update: {
@@ -85,6 +89,113 @@ export interface Database {
           type?: string;
           description?: string | null;
           reference_id?: string | null;
+          reference_type?: string | null;
+          balance_after?: number | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      redeem_code_batches: {
+        Row: {
+          id: string;
+          name: string;
+          credit_amount: number;
+          channel: string | null;
+          status: string;
+          expires_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          credit_amount: number;
+          channel?: string | null;
+          status?: string;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          credit_amount?: number;
+          channel?: string | null;
+          status?: string;
+          expires_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      redeem_codes: {
+        Row: {
+          id: string;
+          batch_id: string;
+          code_hash: string;
+          code_mask: string;
+          status: string;
+          redeemed_by: string | null;
+          redeemed_at: string | null;
+          created_at: string;
+          note: string | null;
+        };
+        Insert: {
+          id?: string;
+          batch_id: string;
+          code_hash: string;
+          code_mask: string;
+          status?: string;
+          redeemed_by?: string | null;
+          redeemed_at?: string | null;
+          created_at?: string;
+          note?: string | null;
+        };
+        Update: {
+          id?: string;
+          batch_id?: string;
+          code_hash?: string;
+          code_mask?: string;
+          status?: string;
+          redeemed_by?: string | null;
+          redeemed_at?: string | null;
+          created_at?: string;
+          note?: string | null;
+        };
+        Relationships: [];
+      };
+      redeem_code_redemptions: {
+        Row: {
+          id: string;
+          code_id: string;
+          batch_id: string;
+          user_id: string;
+          credit_amount: number;
+          transaction_id: string | null;
+          ip: string | null;
+          user_agent: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code_id: string;
+          batch_id: string;
+          user_id: string;
+          credit_amount: number;
+          transaction_id?: string | null;
+          ip?: string | null;
+          user_agent?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code_id?: string;
+          batch_id?: string;
+          user_id?: string;
+          credit_amount?: number;
+          transaction_id?: string | null;
+          ip?: string | null;
+          user_agent?: string | null;
           created_at?: string;
         };
         Relationships: [];

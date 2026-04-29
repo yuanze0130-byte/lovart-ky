@@ -15,10 +15,21 @@ export async function GET(request: NextRequest) {
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
+      .limit(20);
+
+    const { data: redemptionData, error: redemptionError } = await supabase
+      .from('redeem_code_redemptions')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
       .limit(10);
 
     if (txError) {
       throw txError;
+    }
+
+    if (redemptionError) {
+      throw redemptionError;
     }
 
     return NextResponse.json({
@@ -26,6 +37,7 @@ export async function GET(request: NextRequest) {
       credits: creditRow.credits,
       creditRow,
       transactions: (txData || []) as CreditTransactionRow[],
+      redemptions: redemptionData || [],
     });
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
