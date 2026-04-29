@@ -295,7 +295,25 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      redeem_credit_code: {
+        Args: {
+          p_user_id: string;
+          p_code_hash: string;
+          p_ip?: string | null;
+          p_user_agent?: string | null;
+        };
+        Returns: {
+          success: boolean;
+          error_code: string | null;
+          credits_added: number;
+          current_credits: number;
+          transaction_id: string | null;
+          redemption_id: string | null;
+          batch_name: string | null;
+        }[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
