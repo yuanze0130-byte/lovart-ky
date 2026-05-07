@@ -1,5 +1,5 @@
 ﻿/* eslint-disable @next/next/no-img-element -- The canvas renders user-provided/generated image data directly. */
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
@@ -71,6 +71,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardDurationSec?: number;
     storyboardShotIndex?: number;
     storyboardShotCount?: number;
+    storyboardSequenceState?: 'single' | 'first' | 'middle' | 'last';
+    storyboardSequenceHint?: string;
     storyboard序列State?: 'single' | 'first' | 'middle' | 'last';
     storyboard序列Hint?: string;
     storyboardBoardMode?: string;
@@ -781,13 +783,40 @@ export function CanvasArea({
         return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
     };
 
+    const stripStoryboardMetadata = (element: CanvasElement): CanvasElement => {
+        const nextElement = { ...element } as CanvasElement;
+        delete nextElement.storyboardItemId;
+        delete nextElement.storyboardShotLabel;
+        delete nextElement.storyboardTitle;
+        delete nextElement.storyboardMeta;
+        delete nextElement.storyboardBrief;
+        delete nextElement.storyboardAspectRatio;
+        delete nextElement.storyboardVideoSize;
+        delete nextElement.storyboardOrientation;
+        delete nextElement.storyboardSourceAspectRatio;
+        delete nextElement.storyboardSourceVideoSize;
+        delete nextElement.storyboardSourceOrientation;
+        delete nextElement.storyboardRenderProfile;
+        delete nextElement.storyboardDurationSec;
+        delete nextElement.storyboardShotIndex;
+        delete nextElement.storyboardShotCount;
+        delete nextElement.storyboardSequenceState;
+        delete nextElement.storyboardSequenceHint;
+        delete nextElement.storyboard序列State;
+        delete nextElement.storyboard序列Hint;
+        delete nextElement.storyboardBoardMode;
+        delete nextElement.storyboardElementRole;
+        delete nextElement.storyboardLaneOrientation;
+        return nextElement;
+    };
+
     const handleDuplicate = (el: CanvasElement) => {
-        onAddElement({
+        onAddElement(stripStoryboardMetadata({
             ...el,
             id: uuidv4(),
             x: el.x + 20,
             y: el.y + 20,
-        });
+        }));
     };
 
     const applyElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
@@ -818,7 +847,7 @@ export function CanvasArea({
 
         const duplicatedElements = selectedElements.map((el) => {
             const nextId = idMap.get(el.id) || uuidv4();
-            return {
+            return stripStoryboardMetadata({
                 ...el,
                 id: nextId,
                 x: el.x + 20,
@@ -828,7 +857,7 @@ export function CanvasArea({
                     ?.map((linkedId) => idMap.get(linkedId) || linkedId),
                 connectorFrom: el.connectorFrom ? (idMap.get(el.connectorFrom) || el.connectorFrom) : undefined,
                 connectorTo: el.connectorTo ? (idMap.get(el.connectorTo) || el.connectorTo) : undefined,
-            } satisfies CanvasElement;
+            } satisfies CanvasElement);
         });
 
         duplicatedElements.forEach((el) => onAddElement(el));
@@ -922,22 +951,40 @@ export function CanvasArea({
         applyElementUpdates(updates);
     };
 
-    const actionableSelection = elements.filter((el) => selectedIds.includes(el.id) && el.type !== 'connector');
+    const actionableSelection = useMemo(
+        () => elements.filter((el) => selectedIds.includes(el.id) && el.type !== 'connector'),
+        [elements, selectedIds],
+    );
     const canAlignSelection = actionableSelection.length >= 2;
-    const canDistributeHorizontally = actionableSelection.filter((el) => (el.width || 0) > 0).length >= 3;
-    const canDistributeVertically = actionableSelection.filter((el) => (el.height || 0) > 0).length >= 3;
-    const multiSelectionGroupIds = Array.from(new Set(actionableSelection.map((el) => el.groupId).filter(Boolean))) as string[];
-    const selectedGroupMemberCount = actionableSelection.filter((el) => el.groupId && multiSelectionGroupIds.includes(el.groupId)).length;
+    const canDistributeHorizontally = useMemo(
+        () => actionableSelection.filter((el) => (el.width || 0) > 0).length >= 3,
+        [actionableSelection],
+    );
+    const canDistributeVertically = useMemo(
+        () => actionableSelection.filter((el) => (el.height || 0) > 0).length >= 3,
+        [actionableSelection],
+    );
+    const multiSelectionGroupIds = useMemo(
+        () => Array.from(new Set(actionableSelection.map((el) => el.groupId).filter(Boolean))) as string[],
+        [actionableSelection],
+    );
+    const selectedGroupMemberCount = useMemo(
+        () => actionableSelection.filter((el) => el.groupId && multiSelectionGroupIds.includes(el.groupId)).length,
+        [actionableSelection, multiSelectionGroupIds],
+    );
     const canGroupSelection = actionableSelection.length >= 2;
     const canUngroupSelection = actionableSelection.length > 0 && multiSelectionGroupIds.length > 0;
-    const selectionBounds = actionableSelection.length > 0
-        ? {
-            left: Math.min(...actionableSelection.map((el) => el.x)),
-            top: Math.min(...actionableSelection.map((el) => el.y)),
-            right: Math.max(...actionableSelection.map((el) => el.x + (el.width || 0))),
-            bottom: Math.max(...actionableSelection.map((el) => el.y + (el.height || 0))),
-          }
-        : null;
+    const selectionBounds = useMemo(
+        () => (actionableSelection.length > 0
+            ? {
+                left: Math.min(...actionableSelection.map((el) => el.x)),
+                top: Math.min(...actionableSelection.map((el) => el.y)),
+                right: Math.max(...actionableSelection.map((el) => el.x + (el.width || 0))),
+                bottom: Math.max(...actionableSelection.map((el) => el.y + (el.height || 0))),
+            }
+            : null),
+        [actionableSelection],
+    );
     const selectedSingleGroupId = multiSelectionGroupIds.length === 1 ? multiSelectionGroupIds[0] : null;
 
     const handleGroupSelection = () => {
