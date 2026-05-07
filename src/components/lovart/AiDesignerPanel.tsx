@@ -33,7 +33,7 @@ interface Message {
 const actionTitleMap: Partial<Record<NonNullable<AgentPanelResponse['actionKind']>, string>> = {
     storyboard_created: '已创建分镜',
     storyboard_board_requested: '已生成制作板',
-    images_generated: '已生成图片',
+    images_generated: '已生成图像',
     storyboard_image_generation_requested: '已发起分镜出图',
     storyboard_video_generation_requested: '已发起分镜视频',
     video_started: '视频任务已启动',

@@ -12,7 +12,7 @@ export async function runGenerateImagesAction(input: {
   action: GenerateImagesAction;
   context: AgentContext;
 }): Promise<AgentActionResult> {
-  const count = Math.max(1, Math.min(input.action.count || 1, 6));
+  const count = Math.max(1, Math.min(input.action.count ?? 1, 6));
   const images: Array<{ assetId: string; imageData: string; prompt: string }> = [];
 
   for (let index = 0; index < count; index += 1) {
@@ -40,6 +40,6 @@ export async function runGenerateImagesAction(input: {
     assetIds: images.map((item) => item.assetId),
     images,
     count: images.length,
-    message: `已生成 ${images.length} 张候选图`,
+    message: `已生成 ${images.length} 张图像`,
   };
 }

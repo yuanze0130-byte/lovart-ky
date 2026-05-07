@@ -22,7 +22,7 @@ function normalizePrompt(message: string) {
     .trim();
 }
 
-function extractCount(message: string, fallback = 4) {
+function extractCount(message: string, fallback = 1) {
   const match = message.match(/(\d+)\s*(张|个|组|镜)/);
   if (!match) return fallback;
   const parsed = Number(match[1]);
@@ -185,7 +185,7 @@ export async function parseAgentCommand(input: {
   return {
     type: 'generate_images',
     prompt: normalizePrompt(raw) || raw,
-    count: extractCount(raw, 4),
+    count: extractCount(raw, 1),
     aspectRatio: aspectRatio || '1:1',
     addToProject: Boolean(input.context.projectId),
   };
