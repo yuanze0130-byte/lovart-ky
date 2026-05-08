@@ -175,7 +175,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
             label: 'Design',
             greeting: 'Hi，我是你的创作 Agent',
             subtitle: '我可以跟你聊创意方向，也可以直接帮你生图、修图、做分镜和视频',
-            placeholder: '比如：先给我想 3 个海报方向 / 生成 4 张封面 / 把这张图改成黄昏暖色',
+            placeholder: '比如：先给我想 3 个海报方向 / 生成一张封面 / 把这张图改成黄昏暖色',
         },
         branding: {
             label: 'Branding',

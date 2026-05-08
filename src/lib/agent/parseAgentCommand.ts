@@ -23,10 +23,21 @@ function normalizePrompt(message: string) {
 }
 
 function extractCount(message: string, fallback = 1) {
-  const match = message.match(/(\d+)\s*(张|个|组|镜)/);
-  if (!match) return fallback;
-  const parsed = Number(match[1]);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  const patterns = [
+    /(?:生成|出图|做图|画|渲染)\s*(\d+)\s*(张|个|组)/,
+    /(\d+)\s*(张|个|组)\s*(?:图|图片|封面|海报|KV)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = message.match(pattern);
+    if (!match) continue;
+    const parsed = Number(match[1]);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return fallback;
 }
 
 function extractShots(message: string, fallback = 6) {
