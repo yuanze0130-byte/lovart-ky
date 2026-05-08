@@ -43,7 +43,7 @@ async function runAgentChat(message: string, mode?: string) {
     ],
   });
 
-  const rawContent = completion.choices[0]?.message?.content ?? '{"reply":"未收到回复","summary":"未收到回复","plan":{}}';
+  const rawContent = completion.choices?.[0]?.message?.content ?? '{"reply":"未收到回复","summary":"未收到回复","plan":{}}';
 
   let parsed: { summary?: string; reply?: string; plan?: Record<string, unknown> };
   try {

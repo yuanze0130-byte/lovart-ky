@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
       ],
     });
 
-    const content = response.choices[0]?.message?.content?.trim();
+    const content = response.choices?.[0]?.message?.content?.trim();
     if (!content) {
       throw new Error('empty model response');
     }

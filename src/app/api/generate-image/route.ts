@@ -445,7 +445,7 @@ async function maybeTranslatePromptWithProxy(prompt: string) {
         },
       ],
     });
-    return translateRes.choices[0]?.message?.content?.trim() || prompt;
+    return translateRes.choices?.[0]?.message?.content?.trim() || prompt;
   } catch {
     return prompt;
   }
