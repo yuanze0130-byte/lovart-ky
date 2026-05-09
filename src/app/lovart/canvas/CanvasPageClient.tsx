@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
-import { CanvasArea, CanvasElement } from '@/components/lovart/CanvasArea';
+import { CanvasArea, CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
@@ -627,7 +627,7 @@ function LovartCanvasContent() {
         setPan(centerPanForElement(source));
     }, [centerPanForElement, elements, handleLocateAsset, projectAssets, setPan, setSelectedStoryboardItemId]);
 
-    const buildCanvasElementBase = useCallback((input: {
+    function buildCanvasElementBase(input: {
         id: string;
         type: CanvasElement['type'];
         x: number;
@@ -636,18 +636,20 @@ function LovartCanvasContent() {
         height?: number;
         content?: string;
         prompt?: string;
-    }): CanvasElement => ({
-        id: input.id,
-        type: input.type,
-        x: input.x,
-        y: input.y,
-        width: input.width,
-        height: input.height,
-        originalWidth: input.width,
-        originalHeight: input.height,
-        content: input.content,
-        prompt: input.prompt,
-    }), []);
+    }): CanvasElement {
+        return {
+            id: input.id,
+            type: input.type,
+            x: input.x,
+            y: input.y,
+            width: input.width,
+            height: input.height,
+            originalWidth: input.width,
+            originalHeight: input.height,
+            content: input.content,
+            prompt: input.prompt,
+        };
+    }
 
     const miniMapData = useMemo(() => {
         const drawableElements = elements.filter((element) => element.type !== 'connector');
@@ -1125,28 +1127,6 @@ function LovartCanvasContent() {
         saveProject,
     });
 
-    const buildCanvasElementBase = useCallback((input: {
-        id: string;
-        type: CanvasElement['type'];
-        x: number;
-        y: number;
-        width?: number;
-        height?: number;
-        content?: string;
-        prompt?: string;
-    }): CanvasElement => ({
-        id: input.id,
-        type: input.type,
-        x: input.x,
-        y: input.y,
-        width: input.width,
-        height: input.height,
-        originalWidth: input.width,
-        originalHeight: input.height,
-        content: input.content,
-        prompt: input.prompt,
-    }), []);
-
     const applyAgentCanvasDrafts = useCallback((drafts: DraftCanvasElement[]) => {
         setElements((prev) => [
             ...prev,
@@ -1311,14 +1291,14 @@ function LovartCanvasContent() {
         generationMetadata: Record<string, unknown> | undefined;
         requestedResolution: Resolution;
         requestedAspectRatio: AspectRatio;
-        returnedModelVariant?: string;
-        returnedProvider?: string;
-        returnedProviderMode?: string;
+        returnedModelVariant?: 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
+        returnedProvider?: GenerationMetadata['provider'];
+        returnedProviderMode?: GenerationMetadata['providerMode'];
         providerFallbackUsed?: boolean;
-        fallbackFrom?: string;
+        fallbackFrom?: GenerationMetadata['fallbackFrom'];
         fallbackReason?: string;
         returnedModel?: string;
-    }) => ({
+    }): Pick<CanvasElement, 'type' | 'content' | 'width' | 'height' | 'originalWidth' | 'originalHeight' | 'prompt' | 'generationMetadata' | 'requestedAspectRatio' | 'requestedResolution'> => ({
         type: 'image' as const,
         content: input.imageData,
         width: input.displaySize.width,
@@ -1345,16 +1325,16 @@ function LovartCanvasContent() {
     const buildStoryboardVideoProgressPatch = useCallback((input: {
         existingGenerationMetadata: CanvasElement['generationMetadata'];
         taskId: string;
-        videoStatus: string;
-        progress: number;
+        videoStatus?: string;
+        progress?: number;
         model?: string;
         videoModelMode?: VideoModelMode;
     }) => ({
         generationMetadata: {
             ...(input.existingGenerationMetadata || {}),
             taskId: input.taskId,
-            videoStatus: input.videoStatus,
-            progress: input.progress,
+            videoStatus: input.videoStatus ?? 'processing',
+            progress: input.progress ?? 0,
             model: input.model,
             videoModelMode: input.videoModelMode,
         },
@@ -1441,13 +1421,14 @@ function LovartCanvasContent() {
                 throw new Error('镜头出图失败');
             }
 
-            const dimensions = await getImageDimensions(result.imageData);
+            const imageData = result.imageData;
+            const dimensions = await getImageDimensions(imageData);
             const displaySize = getSmartDisplaySize(dimensions);
 
             setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
                 ...el,
                 ...buildStoryboardImageElementPatch({
-                    imageData: result.imageData,
+                    imageData,
                     finalPrompt: result.finalPrompt,
                     displaySize,
                     generationMetadata: result.generationMetadata,
@@ -1468,7 +1449,7 @@ function LovartCanvasContent() {
                     item,
                     elementId: generatorElement.id,
                     assetId: buildStoryboardAssetId('image', input.storyboardItemId),
-                    thumbnailUrl: result.imageData!,
+                    thumbnailUrl: imageData,
                     type: 'image',
                     sourcePrompt: result.finalPrompt,
                     aspectRatio: input.aspectRatio as StoryboardAspectRatio,
@@ -1545,27 +1526,31 @@ function LovartCanvasContent() {
                 await new Promise((resolve) => setTimeout(resolve, 3000));
                 const status = await getVideoGenerationStatus(startResult.taskId);
 
+                const videoStatus = status.status ?? 'processing';
+                const progress = status.progress ?? 0;
+
                 setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
                     ...el,
                     ...buildStoryboardVideoProgressPatch({
                         existingGenerationMetadata: el.generationMetadata,
                         taskId: startResult.taskId,
-                        videoStatus: status.status,
-                        progress: status.progress,
+                        videoStatus,
+                        progress,
                         model: status.model || startResult.model,
                         videoModelMode: startResult.modelMode || input.mode,
                     }),
                 } : el));
 
-                if (status.status === 'failed') {
+                if (videoStatus === 'failed') {
                     throw new Error('镜头视频生成失败');
                 }
 
-                if (status.progress === 100 && status.videoUrl) {
+                if (progress === 100 && status.videoUrl) {
+                    const videoUrl = status.videoUrl;
                     setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
                         ...el,
                         ...buildStoryboardVideoElementPatch({
-                            videoUrl: status.videoUrl,
+                            videoUrl,
                             width: generatorElement.width,
                             height: generatorElement.height,
                             originalWidth: generatorElement.originalWidth,
@@ -1573,8 +1558,8 @@ function LovartCanvasContent() {
                             prompt: input.prompt,
                             existingGenerationMetadata: el.generationMetadata,
                             taskId: startResult.taskId,
-                            videoStatus: status.status,
-                            progress: status.progress,
+                            videoStatus,
+                            progress,
                             model: status.model || startResult.model,
                             videoModelMode: startResult.modelMode || input.mode,
                         }),
@@ -1585,7 +1570,7 @@ function LovartCanvasContent() {
                             item,
                             elementId: generatorElement.id,
                             assetId: buildStoryboardAssetId('video', input.storyboardItemId),
-                            thumbnailUrl: status.videoUrl!,
+                            thumbnailUrl: videoUrl,
                             type: 'video',
                             sourcePrompt: input.prompt,
                             aspectRatio,
@@ -1683,7 +1668,7 @@ function LovartCanvasContent() {
         sourceAspectRatio: item.aspectRatio,
         sourceOrientation: getStoryboardAspectMeta(item.aspectRatio).orientation,
         sourceOutputSize: item.outputSize,
-        createdAt: item.createdAt,
+        createdAt: item.createdAt || new Date().toISOString(),
     }))), []);
 
     const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
