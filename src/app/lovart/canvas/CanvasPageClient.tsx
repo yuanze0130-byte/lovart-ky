@@ -27,6 +27,7 @@ import { useCanvasHistory } from '@/hooks/useCanvasHistory';
 import { useStoryboardManager } from '@/hooks/useStoryboardManager';
 import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
+import { createClient } from '@supabase/supabase-js';
 
 function LovartCanvasContent() {
     const buildAgentActionMeta = useCallback((result: AgentActionResult): Array<{ label: string; value: string }> => {
@@ -1158,6 +1159,18 @@ function LovartCanvasContent() {
         }));
     }, []);
 
+    const updateProjectThumbnail = useCallback((thumbnail: string) => {
+        if (!projectId || !thumbnail) return;
+        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (!supabaseUrl || !serviceRoleKey) return;
+
+        void createClient(supabaseUrl, serviceRoleKey)
+            .from('projects')
+            .update({ thumbnail })
+            .eq('id', projectId);
+    }, [projectId]);
+
     const buildEditedImageDraft = useCallback((imageData: string, prompt: string): DraftCanvasElement => ({
         id: `agent-edited-draft-${Date.now()}`,
         type: 'image',
@@ -1726,6 +1739,10 @@ function LovartCanvasContent() {
 
         if (nextResult.kind === 'images_generated') {
             applyAgentCanvasDrafts(buildAgentImageDrafts(nextResult.images));
+            const lastImage = nextResult.images.at(-1)?.imageData;
+            if (lastImage) {
+                updateProjectThumbnail(lastImage);
+            }
         }
 
         if (nextResult.kind === 'storyboard_image_generation_requested') {

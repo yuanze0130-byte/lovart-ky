@@ -41,8 +41,7 @@ function updateProjectThumbnail(projectId: string | undefined, thumbnail: string
   void supabase
     .from('projects')
     .update({ thumbnail })
-    .eq('id', projectId)
-    .or('thumbnail.is.null,thumbnail.eq.""');
+    .eq('id', projectId);
 }
 
 interface UseCanvasGenerationParams {
