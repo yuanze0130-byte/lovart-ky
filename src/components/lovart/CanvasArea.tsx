@@ -3,6 +3,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
+import { PanoramaViewer } from './PanoramaViewer';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -1612,17 +1613,15 @@ export function CanvasArea({
                                     if (isPanorama) {
                                         return (
                                             <div className="relative h-full w-full overflow-hidden rounded-2xl border border-sky-300/80 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_rgba(15,23,42,0.95)_66%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_48px_rgba(2,6,23,0.32)] dark:border-sky-400/25">
-                                                <div className="absolute left-3 top-3 z-20 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
-                                                    720° Panorama
-                                                </div>
-                                                <div className="absolute right-3 top-3 z-20 rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-50 backdrop-blur-sm">
-                                                    横向拖看
-                                                </div>
-                                                <div className="h-full w-full overflow-x-auto overflow-y-hidden" style={{ touchAction: 'pan-x' }} onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-                                                    <div className="relative h-full min-w-[140%]">
-                                                        <img src={el.content} alt="Panorama" draggable={false} className="h-full w-auto min-w-full max-w-none select-none object-cover" />
-                                                        <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-slate-950/65 to-transparent" />
-                                                        <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-slate-950/65 to-transparent" />
+                                                <PanoramaViewer
+                                                    src={el.content}
+                                                    alt="Panorama"
+                                                    badge={(
+                                                        <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
+                                                            720° Panorama
+                                                        </div>
+                                                    )}
+                                                    overlay={(
                                                         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/88 via-slate-950/38 to-transparent p-3 text-white">
                                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                                 {providerLabel && <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/88">{providerLabel}</span>}
@@ -1647,8 +1646,8 @@ export function CanvasArea({
                                                                 <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/12 px-2.5 py-2 text-[11px] leading-5 text-amber-50">回退说明：{fallbackSummary}</div>
                                                             )}
                                                         </div>
-                                                    </div>
-                                                </div>
+                                                    )}
+                                                />
                                             </div>
                                         );
                                     }

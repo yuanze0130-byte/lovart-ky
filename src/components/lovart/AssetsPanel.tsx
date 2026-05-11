@@ -1,8 +1,9 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element -- Canvas thumbnails use user-provided data URLs and object-fit behavior. */
-import React, { useMemo, useRef, useState } from 'react';
-import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2, MoveHorizontal } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2 } from 'lucide-react';
+import { PanoramaViewer } from './PanoramaViewer';
 import { getStoryboardAspectMeta, getStoryboardVideoSizeOptions, getStoryboardRenderProfile, getStoryboardRenderProfileLabel, getRecommendedStoryboardLayout, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel, getStoryboardNodeDimensions, getStoryboardOrientationLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, summarizeStoryboardBatchHealth, summarizeStoryboardNodeSizing, summarizeProductionBoard, type ProjectAsset, type StoryboardItem, type StoryboardLayoutMode, type StoryboardAspectRatio, type StoryboardVideoSize, type StoryboardRenderProfile } from '@/hooks/useProjectAssets';
 
 interface AssetsPanelProps {
@@ -1110,74 +1111,17 @@ export function AssetsPanel({
 }
 
 function PanoramaPreview({ asset }: { asset: ProjectAsset }) {
-  const railRef = useRef<HTMLDivElement | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStateRef = useRef<{ startX: number; startScrollLeft: number } | null>(null);
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const rail = railRef.current;
-    if (!rail) return;
-    dragStateRef.current = {
-      startX: event.clientX,
-      startScrollLeft: rail.scrollLeft,
-    };
-    setIsDragging(true);
-    rail.setPointerCapture(event.pointerId);
-  };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const rail = railRef.current;
-    const dragState = dragStateRef.current;
-    if (!rail || !dragState) return;
-    const deltaX = event.clientX - dragState.startX;
-    rail.scrollLeft = dragState.startScrollLeft - deltaX;
-  };
-
-  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
-    const rail = railRef.current;
-    if (rail?.hasPointerCapture(event.pointerId)) {
-      rail.releasePointerCapture(event.pointerId);
-    }
-    dragStateRef.current = null;
-    setIsDragging(false);
-  };
-
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-sky-200/70 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.16),rgba(255,255,255,0.96)_38%,rgba(241,245,249,0.95)_100%)] p-2 dark:border-sky-400/20 dark:bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.18),rgba(15,23,42,0.92)_42%,rgba(2,6,23,0.94)_100%)]">
-      <div className="mb-2 flex items-center justify-between gap-2 px-1">
-        <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700 dark:text-sky-100">
-          <Sparkles size={12} />
-          <span>720° Panorama Preview</span>
+    <PanoramaViewer
+      src={asset.url}
+      alt={asset.title}
+      heightClassName="h-[172px]"
+      badge={(
+        <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
+          720° · 全景资产
         </div>
-        <div className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 text-[10px] font-medium text-sky-700 shadow-sm dark:bg-white/10 dark:text-sky-100">
-          <MoveHorizontal size={11} />
-          <span>左右拖动</span>
-        </div>
-      </div>
-      <div
-        ref={railRef}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerEnd}
-        onPointerCancel={handlePointerEnd}
-        className={`relative overflow-x-auto overflow-y-hidden rounded-xl bg-slate-950/90 scrollbar-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
-        style={{ touchAction: 'pan-x' }}
-      >
-        <div className="relative h-[172px] min-w-[720px]">
-          <img
-            src={asset.url}
-            alt={asset.title}
-            draggable={false}
-            className="h-full w-auto min-w-full max-w-none select-none object-cover"
-          />
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-slate-950/70 to-transparent" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-slate-950/70 to-transparent" />
-          <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
-            720° · 全景资产
-          </div>
-        </div>
-      </div>
-    </div>
+      )}
+    />
   );
 }
 
