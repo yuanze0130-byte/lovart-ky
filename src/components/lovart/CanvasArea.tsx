@@ -241,6 +241,7 @@ interface CanvasAreaProps {
     onGenerateFromImage?: (element: CanvasElement) => void;
     onOpenImageEditMode?: (element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => void;
     onConnectFlow?: (element: CanvasElement) => void;
+    onGeneratePanorama?: (element: CanvasElement) => void;
     onRemoveBackground?: (element: CanvasElement) => Promise<void>;
     onUpscale?: (element: CanvasElement, scale?: number) => Promise<void>;
     onCrop?: (
@@ -281,6 +282,7 @@ export function CanvasArea({
     onGenerateFromImage,
     onOpenImageEditMode,
     onConnectFlow,
+    onGeneratePanorama,
     onRemoveBackground,
     onUpscale,
     onCrop,
@@ -1065,6 +1067,7 @@ export function CanvasArea({
                         onGenerateFromImage={onGenerateFromImage}
                         onOpenImageEditMode={onOpenImageEditMode}
                         onConnectFlow={onConnectFlow}
+                        onGeneratePanorama={onGeneratePanorama}
                         onDuplicate={handleDuplicate}
                         onRemoveBackground={onRemoveBackground}
                         onUpscale={onUpscale}

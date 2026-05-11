@@ -523,6 +523,27 @@ function LovartCanvasContent() {
         setActiveTool('select');
     }, [createImageGeneratorElement, setElements, setSelectedIds]);
 
+    const handleGeneratePanorama = useCallback((sourceImage: CanvasElement) => {
+        if (!sourceImage.content) return;
+
+        const generatorElement = createImageGeneratorElement();
+        const nextGenerator: CanvasElement = {
+            ...generatorElement,
+            x: sourceImage.x + (sourceImage.width || 400) + 120,
+            y: sourceImage.y,
+            width: sourceImage.width || 400,
+            height: Math.max(220, Math.round((sourceImage.width || 400) / 2)),
+            referenceImageId: sourceImage.id,
+            initialEditMode: 'generate',
+            initialPrompt: '生成一张 720° 全景图，画面应具有超宽横向构图、连续空间感和适合全景展开的场景信息。',
+            requestedAspectRatio: '21:9',
+        };
+
+        setElements((prev) => [...prev, nextGenerator]);
+        setSelectedIds([nextGenerator.id]);
+        setActiveTool('select');
+    }, [createImageGeneratorElement, setElements, setSelectedIds, setActiveTool]);
+
     const projectAssets = useProjectAssets(elements);
     const {
         storyboard,
@@ -1915,6 +1936,7 @@ function LovartCanvasContent() {
                     onGenerateFromImage={handleGenerateFromImage}
                     onOpenImageEditMode={handleOpenImageEditMode}
                     onConnectFlow={handleConnectFlow}
+                    onGeneratePanorama={handleGeneratePanorama}
                     onRemoveBackground={handleRemoveBackground}
                     onUpscale={handleUpscale}
                     onCrop={handleCrop}
