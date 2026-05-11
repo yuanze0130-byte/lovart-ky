@@ -12,17 +12,7 @@ import {
 const ASPECT_RATIOS: StoryboardAspectRatio[] = ['9:16', '16:9', '4:5', '1:1', '4:3', '3:4', '21:9', '3:2', '2:3'];
 const VIDEO_SIZES: StoryboardVideoSize[] = ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'];
 
-function normalizePrompt(message: string) {
-  return message
-    .replace(/帮我|请|给我|做一个|做一组|生成一下|生成一组/g, ' ')
-    .replace(/加到当前画布|加到画布|放进当前项目|放进项目/g, ' ')
-    .replace(/做成短视频|生成视频版本|生成一个视频版本/g, ' ')
-    .replace(/分镜|storyboard|镜头/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function extractCount(message: string, fallback = 1) {
+function extractCount(message: string) {
   const patterns = [
     /(?:生成|出图|做图|画|渲染)\s*(\d+)\s*(张|个|组)/,
     /(\d+)\s*(张|个|组)\s*(?:图|图片|封面|海报|KV)/,
@@ -37,7 +27,17 @@ function extractCount(message: string, fallback = 1) {
     }
   }
 
-  return fallback;
+  return 1;
+}
+
+function normalizePrompt(message: string) {
+  return message
+    .replace(/帮我|请|给我|做一个|做一组|生成一下|生成一组/g, ' ')
+    .replace(/加到当前画布|加到画布|放进当前项目|放进项目/g, ' ')
+    .replace(/做成短视频|生成视频版本|生成一个视频版本/g, ' ')
+    .replace(/分镜|storyboard|镜头/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function extractShots(message: string, fallback = 6) {
@@ -196,7 +196,7 @@ export async function parseAgentCommand(input: {
   return {
     type: 'generate_images',
     prompt: normalizePrompt(raw) || raw,
-    count: extractCount(raw, 1),
+    count: extractCount(raw),
     aspectRatio: aspectRatio || '1:1',
     addToProject: Boolean(input.context.projectId),
   };

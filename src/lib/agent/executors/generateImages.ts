@@ -12,7 +12,8 @@ export async function runGenerateImagesAction(input: {
   action: GenerateImagesAction;
   context: AgentContext;
 }): Promise<AgentActionResult> {
-  const count = Math.max(1, Math.min(input.action.count ?? 1, 6));
+  const requestedCount = input.action.count ?? 1;
+  const count = Math.max(1, Math.min(requestedCount, 4));
   const images: Array<{ assetId: string; imageData: string; prompt: string }> = [];
 
   for (let index = 0; index < count; index += 1) {
