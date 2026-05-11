@@ -533,6 +533,8 @@ function LovartCanvasContent() {
             x: sourceImage.x + (sourceImage.width || 400) + 120,
             y: sourceImage.y,
             referenceImageId: sourceImage.id,
+            initialEditMode: 'generate',
+            initialPrompt: `以这张图为参考，生成一张 720° 全景图，保持场景主体、空间关系和氛围连续，画面适合左右无缝环绕展开。\n\n参考图：当前已生成图片`,
             linkedElements: [sourceImage.id],
         };
 

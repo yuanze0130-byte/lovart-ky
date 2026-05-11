@@ -505,7 +505,7 @@ export function ContextToolbar({
                         <button
                             onClick={() => onGeneratePanorama(element)}
                             className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
-                            title="生成 720° 全景图"
+                            title="基于当前图片生成 720° 全景图"
                         >
                             <PanoramaIcon className="h-[16px] w-[16px]" />
                         </button>
