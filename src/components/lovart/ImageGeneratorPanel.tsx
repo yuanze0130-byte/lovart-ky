@@ -113,20 +113,31 @@ export function ImageGeneratorPanel({
     [canvasElements, elementId]
   );
 
-  const activeMeta = MODE_META[editMode];
-  const availableAspectRatios = modelVariant === 'gpt-image-2'
-    ? GPT_IMAGE_2_ASPECT_RATIO_OPTIONS
-    : modelVariant === 'gpt-image-2-official'
-      ? GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS
-      : ASPECT_RATIO_OPTIONS;
+  const isPanorama = selectedElement?.generatorKind === 'panorama';
+  const activeMeta = isPanorama
+    ? { title: 'Panorama Generator', subtitle: '专用全景资产：默认超宽横向构图。', icon: Sparkles }
+    : MODE_META[editMode];
+  const availableAspectRatios = isPanorama
+    ? ['21:9', '16:9']
+    : modelVariant === 'gpt-image-2'
+      ? GPT_IMAGE_2_ASPECT_RATIO_OPTIONS
+      : modelVariant === 'gpt-image-2-official'
+        ? GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS
+        : ASPECT_RATIO_OPTIONS;
   const imageCreditCost = useMemo(() => getImageCreditCost(modelVariant, resolution), [modelVariant, resolution]);
   const isOfficialModel = modelVariant === 'gpt-image-2-official';
 
   useEffect(() => {
-    if (!availableAspectRatios.includes(aspectRatio)) {
-      setAspectRatio(availableAspectRatios[0]);
+    if (isPanorama) {
+      setResolution('2K');
+      setAspectRatio('21:9');
+      return;
     }
-  }, [aspectRatio, availableAspectRatios]);
+
+    if (!availableAspectRatios.includes(aspectRatio)) {
+      setAspectRatio(availableAspectRatios[0] as AspectRatio);
+    }
+  }, [aspectRatio, availableAspectRatios, isPanorama]);
 
   useEffect(() => {
     if (!isOfficialModel) return;
@@ -248,6 +259,7 @@ export function ImageGeneratorPanel({
 
       <div className="p-4">
         {(isGenerating || progress > 0) && (
+          
           <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/80 p-3 dark:border-violet-400/20 dark:bg-violet-500/10">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-200">
               <Loader2 size={14} className="animate-spin" />
@@ -257,6 +269,12 @@ export function ImageGeneratorPanel({
             <div className="h-2 overflow-hidden rounded-full bg-violet-100 dark:bg-white/10">
               <div className="h-full rounded-full bg-violet-500 transition-all duration-300" style={{ width: `${progress}%` }} />
             </div>
+          </div>
+        )}
+
+        {isPanorama && (
+          <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-100">
+            当前是全景资产：会优先使用 21:9，并保留超宽场景连续性。
           </div>
         )}
 

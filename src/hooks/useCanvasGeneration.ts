@@ -64,6 +64,7 @@ function buildGenerationMetadata({
   editMode,
   modelVariant,
   referenceCount,
+  assetKind,
   resolution,
   aspectRatio,
   officialOptions,
@@ -77,6 +78,7 @@ function buildGenerationMetadata({
   editMode: ImageEditMode;
   modelVariant: BananaVariant;
   referenceCount: number;
+  assetKind?: 'image' | 'panorama';
   resolution: Resolution;
   aspectRatio: AspectRatio;
   officialOptions?: OfficialImageOptions;
@@ -91,6 +93,7 @@ function buildGenerationMetadata({
     imageEditMode: editMode,
     modelVariant,
     referenceCount,
+    assetKind,
     resolution,
     aspectRatio,
     ...(modelVariant === 'gpt-image-2-official'
@@ -528,6 +531,7 @@ export function useCanvasGeneration({
                     prompt: finalPrompt,
                     generationMetadata: {
                       ...generationMetadata,
+                      assetKind: el.generatorKind === 'panorama' ? 'panorama' : 'image',
                       resolution: requestedResolution,
                       aspectRatio: requestedAspectRatio,
                       modelVariant: returnedModelVariant,

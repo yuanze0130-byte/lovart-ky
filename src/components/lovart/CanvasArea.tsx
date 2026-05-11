@@ -35,6 +35,7 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     taskCompletedAt?: string;
     taskPayload?: Json;
     referenceCount?: number;
+    assetKind?: 'image' | 'panorama';
     resolution?: '1K' | '2K' | '4K';
     aspectRatio?: 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
     officialQuality?: 'auto' | 'high' | 'medium' | 'low';
@@ -1606,6 +1607,51 @@ export function CanvasArea({
                                         : typeof el.prompt === 'string' && el.prompt
                                             ? el.prompt
                                             : undefined;
+                                    const isPanorama = metadata?.assetKind === 'panorama';
+
+                                    if (isPanorama) {
+                                        return (
+                                            <div className="relative h-full w-full overflow-hidden rounded-2xl border border-sky-300/80 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_rgba(15,23,42,0.95)_66%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_48px_rgba(2,6,23,0.32)] dark:border-sky-400/25">
+                                                <div className="absolute left-3 top-3 z-20 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
+                                                    720° Panorama
+                                                </div>
+                                                <div className="absolute right-3 top-3 z-20 rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-50 backdrop-blur-sm">
+                                                    横向拖看
+                                                </div>
+                                                <div className="h-full w-full overflow-x-auto overflow-y-hidden" style={{ touchAction: 'pan-x' }} onMouseDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+                                                    <div className="relative h-full min-w-[140%]">
+                                                        <img src={el.content} alt="Panorama" draggable={false} className="h-full w-auto min-w-full max-w-none select-none object-cover" />
+                                                        <div className="pointer-events-none absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-slate-950/65 to-transparent" />
+                                                        <div className="pointer-events-none absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-slate-950/65 to-transparent" />
+                                                        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/88 via-slate-950/38 to-transparent p-3 text-white">
+                                                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
+                                                                {providerLabel && <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/88">{providerLabel}</span>}
+                                                                {modelLabel && <span className="rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-white/82">{modelLabel}</span>}
+                                                                <span className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-2.5 py-1 text-cyan-50">panorama</span>
+                                                            </div>
+                                                            {promptPreview && (
+                                                                <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/82">{promptPreview}</div>
+                                                            )}
+                                                            <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/76">
+                                                                {officialOptionChips.map((chip) => (
+                                                                    <span key={chip} className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-2.5 py-1 text-cyan-50">{chip}</span>
+                                                                ))}
+                                                                {taskDebugChips.map((chip) => (
+                                                                    <span key={chip} className="rounded-full border border-violet-300/20 bg-violet-400/15 px-2.5 py-1 text-violet-50 normal-case tracking-normal">{chip}</span>
+                                                                ))}
+                                                            </div>
+                                                            {taskDebugSummary && (
+                                                                <div className="mt-2 rounded-xl border border-violet-300/20 bg-violet-400/12 px-2.5 py-2 text-[11px] leading-5 text-violet-50 normal-case">{taskDebugSummary}</div>
+                                                            )}
+                                                            {fallbackSummary && (
+                                                                <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/12 px-2.5 py-2 text-[11px] leading-5 text-amber-50">回退说明：{fallbackSummary}</div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
 
                                     return (
                                         <div className="relative w-full h-full overflow-hidden rounded-lg bg-slate-950">

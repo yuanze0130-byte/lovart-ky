@@ -1,8 +1,8 @@
 'use client';
 
 /* eslint-disable @next/next/no-img-element -- Canvas thumbnails use user-provided data URLs and object-fit behavior. */
-import React, { useMemo, useState } from 'react';
-import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2 } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2, MoveHorizontal } from 'lucide-react';
 import { getStoryboardAspectMeta, getStoryboardVideoSizeOptions, getStoryboardRenderProfile, getStoryboardRenderProfileLabel, getRecommendedStoryboardLayout, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel, getStoryboardNodeDimensions, getStoryboardOrientationLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, summarizeStoryboardBatchHealth, summarizeStoryboardNodeSizing, summarizeProductionBoard, type ProjectAsset, type StoryboardItem, type StoryboardLayoutMode, type StoryboardAspectRatio, type StoryboardVideoSize, type StoryboardRenderProfile } from '@/hooks/useProjectAssets';
 
 interface AssetsPanelProps {
@@ -1109,6 +1109,78 @@ export function AssetsPanel({
   );
 }
 
+function PanoramaPreview({ asset }: { asset: ProjectAsset }) {
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStateRef = useRef<{ startX: number; startScrollLeft: number } | null>(null);
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rail = railRef.current;
+    if (!rail) return;
+    dragStateRef.current = {
+      startX: event.clientX,
+      startScrollLeft: rail.scrollLeft,
+    };
+    setIsDragging(true);
+    rail.setPointerCapture(event.pointerId);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rail = railRef.current;
+    const dragState = dragStateRef.current;
+    if (!rail || !dragState) return;
+    const deltaX = event.clientX - dragState.startX;
+    rail.scrollLeft = dragState.startScrollLeft - deltaX;
+  };
+
+  const handlePointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const rail = railRef.current;
+    if (rail?.hasPointerCapture(event.pointerId)) {
+      rail.releasePointerCapture(event.pointerId);
+    }
+    dragStateRef.current = null;
+    setIsDragging(false);
+  };
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-sky-200/70 bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.16),rgba(255,255,255,0.96)_38%,rgba(241,245,249,0.95)_100%)] p-2 dark:border-sky-400/20 dark:bg-[radial-gradient(circle_at_top,rgba(14,165,233,0.18),rgba(15,23,42,0.92)_42%,rgba(2,6,23,0.94)_100%)]">
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.16em] text-sky-700 dark:text-sky-100">
+          <Sparkles size={12} />
+          <span>720° Panorama Preview</span>
+        </div>
+        <div className="flex items-center gap-1 rounded-full bg-white/80 px-2 py-1 text-[10px] font-medium text-sky-700 shadow-sm dark:bg-white/10 dark:text-sky-100">
+          <MoveHorizontal size={11} />
+          <span>左右拖动</span>
+        </div>
+      </div>
+      <div
+        ref={railRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerEnd}
+        onPointerCancel={handlePointerEnd}
+        className={`relative overflow-x-auto overflow-y-hidden rounded-xl bg-slate-950/90 scrollbar-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        style={{ touchAction: 'pan-x' }}
+      >
+        <div className="relative h-[172px] min-w-[720px]">
+          <img
+            src={asset.url}
+            alt={asset.title}
+            draggable={false}
+            className="h-full w-auto min-w-full max-w-none select-none object-cover"
+          />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-slate-950/70 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-slate-950/70 to-transparent" />
+          <div className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
+            720° · 全景资产
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AssetCard({
   asset,
   onInsert,
@@ -1124,29 +1196,38 @@ function AssetCard({
   onUseAsVideoReference: (asset: ProjectAsset) => void;
   onAddToStoryboard: (asset: ProjectAsset) => void;
 }) {
+  const isPanorama = asset.assetKind === 'panorama';
+
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)] dark:border-white/10 dark:bg-white/5 dark:shadow-none">
-      <div className="aspect-[16/10] overflow-hidden bg-gray-100 dark:bg-black">
-        {asset.type === 'image' ? (
-          <img src={asset.url} alt={asset.title} className="h-full w-full object-cover" />
-        ) : (
-          <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
-        )}
-      </div>
+    <div className={`overflow-hidden rounded-2xl border bg-white shadow-[0_8px_24px_rgba(15,23,42,0.08)] dark:bg-white/5 dark:shadow-none ${isPanorama ? 'border-sky-200 dark:border-sky-400/20' : 'border-gray-200 dark:border-white/10'}`}>
+      {isPanorama ? (
+        <div className="p-3 pb-0">
+          <PanoramaPreview asset={asset} />
+        </div>
+      ) : (
+        <div className="aspect-[16/10] overflow-hidden bg-gray-100 dark:bg-black">
+          {asset.type === 'image' ? (
+            <img src={asset.url} alt={asset.title} className="h-full w-full object-cover" />
+          ) : (
+            <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
+          )}
+        </div>
+      )}
       <div className="space-y-2 p-3">
         <div className="flex items-center gap-2">
           {asset.type === 'image' ? (
-            <ImageIcon size={14} className="text-blue-500 dark:text-sky-300" />
+            <ImageIcon size={14} className={isPanorama ? 'text-sky-500 dark:text-sky-300' : 'text-blue-500 dark:text-sky-300'} />
           ) : (
             <Video size={14} className="text-purple-500 dark:text-purple-300" />
           )}
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">{asset.title}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">
-              {asset.width && asset.height ? `${Math.round(asset.width)} × ${Math.round(asset.height)}` : asset.type === 'video' ? '视频结果' : '图片结果'}
+              {asset.width && asset.height ? `${Math.round(asset.width)} × ${Math.round(asset.height)}` : asset.type === 'video' ? '视频结果' : isPanorama ? '全景图片结果' : '图片结果'}
             </div>
-            {(asset.aspectRatio || asset.outputSize) && (
+            {(asset.aspectRatio || asset.outputSize || isPanorama) && (
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                {isPanorama && <span className="rounded-full bg-sky-100 px-2 py-0.5 text-sky-700 dark:bg-sky-400/16 dark:text-sky-100">panorama</span>}
                 {asset.aspectRatio && <span className="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-white/8">{asset.aspectRatio}</span>}
                 {asset.orientation && <span className="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-white/8">{asset.orientation}</span>}
                 {asset.outputSize && <span className="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-white/8">{asset.outputSize}</span>}

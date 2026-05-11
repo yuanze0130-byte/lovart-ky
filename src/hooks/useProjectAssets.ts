@@ -2,10 +2,12 @@ import { useMemo } from 'react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 
 export type ProjectAssetType = 'image' | 'video';
+export type ProjectAssetKind = 'image' | 'video' | 'panorama';
 
 export interface ProjectAsset {
   id: string;
   type: ProjectAssetType;
+  assetKind: ProjectAssetKind;
   elementId: string;
   url: string;
   title: string;
@@ -728,6 +730,11 @@ export function useProjectAssets(elements: CanvasElement[]) {
       acc.push({
         id: `${element.type}-${element.id}`,
         type: element.type,
+        assetKind: element.type === 'video'
+          ? 'video'
+          : element.generationMetadata?.assetKind === 'panorama'
+            ? 'panorama'
+            : 'image',
         elementId: element.id,
         url: element.content,
         title: element.storyboardTitle || promptMeta?.title || promptMeta?.shotLabel || fallbackTitle,

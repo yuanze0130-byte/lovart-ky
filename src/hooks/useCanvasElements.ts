@@ -144,6 +144,20 @@ export function useCanvasElements({
     y: 300 - pan.y + elements.length * 20,
     width: 400,
     height: 400,
+    generatorKind: 'image',
+  }), [elements.length, pan.x, pan.y]);
+
+  const createPanoramaGeneratorElement = useCallback((): CanvasElement => ({
+    id: uuidv4(),
+    type: 'image-generator',
+    x: 300 - pan.x + elements.length * 20,
+    y: 300 - pan.y + elements.length * 20,
+    width: 520,
+    height: 260,
+    generatorKind: 'panorama',
+    requestedAspectRatio: '21:9',
+    requestedResolution: '2K',
+    initialPrompt: '生成一张 720° 全景图，要求超宽横向构图、连续空间感、画面元素在左右两端自然衔接，并适合后续全景预览。',
   }), [elements.length, pan.x, pan.y]);
 
   const createVideoGeneratorElement = useCallback((): CanvasElement => ({
@@ -176,6 +190,7 @@ export function useCanvasElements({
     handleOpenImageGenerator,
     handleOpenVideoGenerator,
     createImageGeneratorElement,
+    createPanoramaGeneratorElement,
     createVideoGeneratorElement,
   };
 }
