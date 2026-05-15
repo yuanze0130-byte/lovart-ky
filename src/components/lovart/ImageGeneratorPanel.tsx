@@ -112,6 +112,17 @@ export function ImageGeneratorPanel({
     () => canvasElements.find((item) => item.id === elementId),
     [canvasElements, elementId]
   );
+  const boundReferenceImage = useMemo(() => {
+    const referenceId = selectedElement?.referenceImageId;
+    if (!referenceId) return undefined;
+
+    const referenceElement = canvasElements.find((item) => item.id === referenceId);
+    if (referenceElement?.type !== 'image' || typeof referenceElement.content !== 'string' || !referenceElement.content) {
+      return undefined;
+    }
+
+    return referenceElement.content;
+  }, [canvasElements, selectedElement?.referenceImageId]);
 
   const isPanorama = selectedElement?.generatorKind === 'panorama';
   const activeMeta = isPanorama
@@ -156,6 +167,15 @@ export function ImageGeneratorPanel({
     }
   }, [editMode, isOfficialModel]);
 
+  useEffect(() => {
+    if (!boundReferenceImage) return;
+
+    setReferenceImages((prev) => {
+      if (prev.includes(boundReferenceImage)) return prev;
+      return [boundReferenceImage, ...prev].slice(0, 4);
+    });
+  }, [boundReferenceImage]);
+
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     const next = await Promise.all(
@@ -175,6 +195,12 @@ export function ImageGeneratorPanel({
 
   const handleSubmit = async () => {
     if (!prompt.trim() || isGenerating) return;
+
+    const effectiveReferenceImages = referenceImages.filter(Boolean);
+    if (editMode !== 'generate' && effectiveReferenceImages.length === 0) {
+      alert('当前编辑模式需要至少一张参考图，请从图片工具条进入或先添加参考图。');
+      return;
+    }
 
     let promptPatch = '';
     if (editMode === 'relight') {
@@ -210,7 +236,7 @@ export function ImageGeneratorPanel({
         prompt.trim(),
         resolution,
         aspectRatio,
-        referenceImages,
+        effectiveReferenceImages,
         modelVariant,
         editMode,
         promptPatch,
