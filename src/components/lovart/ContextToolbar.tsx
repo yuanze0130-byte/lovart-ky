@@ -350,7 +350,11 @@ export function ContextToolbar({
         setCropHeight(Math.max(1, nextHeight));
     };
 
-    if (element.type === 'image' || element.type === 'video') {
+    if (element.type === 'image' || element.type === 'video' || element.type === 'image-generator') {
+        const isImage = element.type === 'image';
+        const isVideo = element.type === 'video';
+        const isImageGenerator = element.type === 'image-generator';
+
         return (
             <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
                 <div className="flex items-center gap-1 rounded-2xl border border-gray-200 bg-white/95 p-1.5 shadow-[0_14px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-black/76 dark:shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
@@ -363,6 +367,11 @@ export function ContextToolbar({
                                 目标 {element.requestedAspectRatio}
                             </span>
                         )}
+                        {isImageGenerator && (
+                            <span className="px-1.5 py-0.5 rounded bg-violet-50 text-violet-600 dark:bg-violet-500/12 dark:text-violet-200">
+                                {element.generatorKind === 'panorama' ? '全景生成器' : '图像生成器'}
+                            </span>
+                        )}
                     </div>
 
                     <div className="w-px h-6 bg-gray-200" />
@@ -372,19 +381,19 @@ export function ContextToolbar({
                         onMouseEnter={() => setHoveredAction('remove-bg')}
                         onMouseLeave={() => setHoveredAction((current) => (current === 'remove-bg' ? null : current))}
                         className={`p-2 rounded-lg transition-colors relative ${
-                            element.type === 'image' && onRemoveBackground
+                            isImage && onRemoveBackground
                                 ? 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
-                        title={element.type === 'image' ? (isRemovingBg ? '去背景处理中...' : '去背景 · 3 积分') : '仅图片支持去背景'}
-                        disabled={element.type !== 'image' || !onRemoveBackground || isRemovingBg}
+                        title={isImage ? (isRemovingBg ? '去背景处理中...' : '去背景 · 3 积分') : '仅图片支持去背景'}
+                        disabled={!isImage || !onRemoveBackground || isRemovingBg}
                     >
                         {isRemovingBg ? <Loader2 size={18} className="animate-spin" /> : <RemoveBackgroundIcon className="h-[18px] w-[18px]" />}
                     </button>
 
                     <button
                         onClick={() => {
-                            if (element.type !== 'image' || !onCrop) return;
+                            if (!isImage || !onCrop) return;
                             setCropX(0);
                             setCropY(0);
                             setCropWidth(safeWidth);
@@ -392,39 +401,39 @@ export function ContextToolbar({
                             setShowCropPanel((prev) => !prev);
                         }}
                         className={`rounded-lg p-2 transition-colors ${
-                            element.type === 'image' && onCrop
+                            isImage && onCrop
                                 ? showCropPanel
                                     ? 'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-white/12 dark:text-white dark:hover:bg-white/16'
                                     : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
                         }`}
-                        title={element.type === 'image' ? '裁切' : '仅图片支持裁切'}
-                        disabled={element.type !== 'image' || !onCrop || isCropping}
+                        title={isImage ? '裁切' : '仅图片支持裁切'}
+                        disabled={!isImage || !onCrop || isCropping}
                     >
                         <CropIcon className="w-4 h-4" />
                     </button>
 
                     <button
                         onClick={() => {
-                            if (element.type !== 'image' || !onUpscale) return;
+                            if (!isImage || !onUpscale) return;
                             setShowUpscalePanel((prev) => !prev);
                         }}
                         onMouseEnter={() => setHoveredAction('upscale')}
                         onMouseLeave={() => setHoveredAction((current) => (current === 'upscale' ? null : current))}
                         className={`p-2 rounded-lg transition-colors ${
-                            element.type === 'image' && onUpscale
+                            isImage && onUpscale
                                 ? showUpscalePanel
                                     ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white'
                                     : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
-                        title={element.type === 'image' ? `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起` : '仅图片支持超分'}
-                        disabled={element.type !== 'image' || !onUpscale || isUpscaling}
+                        title={isImage ? `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起` : '仅图片支持超分'}
+                        disabled={!isImage || !onUpscale || isUpscaling}
                     >
                         <UpscaleIcon className="w-4 h-4" />
                     </button>
 
-                    {onOpenImageEditMode && element.type === 'image' && (
+                    {onOpenImageEditMode && isImage && (
                         <>
                             <button
                                 onClick={() => onOpenImageEditMode(element, 'relight', element.prompt || '保留主体，仅重打光，增强光影氛围与层次。')}
