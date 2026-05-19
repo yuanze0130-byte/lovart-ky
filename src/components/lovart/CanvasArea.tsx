@@ -1064,6 +1064,7 @@ export function CanvasArea({
                 >
                     <ContextToolbar
                         element={selectedElement}
+                        canvasElements={elements}
                         onUpdate={onElementChange}
                         onDelete={onDelete}
                         onGenerateFromImage={onGenerateFromImage}

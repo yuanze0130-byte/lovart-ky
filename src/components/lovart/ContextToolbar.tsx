@@ -7,6 +7,7 @@ import { authedFetch } from '@/lib/authed-fetch';
 
 interface ContextToolbarProps {
     element: CanvasElement;
+    canvasElements: CanvasElement[];
     onUpdate: (id: string, updates: Partial<CanvasElement>) => void;
     onDelete: (id: string) => void;
     onGenerateFromImage?: (element: CanvasElement) => void;
@@ -89,6 +90,7 @@ function CropIcon({ className = 'w-4 h-4' }: { className?: string }) {
 
 export function ContextToolbar({
     element,
+    canvasElements,
     onUpdate,
     onDelete,
     onGenerateFromImage,
@@ -137,13 +139,21 @@ export function ContextToolbar({
         cropHeight: number;
     } | null>(null);
 
+    const actionableImage = useMemo(() => {
+        if (element.type === 'image') return element;
+        if (element.type !== 'image-generator' || !element.referenceImageId) return null;
+        const reference = canvasElements.find((item) => item.id === element.referenceImageId);
+        return reference?.type === 'image' ? reference : null;
+    }, [canvasElements, element]);
+    const hasActionableImage = Boolean(actionableImage?.content);
+
     const safeWidth = useMemo(
-        () => Math.max(1, Math.round(element.originalWidth || element.width || 300)),
-        [element.originalWidth, element.width]
+        () => Math.max(1, Math.round(actionableImage?.originalWidth || element.originalWidth || element.width || 300)),
+        [actionableImage?.originalWidth, element.originalWidth, element.width]
     );
     const safeHeight = useMemo(
-        () => Math.max(1, Math.round(element.originalHeight || element.height || 300)),
-        [element.originalHeight, element.height]
+        () => Math.max(1, Math.round(actionableImage?.originalHeight || element.originalHeight || element.height || 300)),
+        [actionableImage?.originalHeight, element.originalHeight, element.height]
     );
     const cropScale = useMemo(() => {
         const maxPreviewWidth = 240;
@@ -156,13 +166,14 @@ export function ContextToolbar({
     if (!element) return null;
 
     const handleDownload = () => {
-        const src = element.content;
+        const targetElement = actionableImage ?? element;
+        const src = targetElement.content;
         if (!src) return;
 
         if (src.startsWith('data:')) {
             const link = document.createElement('a');
             link.href = src;
-            link.download = `lovart-${element.id.slice(0, 8)}.png`;
+            link.download = `lovart-${targetElement.id.slice(0, 8)}.png`;
             link.click();
         } else {
             fetch(src)
@@ -171,7 +182,7 @@ export function ContextToolbar({
                     const blobUrl = URL.createObjectURL(blob);
                     const link = document.createElement('a');
                     link.href = blobUrl;
-                    link.download = `lovart-${element.id.slice(0, 8)}.png`;
+                    link.download = `lovart-${targetElement.id.slice(0, 8)}.png`;
                     link.click();
                     URL.revokeObjectURL(blobUrl);
                 })
@@ -183,11 +194,12 @@ export function ContextToolbar({
 
     const handleEditConfirm = async () => {
         if (!editPrompt.trim() || !onGenerateFromImage) return;
+        const sourceElement = actionableImage ?? element;
         setIsGenerating(true);
         onGenerateFromImage({
-            ...element,
+            ...sourceElement,
             type: 'image-generator',
-            referenceImageId: element.id,
+            referenceImageId: sourceElement.id,
             content: editPrompt.trim(),
         });
         setShowEditPanel(false);
@@ -196,11 +208,11 @@ export function ContextToolbar({
     };
 
     const handleRemoveBackgroundClick = async () => {
-        if (!onRemoveBackground || element.type !== 'image') return;
+        if (!onRemoveBackground || !actionableImage?.content) return;
 
         try {
             setIsRemovingBg(true);
-            await onRemoveBackground(element);
+            await onRemoveBackground(actionableImage);
         } catch (error) {
             alert(error instanceof Error ? error.message : '去背景失败');
         } finally {
@@ -209,7 +221,7 @@ export function ContextToolbar({
     };
 
     const handleReversePrompt = async () => {
-        if (element.type !== 'image' || !element.content) return;
+        if (!actionableImage?.content) return;
 
         try {
             setIsReversingPrompt(true);
@@ -219,7 +231,7 @@ export function ContextToolbar({
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ imageData: element.content }),
+                body: JSON.stringify({ imageData: actionableImage.content }),
             });
 
             const data = await response.json();
@@ -236,12 +248,12 @@ export function ContextToolbar({
     };
 
     const handleUpscaleConfirm = async (scale?: 2 | 4) => {
-        if (!onUpscale || element.type !== 'image') return;
+        if (!onUpscale || !actionableImage?.content) return;
 
         try {
             const targetScale = scale ?? selectedUpscale;
             setIsUpscaling(true);
-            await onUpscale(element, targetScale);
+            await onUpscale(actionableImage, targetScale);
             setShowUpscalePanel(false);
         } catch (error) {
             alert(error instanceof Error ? error.message : '超分失败');
@@ -251,11 +263,11 @@ export function ContextToolbar({
     };
 
     const handleCropConfirm = async () => {
-        if (!onCrop || element.type !== 'image') return;
+        if (!onCrop || !actionableImage?.content) return;
 
         try {
             setIsCropping(true);
-            await onCrop(element, {
+            await onCrop(actionableImage, {
                 x: cropX,
                 y: cropY,
                 width: cropWidth,
@@ -354,13 +366,14 @@ export function ContextToolbar({
         const isImage = element.type === 'image';
         const isVideo = element.type === 'video';
         const isImageGenerator = element.type === 'image-generator';
+        const canUseImageActions = hasActionableImage;
 
         return (
             <div className="relative" onMouseDown={(e) => e.stopPropagation()}>
                 <div className="flex items-center gap-1 rounded-2xl border border-gray-200 bg-white/95 p-1.5 shadow-[0_14px_40px_rgba(15,23,42,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-black/76 dark:shadow-[0_20px_60px_rgba(0,0,0,0.4)]">
                     <div className="flex items-center gap-2 px-2 py-1 text-xs text-gray-600">
                         <span className="font-mono">
-                            {Math.round(element.originalWidth || element.width || 0)} × {Math.round(element.originalHeight || element.height || 0)}
+                            {Math.round(actionableImage?.originalWidth || element.originalWidth || element.width || 0)} × {Math.round(actionableImage?.originalHeight || element.originalHeight || element.height || 0)}
                         </span>
                         {element.requestedAspectRatio && (
                             <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
@@ -381,19 +394,19 @@ export function ContextToolbar({
                         onMouseEnter={() => setHoveredAction('remove-bg')}
                         onMouseLeave={() => setHoveredAction((current) => (current === 'remove-bg' ? null : current))}
                         className={`p-2 rounded-lg transition-colors relative ${
-                            isImage && onRemoveBackground
+                            canUseImageActions && onRemoveBackground
                                 ? 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
-                        title={isImage ? (isRemovingBg ? '去背景处理中...' : '去背景 · 3 积分') : '仅图片支持去背景'}
-                        disabled={!isImage || !onRemoveBackground || isRemovingBg}
+                        title={canUseImageActions ? (isRemovingBg ? '去背景处理中...' : '去背景 · 3 积分') : '当前图像生成器未绑定可用参考图'}
+                        disabled={!canUseImageActions || !onRemoveBackground || isRemovingBg}
                     >
                         {isRemovingBg ? <Loader2 size={18} className="animate-spin" /> : <RemoveBackgroundIcon className="h-[18px] w-[18px]" />}
                     </button>
 
                     <button
                         onClick={() => {
-                            if (!isImage || !onCrop) return;
+                            if (!canUseImageActions || !onCrop) return;
                             setCropX(0);
                             setCropY(0);
                             setCropWidth(safeWidth);
@@ -401,49 +414,49 @@ export function ContextToolbar({
                             setShowCropPanel((prev) => !prev);
                         }}
                         className={`rounded-lg p-2 transition-colors ${
-                            isImage && onCrop
+                            canUseImageActions && onCrop
                                 ? showCropPanel
                                     ? 'bg-gray-100 text-gray-900 hover:bg-gray-200 dark:bg-white/12 dark:text-white dark:hover:bg-white/16'
                                     : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'cursor-not-allowed text-gray-300 dark:text-slate-600'
                         }`}
-                        title={isImage ? '裁切' : '仅图片支持裁切'}
-                        disabled={!isImage || !onCrop || isCropping}
+                        title={canUseImageActions ? '裁切' : '当前图像生成器未绑定可用参考图'}
+                        disabled={!canUseImageActions || !onCrop || isCropping}
                     >
                         <CropIcon className="w-4 h-4" />
                     </button>
 
                     <button
                         onClick={() => {
-                            if (!isImage || !onUpscale) return;
+                            if (!canUseImageActions || !onUpscale) return;
                             setShowUpscalePanel((prev) => !prev);
                         }}
                         onMouseEnter={() => setHoveredAction('upscale')}
                         onMouseLeave={() => setHoveredAction((current) => (current === 'upscale' ? null : current))}
                         className={`p-2 rounded-lg transition-colors ${
-                            isImage && onUpscale
+                            canUseImageActions && onUpscale
                                 ? showUpscalePanel
                                     ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white'
                                     : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                                 : 'text-gray-300 cursor-not-allowed dark:text-slate-600'
                         }`}
-                        title={isImage ? `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起` : '仅图片支持超分'}
-                        disabled={!isImage || !onUpscale || isUpscaling}
+                        title={canUseImageActions ? `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起` : '当前图像生成器未绑定可用参考图'}
+                        disabled={!canUseImageActions || !onUpscale || isUpscaling}
                     >
                         <UpscaleIcon className="w-4 h-4" />
                     </button>
 
-                    {onOpenImageEditMode && isImage && (
+                    {onOpenImageEditMode && actionableImage && (
                         <>
                             <button
-                                onClick={() => onOpenImageEditMode(element, 'relight', element.prompt || '保留主体，仅重打光，增强光影氛围与层次。')}
+                                onClick={() => onOpenImageEditMode(actionableImage, 'relight', actionableImage.prompt || element.prompt || '保留主体，仅重打光，增强光影氛围与层次。')}
                                 className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
                                 title="重打光"
                             >
                                 <Lightbulb size={18} />
                             </button>
                             <button
-                                onClick={() => onOpenImageEditMode(element, 'angle', element.prompt || '保留主体身份与材质，仅调整视角与透视关系。')}
+                                onClick={() => onOpenImageEditMode(actionableImage, 'angle', actionableImage.prompt || element.prompt || '保留主体身份与材质，仅调整视角与透视关系。')}
                                 className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
                                 title="调整角度"
                             >
@@ -462,9 +475,9 @@ export function ContextToolbar({
                         </>
                     )}
 
-                    {element.type === 'image' && onStartObjectAnnotation && (
+                    {actionableImage && onStartObjectAnnotation && (
                         <button
-                            onClick={() => onStartObjectAnnotation(element)}
+                            onClick={() => onStartObjectAnnotation(actionableImage)}
                             onMouseEnter={() => setHoveredAction('annotate')}
                             onMouseLeave={() => setHoveredAction((current) => (current === 'annotate' ? null : current))}
                             className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
@@ -537,7 +550,7 @@ export function ContextToolbar({
                     <button
                         onClick={async () => {
                             try {
-                                const rawClipboardValue = element.finalPrompt || element.prompt || element.initialPrompt || element.content || '';
+                                const rawClipboardValue = element.finalPrompt || element.prompt || element.initialPrompt || actionableImage?.prompt || actionableImage?.content || element.content || '';
                                 const clipboardText = typeof rawClipboardValue === 'string' ? rawClipboardValue : JSON.stringify(rawClipboardValue);
                                 if (!clipboardText) return;
                                 await navigator.clipboard.writeText(clipboardText);
@@ -554,7 +567,7 @@ export function ContextToolbar({
                     <button
                         onClick={handleDownload}
                         className="p-2 hover:bg-gray-50 rounded-lg text-gray-700 transition-colors dark:text-slate-200 dark:hover:bg-white/8"
-                        title="下载图片"
+                        title={actionableImage ? '下载参考图片' : '下载图片'}
                     >
                         <Download size={18} />
                     </button>
@@ -605,9 +618,9 @@ export function ContextToolbar({
                                     cropDragStartRef.current = null;
                                 }}
                             >
-                                {element.content && (
+                                {actionableImage?.content && (
                                     <img
-                                        src={element.content}
+                                        src={actionableImage.content}
                                         alt="Crop preview"
                                         className="w-full h-full object-contain pointer-events-none select-none"
                                         draggable={false}
@@ -805,7 +818,7 @@ export function ContextToolbar({
                                     {onOpenImageEditMode && (
                                         <button
                                             onClick={() => {
-                                                onOpenImageEditMode(element, 'generate', reversePromptResult.detailedPrompt);
+                                                onOpenImageEditMode(actionableImage || element, 'generate', reversePromptResult.detailedPrompt);
                                                 setShowReversePromptPanel(false);
                                             }}
                                             className="rounded-lg bg-black px-3 py-1.5 text-xs text-white transition-colors hover:bg-gray-900 dark:bg-white dark:text-black dark:hover:bg-gray-100"

@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2 } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageCreditCost } from '@/lib/credits';
+import { authedFetch } from '@/lib/authed-fetch';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
@@ -14,6 +15,16 @@ type OfficialQuality = 'auto' | 'high' | 'medium' | 'low';
 type OfficialBackground = 'auto' | 'transparent' | 'opaque';
 type OfficialOutputFormat = 'png' | 'jpeg' | 'webp';
 type OfficialModeration = 'auto' | 'low';
+
+interface ReversePromptResult {
+  concisePrompt: string;
+  detailedPrompt: string;
+  negativePrompt?: string;
+  styleTags?: string[];
+  lightingTags?: string[];
+  cameraTags?: string[];
+  notes?: string;
+}
 
 interface ImageGeneratorPanelProps {
   elementId: string;
@@ -40,6 +51,10 @@ interface ImageGeneratorPanelProps {
   isGenerating: boolean;
   style?: React.CSSProperties;
   canvasElements: CanvasElement[];
+  onOpenImageEditMode?: (element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => void;
+  onRemoveBackground?: (element: CanvasElement) => Promise<void>;
+  onUpscale?: (element: CanvasElement, scale?: number) => Promise<void>;
+  onCrop?: (element: CanvasElement, options: { x: number; y: number; width: number; height: number }) => Promise<void>;
 }
 
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
@@ -94,6 +109,10 @@ export function ImageGeneratorPanel({
   isGenerating,
   style,
   canvasElements,
+  onOpenImageEditMode,
+  onRemoveBackground,
+  onUpscale,
+  onCrop,
 }: ImageGeneratorPanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState(initialPrompt || '');
@@ -107,12 +126,23 @@ export function ImageGeneratorPanel({
   const [officialBackground, setOfficialBackground] = useState<OfficialBackground>('auto');
   const [officialOutputFormat, setOfficialOutputFormat] = useState<OfficialOutputFormat>('png');
   const [officialModeration, setOfficialModeration] = useState<OfficialModeration>('auto');
+  const [reversePromptResult, setReversePromptResult] = useState<ReversePromptResult | null>(null);
+  const [showCropPanel, setShowCropPanel] = useState(false);
+  const [cropX, setCropX] = useState(0);
+  const [cropY, setCropY] = useState(0);
+  const [cropWidth, setCropWidth] = useState(1);
+  const [cropHeight, setCropHeight] = useState(1);
+  const [isRemovingBg, setIsRemovingBg] = useState(false);
+  const [isReversingPrompt, setIsReversingPrompt] = useState(false);
+  const [isUpscaling, setIsUpscaling] = useState(false);
+  const [isCropping, setIsCropping] = useState(false);
 
   const selectedElement = useMemo(
     () => canvasElements.find((item) => item.id === elementId),
     [canvasElements, elementId]
   );
-  const boundReferenceImage = useMemo(() => {
+
+  const boundReferenceElement = useMemo(() => {
     const referenceId = selectedElement?.referenceImageId;
     if (!referenceId) return undefined;
 
@@ -121,8 +151,12 @@ export function ImageGeneratorPanel({
       return undefined;
     }
 
-    return referenceElement.content;
+    return referenceElement;
   }, [canvasElements, selectedElement?.referenceImageId]);
+
+  const boundReferenceImage = boundReferenceElement?.content;
+  const actionableReference = boundReferenceElement?.content ? boundReferenceElement : null;
+  const canUseReferenceActions = Boolean(actionableReference);
 
   const isPanorama = selectedElement?.generatorKind === 'panorama';
   const activeMeta = isPanorama
@@ -137,6 +171,11 @@ export function ImageGeneratorPanel({
         : ASPECT_RATIO_OPTIONS;
   const imageCreditCost = useMemo(() => getImageCreditCost(modelVariant, resolution), [modelVariant, resolution]);
   const isOfficialModel = modelVariant === 'gpt-image-2-official';
+  const referencePreviewLabel = selectedElement?.type === 'image-generator'
+    ? selectedElement.referenceImageId
+      ? '已绑定参考图'
+      : '未绑定参考图'
+    : undefined;
 
   useEffect(() => {
     if (isPanorama) {
@@ -176,6 +215,15 @@ export function ImageGeneratorPanel({
     });
   }, [boundReferenceImage]);
 
+  useEffect(() => {
+    if (!boundReferenceElement) return;
+
+    setCropX(0);
+    setCropY(0);
+    setCropWidth(Math.max(1, Math.round(boundReferenceElement.originalWidth || boundReferenceElement.width || 1)));
+    setCropHeight(Math.max(1, Math.round(boundReferenceElement.originalHeight || boundReferenceElement.height || 1)));
+  }, [boundReferenceElement]);
+
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     const next = await Promise.all(
@@ -191,6 +239,81 @@ export function ImageGeneratorPanel({
     );
     setReferenceImages((prev) => [...prev, ...next].slice(0, 4));
     event.target.value = '';
+  };
+
+  const handleReversePrompt = async () => {
+    if (!actionableReference?.content) return;
+
+    try {
+      setIsReversingPrompt(true);
+      const response = await authedFetch('/api/reverse-prompt', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ imageData: actionableReference.content }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.details || data.error || '反推提示词失败');
+      }
+      setReversePromptResult(data);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '反推提示词失败');
+    } finally {
+      setIsReversingPrompt(false);
+    }
+  };
+
+  const handleReferenceRemoveBackground = async () => {
+    if (!onRemoveBackground || !actionableReference?.content) return;
+
+    try {
+      setIsRemovingBg(true);
+      await onRemoveBackground(actionableReference);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '去背景失败');
+    } finally {
+      setIsRemovingBg(false);
+    }
+  };
+
+  const handleReferenceUpscale = async (scale: 2 | 4 = 2) => {
+    if (!onUpscale || !actionableReference?.content) return;
+
+    try {
+      setIsUpscaling(true);
+      await onUpscale(actionableReference, scale);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '超分失败');
+    } finally {
+      setIsUpscaling(false);
+    }
+  };
+
+  const handleReferenceCrop = async () => {
+    if (!onCrop || !actionableReference?.content) return;
+
+    try {
+      setIsCropping(true);
+      await onCrop(actionableReference, {
+        x: cropX,
+        y: cropY,
+        width: cropWidth,
+        height: cropHeight,
+      });
+      setShowCropPanel(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '裁切失败');
+    } finally {
+      setIsCropping(false);
+    }
+  };
+
+  const openEditFromReference = (mode: 'relight' | 'restyle' | 'background' | 'enhance' | 'angle') => {
+    if (!actionableReference || !onOpenImageEditMode) return;
+    onOpenImageEditMode(actionableReference, mode, actionableReference.prompt || '');
   };
 
   const handleSubmit = async () => {
@@ -285,7 +408,6 @@ export function ImageGeneratorPanel({
 
       <div className="p-4">
         {(isGenerating || progress > 0) && (
-          
           <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/80 p-3 dark:border-violet-400/20 dark:bg-violet-500/10">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-200">
               <Loader2 size={14} className="animate-spin" />
@@ -301,6 +423,174 @@ export function ImageGeneratorPanel({
         {isPanorama && (
           <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 text-xs text-sky-700 dark:border-sky-400/20 dark:bg-sky-500/10 dark:text-sky-100">
             当前是全景资产：会优先使用 21:9，并保留超宽场景连续性。
+          </div>
+        )}
+
+        {selectedElement?.type === 'image-generator' && (
+          <div className="mb-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">当前参考图</div>
+                <div className="mt-1 text-sm font-medium text-gray-800 dark:text-slate-100">
+                  {referencePreviewLabel}
+                </div>
+              </div>
+              <div className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-gray-600 shadow-sm dark:bg-black/40 dark:text-slate-300">
+                {selectedElement.generatorKind === 'panorama' ? '全景生成器' : '图像生成器'}
+              </div>
+            </div>
+            {boundReferenceElement?.content && (
+              <div className="mt-3 flex items-center gap-3 rounded-xl border border-white/70 bg-white p-2 dark:border-white/10 dark:bg-black/35">
+                <img
+                  src={boundReferenceElement.content}
+                  alt="reference-preview"
+                  className="h-14 w-14 rounded-lg object-cover ring-1 ring-black/5 dark:ring-white/10"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-medium text-gray-800 dark:text-slate-100">
+                    {selectedElement.referenceImageId ? `参考图 #${selectedElement.referenceImageId.slice(0, 8)}` : '参考图'}
+                  </div>
+                  <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
+                    {Math.round(boundReferenceElement.originalWidth || boundReferenceElement.width || 0)} × {Math.round(boundReferenceElement.originalHeight || boundReferenceElement.height || 0)}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void handleReversePrompt()}
+                disabled={!canUseReferenceActions || isReversingPrompt}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/30 dark:text-slate-200 dark:hover:bg-white/8"
+              >
+                {isReversingPrompt ? '反推中...' : '反推提示词'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReferenceRemoveBackground()}
+                disabled={!canUseReferenceActions || isRemovingBg || !onRemoveBackground}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/30 dark:text-slate-200 dark:hover:bg-white/8"
+              >
+                {isRemovingBg ? '去背景中...' : '去背景'}
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReferenceUpscale(2)}
+                disabled={!canUseReferenceActions || isUpscaling || !onUpscale}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/30 dark:text-slate-200 dark:hover:bg-white/8"
+              >
+                {isUpscaling ? '超分中...' : '超分 2x'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowCropPanel((prev) => !prev)}
+                disabled={!canUseReferenceActions || !onCrop}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/30 dark:text-slate-200 dark:hover:bg-white/8"
+              >
+                裁切
+              </button>
+            </div>
+
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => openEditFromReference('relight')}
+                disabled={!canUseReferenceActions || !onOpenImageEditMode}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/30 dark:text-slate-200 dark:hover:bg-white/8"
+              >
+                重打光
+              </button>
+              <button
+                type="button"
+                onClick={() => openEditFromReference('angle')}
+                disabled={!canUseReferenceActions || !onOpenImageEditMode}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/30 dark:text-slate-200 dark:hover:bg-white/8"
+              >
+                改角度
+              </button>
+              <button
+                type="button"
+                onClick={() => openEditFromReference('enhance')}
+                disabled={!canUseReferenceActions || !onOpenImageEditMode}
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-black/30 dark:text-slate-200 dark:hover:bg-white/8"
+              >
+                增强细节
+              </button>
+            </div>
+
+            {reversePromptResult && (
+              <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-600 dark:border-white/10 dark:bg-black/30 dark:text-slate-300">
+                <div className="font-medium text-gray-900 dark:text-white">{reversePromptResult.concisePrompt}</div>
+                {reversePromptResult.detailedPrompt && (
+                  <div className="mt-1 text-[11px] leading-5 text-gray-500 dark:text-slate-400">{reversePromptResult.detailedPrompt}</div>
+                )}
+              </div>
+            )}
+
+            {showCropPanel && canUseReferenceActions && (
+              <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-white/10 dark:bg-black/35">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <label className="text-gray-600 dark:text-slate-300">
+                    X
+                    <input
+                      type="number"
+                      value={cropX}
+                      min={0}
+                      onChange={(e) => setCropX(Math.max(0, Number(e.target.value) || 0))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 text-sm dark:border-white/10 dark:bg-black/30"
+                    />
+                  </label>
+                  <label className="text-gray-600 dark:text-slate-300">
+                    Y
+                    <input
+                      type="number"
+                      value={cropY}
+                      min={0}
+                      onChange={(e) => setCropY(Math.max(0, Number(e.target.value) || 0))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 text-sm dark:border-white/10 dark:bg-black/30"
+                    />
+                  </label>
+                  <label className="text-gray-600 dark:text-slate-300">
+                    宽
+                    <input
+                      type="number"
+                      value={cropWidth}
+                      min={1}
+                      onChange={(e) => setCropWidth(Math.max(1, Number(e.target.value) || 1))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 text-sm dark:border-white/10 dark:bg-black/30"
+                    />
+                  </label>
+                  <label className="text-gray-600 dark:text-slate-300">
+                    高
+                    <input
+                      type="number"
+                      value={cropHeight}
+                      min={1}
+                      onChange={(e) => setCropHeight(Math.max(1, Number(e.target.value) || 1))}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 text-sm dark:border-white/10 dark:bg-black/30"
+                    />
+                  </label>
+                </div>
+                <div className="mt-2 flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowCropPanel(false)}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-600 dark:border-white/10 dark:text-slate-300"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleReferenceCrop()}
+                    disabled={isCropping}
+                    className="rounded-lg bg-black px-3 py-1.5 text-xs font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isCropping ? '裁切中...' : '应用裁切'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

@@ -2065,6 +2065,10 @@ function LovartCanvasContent() {
                                 onGenerate={handleGenerateImage}
                                 isGenerating={isGenerating}
                                 canvasElements={elements}
+                                onOpenImageEditMode={handleOpenImageEditMode}
+                                onRemoveBackground={handleRemoveBackground}
+                                onUpscale={handleUpscale}
+                                onCrop={handleCrop}
                                 style={{
                                     left: `${left}px`,
                                     top: `${top}px`,
