@@ -363,8 +363,6 @@ export function ContextToolbar({
     };
 
     if (element.type === 'image' || element.type === 'video' || element.type === 'image-generator') {
-        const isImage = element.type === 'image';
-        const isVideo = element.type === 'video';
         const isImageGenerator = element.type === 'image-generator';
         const canUseImageActions = hasActionableImage;
 

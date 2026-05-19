@@ -15,6 +15,16 @@ type OfficialImageOptions = {
   moderation?: 'auto' | 'low';
 };
 
+type RelightRequestPayload = {
+  viewMode: 'perspective' | 'front';
+  lightType?: 'main';
+  presetDirection?: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back';
+  azimuth: number;
+  elevation: number;
+  intensity: number;
+  color: string;
+};
+
 export type Resolution = '1K' | '2K' | '4K';
 export type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 
@@ -135,6 +145,7 @@ export async function requestImageGeneration(input: {
   promptPresetLabel?: string;
   promptDebug?: string;
   officialOptions?: OfficialImageOptions;
+  relight?: RelightRequestPayload;
 }) {
   const {
     prompt,
@@ -148,6 +159,7 @@ export async function requestImageGeneration(input: {
     promptPresetLabel,
     promptDebug,
     officialOptions,
+    relight,
   } = input;
 
   const finalPrompt = promptPatch ? `${prompt}\n\n[编辑意图]\n${promptPatch}` : prompt;
@@ -182,6 +194,7 @@ export async function requestImageGeneration(input: {
       editMode,
       mimeType: primaryReference ? 'image/jpeg' : undefined,
       officialOptions,
+      relight,
     }),
   });
 

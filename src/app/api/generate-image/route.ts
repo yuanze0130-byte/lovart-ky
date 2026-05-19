@@ -75,6 +75,15 @@ interface GenerateImagePayload {
     outputFormat?: 'png' | 'jpeg' | 'webp';
     moderation?: 'auto' | 'low';
   };
+  relight?: {
+    viewMode?: 'perspective' | 'front';
+    lightType?: 'main';
+    presetDirection?: 'left' | 'right' | 'top' | 'bottom' | 'front' | 'back';
+    azimuth?: number;
+    elevation?: number;
+    intensity?: number;
+    color?: string;
+  };
 }
 
 interface NormalizedReferenceImage {
@@ -90,7 +99,7 @@ function getProvider(): GeminiProvider {
   return 'proxy';
 }
 
-function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRatio: SupportedAspectRatio) {
+function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRatio: SupportedAspectRatio, relight?: GenerateImagePayload['relight']) {
   const aspectRatioInstruction = aspectRatio === 'auto'
     ? 'Choose the most suitable aspect ratio automatically based on the prompt and composition.'
     : `Generate the image in ${aspectRatio} aspect ratio.`;
@@ -101,7 +110,18 @@ function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRati
         ? 'Target a high-detail 2K-style composition.'
         : 'Target a clear 1K-style composition.';
 
-  return `${prompt}\n\n${aspectRatioInstruction}\n${resolutionInstruction}`;
+  const relightInstruction = relight
+    ? [
+        'Relight the referenced image using the supplied lighting controls while preserving the subject, layout, identity, and key geometry.',
+        `View mode: ${relight.viewMode || 'perspective'}.`,
+        `Primary light preset: ${relight.presetDirection || 'front'}.`,
+        `Primary light azimuth: ${typeof relight.azimuth === 'number' ? relight.azimuth : 0}°; elevation: ${typeof relight.elevation === 'number' ? relight.elevation : 0}°; intensity: ${typeof relight.intensity === 'number' ? relight.intensity : 0.3}.`,
+        `Primary light color: ${(relight.color || '#FFFFFF').toUpperCase()}.`,
+        'Only change lighting direction, light color, highlight/shadow balance, and atmosphere. Do not change subject identity, camera framing, or scene composition.',
+      ].join(' ')
+    : '';
+
+  return `${prompt}\n\n${aspectRatioInstruction}\n${resolutionInstruction}${relightInstruction ? `\n${relightInstruction}` : ''}`;
 }
 
 function normalizeReferenceImage(referenceImage?: string): NormalizedReferenceImage | undefined {
@@ -592,6 +612,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
         translatedPrompt,
         payload.resolution || '1K',
         normalizedAspectRatio,
+        payload.editMode === 'relight' ? payload.relight : undefined,
       );
 
   const content: Array<
@@ -892,7 +913,8 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
   const finalPrompt = buildPrompt(
     payload.prompt,
     payload.resolution || '1K',
-    payload.aspectRatio || '1:1'
+    payload.aspectRatio || '1:1',
+    payload.editMode === 'relight' ? payload.relight : undefined,
   );
 
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
@@ -994,6 +1016,7 @@ export async function POST(request: NextRequest) {
       modelVariant = 'pro',
       editMode = 'generate',
       officialOptions,
+      relight,
     } = body;
 
     if (!prompt || typeof prompt !== 'string') {
@@ -1029,6 +1052,7 @@ export async function POST(request: NextRequest) {
       modelVariant,
       editMode,
       officialOptions,
+      relight,
     };
 
     const provider = getProvider();

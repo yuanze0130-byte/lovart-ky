@@ -10,6 +10,7 @@ import { CanvasArea, CanvasElement, type GenerationMetadata } from '@/components
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
+import { RelightStudioModal, type RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
@@ -92,6 +93,8 @@ function LovartCanvasContent() {
     const [activeTool, setActiveTool] = useState('select');
     const [title, setTitle] = useState('Untitled');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isRelightSubmitting, setIsRelightSubmitting] = useState(false);
+    const [relightTargetId, setRelightTargetId] = useState<string | null>(null);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
     const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as AgentMode | null) || 'design', [searchParams]);
@@ -507,6 +510,13 @@ function LovartCanvasContent() {
     const handleOpenImageEditMode = useCallback((element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => {
         if (!element.content) return;
 
+        if (mode === 'relight') {
+            setRelightTargetId(element.id);
+            setSelectedIds([element.id]);
+            setActiveTool('select');
+            return;
+        }
+
         const generatorElement = createImageGeneratorElement();
         const nextGenerator: CanvasElement = {
             ...generatorElement,
@@ -522,7 +532,7 @@ function LovartCanvasContent() {
         setElements((prev) => [...prev, nextGenerator]);
         setSelectedIds([nextGenerator.id]);
         setActiveTool('select');
-    }, [createImageGeneratorElement, setElements, setSelectedIds]);
+    }, [createImageGeneratorElement, setActiveTool, setElements, setSelectedIds]);
 
     const handleGeneratePanorama = useCallback((sourceImage: CanvasElement) => {
         if (!sourceImage.content) return;
@@ -542,6 +552,119 @@ function LovartCanvasContent() {
         setSelectedIds([nextGenerator.id]);
         setActiveTool('select');
     }, [createPanoramaGeneratorElement, setElements, setSelectedIds, setActiveTool]);
+
+    const relightTargetElement = useMemo(
+        () => (relightTargetId ? elements.find((element) => element.id === relightTargetId) : undefined),
+        [elements, relightTargetId]
+    );
+
+    const handleApplyRelight = useCallback(async (config: RelightConfig, promptPatch: string) => {
+        if (!relightTargetElement?.content) return;
+
+        setIsRelightSubmitting(true);
+        setIsGenerating(true);
+        try {
+            const relightPayload = {
+                viewMode: config.viewMode,
+                lightType: 'main' as const,
+                presetDirection: config.mainLight.elevation >= 65
+                    ? 'top' as const
+                    : config.mainLight.elevation <= -65
+                        ? 'bottom' as const
+                        : (() => {
+                            const normalized = ((config.mainLight.azimuth % 360) + 360) % 360;
+                            if (normalized < 45 || normalized >= 315) return 'front' as const;
+                            if (normalized < 135) return 'right' as const;
+                            if (normalized < 225) return 'back' as const;
+                            return 'left' as const;
+                        })(),
+            };
+
+            const result = await requestImageGeneration({
+                prompt: relightTargetElement.prompt || '保留主体与构图，仅重新设置光照方向、强度、颜色与空间氛围，得到更高级自然的打光结果。',
+                resolution: '2K',
+                aspectRatio: (relightTargetElement.requestedAspectRatio as AspectRatio) || 'auto',
+                referenceImages: [relightTargetElement.content],
+                modelVariant: 'pro',
+                editMode: 'relight',
+                promptPatch,
+                promptPresetId: 'relight-studio',
+                promptPresetLabel: '重打光',
+                promptDebug: JSON.stringify({
+                    nodeId: relightTargetElement.id,
+                    imageUrl: relightTargetElement.content,
+                    relight: {
+                        ...relightPayload,
+                        azimuth: config.mainLight.azimuth,
+                        elevation: config.mainLight.elevation,
+                        intensity: Number((config.mainLight.intensity / 100).toFixed(2)),
+                        color: config.mainLight.color,
+                    },
+                }),
+                relight: {
+                    ...relightPayload,
+                    azimuth: config.mainLight.azimuth,
+                    elevation: config.mainLight.elevation,
+                    intensity: Number((config.mainLight.intensity / 100).toFixed(2)),
+                    color: config.mainLight.color,
+                },
+            });
+
+            if (!result.imageData) {
+                throw new Error('重打光生成失败');
+            }
+
+            const dimensions = await getImageDimensions(result.imageData);
+            const displaySize = getSmartDisplaySize(dimensions);
+
+            const newElement: CanvasElement = {
+                id: uuidv4(),
+                type: 'image',
+                x: relightTargetElement.x + (relightTargetElement.width || 400) + 120,
+                y: relightTargetElement.y,
+                width: displaySize.width,
+                height: displaySize.height,
+                originalWidth: displaySize.originalWidth,
+                originalHeight: displaySize.originalHeight,
+                requestedAspectRatio: result.requestedAspectRatio,
+                requestedResolution: result.requestedResolution,
+                prompt: result.finalPrompt,
+                generationMetadata: {
+                    ...result.generationMetadata,
+                    resolution: result.requestedResolution,
+                    aspectRatio: result.requestedAspectRatio,
+                    modelVariant: result.returnedModelVariant,
+                    provider: result.returnedProvider,
+                    providerMode: result.returnedProviderMode,
+                    providerFallbackUsed: result.providerFallbackUsed,
+                    fallbackFrom: result.fallbackFrom,
+                    fallbackReason: result.fallbackReason,
+                    model: result.returnedModel,
+                    taskId: result.returnedTaskId,
+                    proxyTarget: result.returnedProxyTarget,
+                    taskStatus: result.returnedTaskStatus,
+                    taskPollIntervalMs: result.returnedTaskPollIntervalMs,
+                    taskPollTimeoutMs: result.returnedTaskPollTimeoutMs,
+                    taskPollAttemptCount: result.returnedTaskPollAttemptCount,
+                    taskDurationMs: result.returnedTaskDurationMs,
+                    taskCompletedAt: result.returnedTaskCompletedAt,
+                    taskPayload: result.returnedTaskPayload as GenerationMetadata['taskPayload'],
+                },
+                content: result.imageData,
+            };
+
+            setElements((prev) => [...prev, newElement]);
+            setSelectedIds([newElement.id]);
+            setRelightTargetId(null);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : '重打光失败';
+            alert(message);
+            throw error;
+        } finally {
+            setIsGenerating(false);
+            setIsRelightSubmitting(false);
+        }
+    }, [relightTargetElement, setElements, setSelectedIds]);
 
     const projectAssets = useProjectAssets(elements);
     const {
@@ -1904,6 +2027,15 @@ function LovartCanvasContent() {
                 </div>
             )}
 
+            <RelightStudioModal
+                key={relightTargetId ?? 'relight-closed'}
+                open={Boolean(relightTargetElement?.content)}
+                imageUrl={relightTargetElement?.content}
+                isSubmitting={isRelightSubmitting}
+                onClose={() => setRelightTargetId(null)}
+                onApply={handleApplyRelight}
+            />
+
             <div className="absolute inset-0">
                 <CanvasArea
                     scale={scale}
@@ -2065,10 +2197,6 @@ function LovartCanvasContent() {
                                 onGenerate={handleGenerateImage}
                                 isGenerating={isGenerating}
                                 canvasElements={elements}
-                                onOpenImageEditMode={handleOpenImageEditMode}
-                                onRemoveBackground={handleRemoveBackground}
-                                onUpscale={handleUpscale}
-                                onCrop={handleCrop}
                                 style={{
                                     left: `${left}px`,
                                     top: `${top}px`,
