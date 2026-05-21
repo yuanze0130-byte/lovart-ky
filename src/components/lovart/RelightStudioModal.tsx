@@ -120,10 +120,10 @@ interface SliderRowProps {
 
 function SliderRow({ label, min, max, value, unit = "", onChange }: SliderRowProps) {
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between text-sm">
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-xs">
         <span className="text-zinc-200">{label}</span>
-        <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs font-medium text-zinc-300">
+        <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-medium text-zinc-300">
           {value}{unit}
         </span>
       </div>
@@ -151,8 +151,8 @@ interface LightBallPreviewProps {
 function LightBallPreview({ imageUrl, viewMode, light, onChange, onViewModeChange }: LightBallPreviewProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const draggingRef = useRef(false);
-  const RADIUS = 112;
-  const CENTER = 140;
+  const RADIUS = 92;
+  const CENTER = 116;
 
   const lightPos = useMemo(() => lightToXY(light.azimuth, light.elevation, RADIUS - 12), [light.azimuth, light.elevation]);
 
@@ -160,7 +160,7 @@ function LightBallPreview({ imageUrl, viewMode, light, onChange, onViewModeChang
     const svg = svgRef.current;
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
-    const scale = 280 / rect.width;
+    const scale = 232 / rect.width;
     const dx = (clientX - rect.left) * scale - CENTER;
     const dy = (clientY - rect.top) * scale - CENTER;
     return xyToLight(dx, dy, RADIUS - 12);
@@ -187,8 +187,8 @@ function LightBallPreview({ imageUrl, viewMode, light, onChange, onViewModeChang
   }, [onChange, svgToLight]);
 
   return (
-    <div className="relative overflow-hidden rounded-[24px] border border-white/8 bg-[#242426] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-      <div className="mb-4 inline-flex rounded-full border border-white/8 bg-black/25 p-1">
+    <div className="relative overflow-hidden rounded-[20px] border border-white/8 bg-[#242426] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      <div className="mb-3 inline-flex rounded-full border border-white/8 bg-black/25 p-1">
         {([
           ["perspective", "透视"],
           ["front", "正面"],
@@ -196,7 +196,7 @@ function LightBallPreview({ imageUrl, viewMode, light, onChange, onViewModeChang
           <button
             key={mode}
             type="button"
-            className={`rounded-full px-4 py-1.5 text-sm transition-colors ${viewMode === mode ? "bg-white text-zinc-900" : "text-zinc-400 hover:text-zinc-100"}`}
+            className={`rounded-full px-3 py-1 text-xs transition-colors ${viewMode === mode ? "bg-white text-zinc-900" : "text-zinc-400 hover:text-zinc-100"}`}
             onClick={() => onViewModeChange(mode)}
             data-view-mode={mode}
           >
@@ -209,7 +209,7 @@ function LightBallPreview({ imageUrl, viewMode, light, onChange, onViewModeChang
         <svg
           ref={svgRef}
           viewBox="0 0 280 280"
-          className="h-[360px] w-[360px] max-w-full cursor-crosshair select-none"
+          className="h-[280px] w-[280px] max-w-full cursor-crosshair select-none"
           onMouseDown={(e) => {
             draggingRef.current = true;
             const result = svgToLight(e.clientX, e.clientY);
@@ -320,51 +320,51 @@ export function RelightStudioPanel({
   }, [fillLight, mainLight, onApply, onClose, viewMode]);
 
   return (
-    <div className={containerClassName ?? "w-[1080px] max-w-[96vw] rounded-[28px] border border-white/10 bg-[#17181C] shadow-[0_40px_120px_rgba(0,0,0,0.55)]"}>
-      <div className="flex items-center justify-between border-b border-white/8 px-6 py-5">
+    <div className={containerClassName ?? "w-[960px] max-w-[96vw] rounded-[24px] border border-white/10 bg-[#17181C] shadow-[0_36px_96px_rgba(0,0,0,0.5)]"}>
+      <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Relight</div>
-            <h2 className="mt-1 text-lg font-semibold text-zinc-100">AI 画布重打光</h2>
+            <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Relight</div>
+            <h2 className="mt-1 text-base font-semibold text-zinc-100">AI 画布重打光</h2>
           </div>
           {showCloseButton ? (
             <button
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               关闭
             </button>
           ) : <div />}
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6 p-6">
-          <div className="rounded-[24px] bg-[#242426] p-4">
+        <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-4 p-4">
+          <div className="rounded-[18px] border border-white/6 bg-[#232427] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
             <LightBallPreview imageUrl={imageUrl} viewMode={viewMode} light={mainLight} onChange={patchMain} onViewModeChange={setViewMode} />
 
-            <div className="mt-4 flex items-center justify-between">
+            <div className="mt-2.5 flex items-center justify-between">
               <button
                 type="button"
                 onClick={resetLights}
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10"
+                className="inline-flex items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[11px] text-zinc-300 transition-colors hover:border-white/12 hover:bg-white/[0.07]"
               >
-                <RotateCcw size={14} />
+                <RotateCcw size={13} />
                 重置
               </button>
-              <div className="text-xs text-zinc-500">拖动光点联动右侧参数</div>
+              <div className="text-[10px] text-zinc-500">拖动光点联动右侧参数</div>
             </div>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-6">
+          <div className="flex min-w-0 flex-col gap-3.5">
             <div>
-              <h3 className="text-base font-semibold text-white">主光源</h3>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-400">
-                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">方向：{currentDirection}</span>
-                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">视图：{viewMode === "perspective" ? "透视" : "正面"}</span>
-                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">模型：{RELIGHT_MODEL_LABEL}</span>
-                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">分辨率：{RELIGHT_RESOLUTION_LABEL}</span>
+              <h3 className="text-sm font-semibold tracking-[0.01em] text-zinc-100">主光源</h3>
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-zinc-500">
+                <span className="rounded-full border border-white/6 bg-white/[0.04] px-2.5 py-0.5">方向：{currentDirection}</span>
+                <span className="rounded-full border border-white/6 bg-white/[0.04] px-2.5 py-0.5">视图：{viewMode === "perspective" ? "透视" : "正面"}</span>
+                <span className="rounded-full border border-white/6 bg-white/[0.04] px-2.5 py-0.5">模型：{RELIGHT_MODEL_LABEL}</span>
+                <span className="rounded-full border border-white/6 bg-white/[0.04] px-2.5 py-0.5">分辨率：{RELIGHT_RESOLUTION_LABEL}</span>
               </div>
-              <div className="mt-3 grid grid-cols-3 gap-3">
+              <div className="mt-2.5 grid grid-cols-3 gap-1.5">
                 {QUICK_POSITIONS.map((item) => {
                   const active = mainLight.azimuth === item.azimuth && mainLight.elevation === item.elevation;
                   return (
@@ -372,7 +372,7 @@ export function RelightStudioPanel({
                       key={item.label}
                       type="button"
                       onClick={() => patchMain({ azimuth: item.azimuth, elevation: item.elevation })}
-                      className={`rounded-xl border px-4 py-3 text-sm transition-colors ${active ? "border-white/30 bg-white/12 text-white" : "border-white/8 bg-white/5 text-zinc-300 hover:bg-white/8"}`}
+                      className={`rounded-lg border px-2.5 py-1.5 text-[11px] transition-colors ${active ? "border-white/30 bg-white/12 text-white" : "border-white/6 bg-white/[0.04] text-zinc-300 hover:border-white/10 hover:bg-white/[0.07]"}`}
                     >
                       {item.label}
                     </button>
@@ -382,9 +382,9 @@ export function RelightStudioPanel({
             </div>
 
             <div>
-              <h3 className="text-base font-semibold text-white">全局</h3>
-              <div className="mt-1 text-xs text-zinc-500">拖动左侧光点、点快捷方向，或用滑杆做精细微调。</div>
-              <div className="mt-4 space-y-5 rounded-[20px] border border-white/8 bg-black/12 p-4">
+              <h3 className="text-sm font-semibold tracking-[0.01em] text-zinc-100">全局</h3>
+              <div className="mt-1 text-[11px] text-zinc-600">拖动左侧光点、点快捷方向，或用滑杆做精细微调。</div>
+              <div className="mt-3 space-y-4 rounded-[18px] border border-white/6 bg-white/[0.03] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
                 <SliderRow label="水平环绕" min={-180} max={180} value={mainLight.azimuth} unit="°" onChange={(value) => patchMain({ azimuth: value })} />
                 <SliderRow label="高度" min={-90} max={90} value={mainLight.elevation} unit="°" onChange={(value) => patchMain({ elevation: value })} />
                 <SliderRow label="强度" min={0} max={100} value={mainLight.intensity} unit="%" onChange={(value) => patchMain({ intensity: value })} />
@@ -392,53 +392,55 @@ export function RelightStudioPanel({
             </div>
 
             <div>
-              <h3 className="text-base font-semibold text-white">灯光颜色</h3>
-              <div className="mt-3 flex items-center gap-3 rounded-[20px] border border-white/8 bg-[#2D2D30] px-4 py-3">
+              <h3 className="text-sm font-semibold tracking-[0.01em] text-zinc-100">灯光颜色</h3>
+              <div className="mt-2 flex items-center gap-2 rounded-[18px] border border-white/6 bg-white/[0.03] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
                 <input
                   type="color"
                   value={mainLight.color}
                   onChange={(e) => patchMain({ color: e.target.value.toUpperCase() })}
-                  className="h-10 w-10 cursor-pointer rounded-lg border-0 bg-transparent"
+                  className="h-8 w-8 cursor-pointer rounded-lg border-0 bg-transparent"
                 />
-                <div className="text-sm uppercase tracking-[0.14em] text-zinc-500">HEX</div>
+                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">HEX</div>
                 <input
                   type="text"
                   value={mainLight.color}
                   onChange={(e) => patchMain({ color: e.target.value.toUpperCase() })}
-                  className="flex-1 bg-transparent text-right text-sm font-medium text-zinc-100 outline-none"
+                  className="flex-1 bg-transparent text-right text-xs font-medium text-zinc-100 outline-none"
                   placeholder="#FFFFFF"
                 />
               </div>
             </div>
 
-            <div className="rounded-[20px] border border-white/8 bg-black/12 p-4">
+            <div className="rounded-[18px] border border-white/6 bg-white/[0.03] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Prompt Patch Preview</div>
-                  <div className="mt-1 text-xs text-zinc-500">提交时会把当前打光参数转成后端提示词约束。</div>
+                  <div className="text-[11px] uppercase tracking-[0.14em] text-zinc-600">Prompt Patch Preview</div>
+                  <div className="mt-1 text-[11px] text-zinc-600">提交时会把当前打光参数转成后端提示词约束。</div>
                 </div>
-                <div className="rounded-full border border-white/8 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+                <div className="rounded-full border border-white/6 bg-white/[0.04] px-2.5 py-0.5 text-[11px] text-zinc-400">
                   {RELIGHT_CREDIT_COST} 积分
                 </div>
               </div>
-              <div className="mt-2 text-sm leading-6 text-zinc-300">{buildRelightPromptFromConfig({ viewMode, mainLight, fillLight })}</div>
+              <div className="mt-2 line-clamp-4 text-xs leading-5 text-zinc-300">{buildRelightPromptFromConfig({ viewMode, mainLight, fillLight })}</div>
             </div>
 
-            <div className="mt-auto flex items-center justify-between gap-4 rounded-full border border-white/10 bg-[#202126] px-5 py-3">
-              <div>
-                <div className="text-xs text-zinc-500">预计消耗</div>
-                <div className="text-lg font-semibold text-white">{RELIGHT_CREDIT_COST} 积分</div>
-                <div className="text-xs text-zinc-500">按 {RELIGHT_MODEL_LABEL} / {RELIGHT_RESOLUTION_LABEL} 生图链路扣费</div>
+            <div className="mt-auto flex items-center justify-between gap-3 rounded-[16px] border border-white/8 bg-[#1F2024] px-3.5 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
+              <div className="min-w-0">
+                <div className="text-[10px] text-zinc-600">预计消耗</div>
+                <div className="flex items-baseline gap-2">
+                  <div className="text-sm font-semibold text-white">{RELIGHT_CREDIT_COST} 积分</div>
+                  <div className="truncate text-[10px] text-zinc-600">{RELIGHT_MODEL_LABEL} / {RELIGHT_RESOLUTION_LABEL}</div>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => void handleApply()}
                 disabled={isSubmitting}
-                className="inline-flex items-center gap-3 rounded-full bg-white px-3 py-2 text-sm font-semibold text-zinc-900 transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white px-2.5 py-1.5 text-[11px] font-semibold text-zinc-900 shadow-[0_6px_18px_rgba(255,255,255,0.08)] transition-colors hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="px-2">生成</span>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-zinc-900 text-white">
-                  {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <ArrowUpRight size={18} />}
+                <span className="px-1">生成</span>
+                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-zinc-900 text-white">
+                  {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpRight size={14} />}
                 </span>
               </button>
             </div>

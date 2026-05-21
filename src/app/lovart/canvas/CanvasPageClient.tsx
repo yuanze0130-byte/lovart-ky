@@ -590,8 +590,8 @@ function LovartCanvasContent() {
     const shouldShowAssetsPanel = !isRelightWorkspaceOpen;
     const relightPanelRightClass = showChat ? 'right-[420px]' : 'right-4';
     const relightPanelWidthClass = showChat
-        ? 'w-[min(560px,calc(100vw-30rem))] max-w-[44vw]'
-        : 'w-[min(680px,calc(100vw-2.5rem))] max-w-[52vw]';
+        ? 'w-[min(480px,calc(100vw-32rem))] max-w-[38vw]'
+        : 'w-[min(560px,calc(100vw-4rem))] max-w-[42vw]';
 
     const handleApplyRelight = useCallback(async (config: RelightConfig, promptPatch: string) => {
         if (!relightTargetElement?.content) return;
@@ -2086,7 +2086,7 @@ function LovartCanvasContent() {
             )}
 
             {isRelightWorkspaceOpen && (
-                <div className={`absolute top-20 bottom-4 z-40 ${relightPanelRightClass} ${relightPanelWidthClass} min-w-[360px] pointer-events-auto animate-in slide-in-from-right-4 duration-300`}>
+                <div className={`absolute top-20 bottom-4 z-40 ${relightPanelRightClass} ${relightPanelWidthClass} min-w-[320px] pointer-events-auto animate-in slide-in-from-right-4 duration-300`}>
                     <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-[#17181C]/92 px-4 py-3 text-white shadow-[0_18px_48px_rgba(0,0,0,0.28)] backdrop-blur-xl">
                         <div>
                             <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200/90">AI 画布重打光</div>
