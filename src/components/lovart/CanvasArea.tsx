@@ -258,6 +258,7 @@ interface CanvasAreaProps {
     onExitObjectAnnotation?: () => void;
     onDetectObjectAt?: (element: CanvasElement, point: { x: number; y: number }) => void;
     onAnnotateRegion?: (element: CanvasElement, region: { x: number; y: number; width: number; height: number }) => void;
+    relightTargetId?: string | null;
 }
 
 export function CanvasArea({
@@ -296,6 +297,7 @@ export function CanvasArea({
     onExitObjectAnnotation,
     onDetectObjectAt,
     onAnnotateRegion,
+    relightTargetId,
 }: CanvasAreaProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
@@ -1339,7 +1341,7 @@ export function CanvasArea({
                             <div
                                 key={el.id}
                                 data-canvas-element="true"
-                                className={`absolute group ${selectedIds.includes(el.id) ? 'z-10' : ''}`}
+                                className={`absolute group ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''}`}
                                 style={{
                                     left: el.x,
                                     top: el.y,
@@ -1573,7 +1575,7 @@ export function CanvasArea({
 
                                 {selectedIds.includes(el.id) && !isDrawing && (
                                     <>
-                                        <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none dark:rounded-[inherit] dark:border-sky-400/90 dark:shadow-[0_0_0_1px_rgba(14,165,233,0.18),0_0_28px_rgba(56,189,248,0.24)]" />
+                                        <div className={`absolute inset-0 pointer-events-none dark:rounded-[inherit] ${relightTargetId === el.id ? 'border-2 border-sky-300/85 shadow-[0_0_0_1px_rgba(125,211,252,0.18),0_0_28px_rgba(56,189,248,0.18)]' : 'border-2 border-blue-500 dark:border-sky-400/90 dark:shadow-[0_0_0_1px_rgba(14,165,233,0.18),0_0_28px_rgba(56,189,248,0.24)]'}` } />
                                         {selectedIds.length === 1 && (
                                             <>
                                                 {['nw', 'ne', 'sw', 'se', 'w', 'e', 'n', 's'].map((handle) => {
@@ -1591,6 +1593,17 @@ export function CanvasArea({
                                                 })}
                                             </>
                                         )}
+                                    </>
+                                )}
+
+                                {relightTargetId === el.id && el.type === 'image' && !isDrawing && (
+                                    <>
+                                        {!selectedIds.includes(el.id) && (
+                                            <div className="absolute inset-0 rounded-[inherit] border-2 border-amber-300/95 pointer-events-none shadow-[0_0_0_1px_rgba(253,224,71,0.18),0_0_34px_rgba(251,191,36,0.28)]" />
+                                        )}
+                                        <div className="absolute left-3 top-3 pointer-events-none rounded-full border border-amber-200/70 bg-black/60 px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-amber-100 backdrop-blur-sm">
+                                            正在重打光
+                                        </div>
                                     </>
                                 )}
 

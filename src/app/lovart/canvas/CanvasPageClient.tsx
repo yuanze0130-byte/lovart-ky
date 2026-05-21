@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState, Suspense, useRef, useCallback } from 'react';
+import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
 import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff, Map as MapIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,7 +10,7 @@ import { CanvasArea, CanvasElement, type GenerationMetadata } from '@/components
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
-import { RelightStudioModal, type RelightConfig } from '@/components/lovart/RelightStudioModal';
+import { RelightStudioPanel, type RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
@@ -103,12 +103,15 @@ function LovartCanvasContent() {
     const [showMiniMap, setShowMiniMap] = useState(false);
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
     const [miniMapHoveredId, setMiniMapHoveredId] = useState<string | null>(null);
+    const [relightRestoreSelection, setRelightRestoreSelection] = useState<string[] | null>(null);
+    const [relightRestoreAssetsCollapsed, setRelightRestoreAssetsCollapsed] = useState<boolean | null>(null);
     const viewportSize = useViewportSize();
     const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building' | 'done'>('idle');
     const [canvasBackground, setCanvasBackground] = useState('#F4F4F5');
     const [annotationSubject, setAnnotationSubject] = useState('');
     const [objectEditPrompt, setObjectEditPrompt] = useState('');
     const miniMapRef = useRef<HTMLDivElement | null>(null);
+    const lastFocusedRelightTargetRef = useRef<string | null>(null);
 
     const {
         saveStatus,
@@ -511,6 +514,9 @@ function LovartCanvasContent() {
         if (!element.content) return;
 
         if (mode === 'relight') {
+            setRelightRestoreSelection(selectedIds);
+            setRelightRestoreAssetsCollapsed(assetsCollapsed);
+            setAssetsCollapsed(true);
             setRelightTargetId(element.id);
             setSelectedIds([element.id]);
             setActiveTool('select');
@@ -532,7 +538,7 @@ function LovartCanvasContent() {
         setElements((prev) => [...prev, nextGenerator]);
         setSelectedIds([nextGenerator.id]);
         setActiveTool('select');
-    }, [createImageGeneratorElement, setActiveTool, setElements, setSelectedIds]);
+    }, [assetsCollapsed, createImageGeneratorElement, selectedIds, setActiveTool, setElements, setSelectedIds]);
 
     const handleGeneratePanorama = useCallback((sourceImage: CanvasElement) => {
         if (!sourceImage.content) return;
@@ -557,6 +563,35 @@ function LovartCanvasContent() {
         () => (relightTargetId ? elements.find((element) => element.id === relightTargetId) : undefined),
         [elements, relightTargetId]
     );
+    const closeRelightWorkspace = useCallback((options?: { restoreSelection?: boolean; restoreAssetsPanel?: boolean }) => {
+        setRelightTargetId(null);
+        lastFocusedRelightTargetRef.current = null;
+
+        if (options?.restoreSelection !== false) {
+            setSelectedIds((current) => {
+                if (current.length > 0 && (!relightTargetId || current[0] !== relightTargetId)) {
+                    return current;
+                }
+                if (relightRestoreSelection && relightRestoreSelection.length > 0) {
+                    return relightRestoreSelection;
+                }
+                return current;
+            });
+        }
+
+        if (options?.restoreAssetsPanel !== false && relightRestoreAssetsCollapsed !== null) {
+            setAssetsCollapsed(relightRestoreAssetsCollapsed);
+        }
+
+        setRelightRestoreSelection(null);
+        setRelightRestoreAssetsCollapsed(null);
+    }, [relightRestoreAssetsCollapsed, relightRestoreSelection, relightTargetId]);
+    const isRelightWorkspaceOpen = Boolean(relightTargetElement?.content);
+    const shouldShowAssetsPanel = !isRelightWorkspaceOpen;
+    const relightPanelRightClass = showChat ? 'right-[420px]' : 'right-4';
+    const relightPanelWidthClass = showChat
+        ? 'w-[min(560px,calc(100vw-30rem))] max-w-[44vw]'
+        : 'w-[min(680px,calc(100vw-2.5rem))] max-w-[52vw]';
 
     const handleApplyRelight = useCallback(async (config: RelightConfig, promptPatch: string) => {
         if (!relightTargetElement?.content) return;
@@ -655,7 +690,7 @@ function LovartCanvasContent() {
 
             setElements((prev) => [...prev, newElement]);
             setSelectedIds([newElement.id]);
-            setRelightTargetId(null);
+            closeRelightWorkspace({ restoreSelection: false });
         } catch (error) {
             const message = error instanceof Error ? error.message : '重打光失败';
             alert(message);
@@ -664,7 +699,7 @@ function LovartCanvasContent() {
             setIsGenerating(false);
             setIsRelightSubmitting(false);
         }
-    }, [relightTargetElement, setElements, setSelectedIds]);
+    }, [closeRelightWorkspace, relightTargetElement, setElements, setSelectedIds]);
 
     const projectAssets = useProjectAssets(elements);
     const {
@@ -748,6 +783,29 @@ function LovartCanvasContent() {
         x: (options?.viewportWidth ?? window.innerWidth) / 2 - ((element.x + (element.width || 300) / 2) * scale),
         y: (options?.viewportHeight ?? window.innerHeight) / 2 - (options?.chromeOffset ?? 56) - ((element.y + (element.height || 200) / 2) * scale),
     }), [scale]);
+
+    useEffect(() => {
+        if (!relightTargetId) {
+            lastFocusedRelightTargetRef.current = null;
+            return;
+        }
+
+        if (!relightTargetElement || relightTargetElement.type !== 'image' || !relightTargetElement.content) {
+            closeRelightWorkspace();
+            return;
+        }
+
+        if (lastFocusedRelightTargetRef.current === relightTargetId) {
+            return;
+        }
+
+        setSelectedIds((prev) => (prev.length === 1 && prev[0] === relightTargetId ? prev : [relightTargetId]));
+        setPan(centerPanForElement(relightTargetElement, {
+            viewportWidth: Math.max(0, viewportSize.width - (showChat ? 420 : 0)),
+            viewportHeight: viewportSize.height,
+        }));
+        lastFocusedRelightTargetRef.current = relightTargetId;
+    }, [centerPanForElement, closeRelightWorkspace, relightTargetElement, relightTargetId, setPan, showChat, viewportSize.height, viewportSize.width]);
 
     const handleLocateAsset = useCallback((asset: ProjectAsset) => {
         const source = elements.find((element) => element.id === asset.elementId);
@@ -2027,14 +2085,31 @@ function LovartCanvasContent() {
                 </div>
             )}
 
-            <RelightStudioModal
-                key={relightTargetId ?? 'relight-closed'}
-                open={Boolean(relightTargetElement?.content)}
-                imageUrl={relightTargetElement?.content}
-                isSubmitting={isRelightSubmitting}
-                onClose={() => setRelightTargetId(null)}
-                onApply={handleApplyRelight}
-            />
+            {isRelightWorkspaceOpen && (
+                <div className={`absolute top-20 bottom-4 z-40 ${relightPanelRightClass} ${relightPanelWidthClass} min-w-[360px] pointer-events-auto animate-in slide-in-from-right-4 duration-300`}>
+                    <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-[#17181C]/92 px-4 py-3 text-white shadow-[0_18px_48px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                        <div>
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200/90">AI 画布重打光</div>
+                            <div className="mt-1 text-xs text-white/60">当前正在调整这张图的布光，退出后右侧素材栏会自动恢复。</div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => closeRelightWorkspace()}
+                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/78 transition-colors hover:bg-white/10 hover:text-white"
+                        >
+                            退出
+                        </button>
+                    </div>
+                    <RelightStudioPanel
+                        key={relightTargetId ?? 'relight-closed'}
+                        imageUrl={relightTargetElement?.content}
+                        isSubmitting={isRelightSubmitting}
+                        onClose={() => closeRelightWorkspace()}
+                        onApply={handleApplyRelight}
+                        containerClassName="h-[calc(100%-4.5rem)] overflow-hidden rounded-[28px] border border-white/10 bg-[#17181C] shadow-[0_40px_120px_rgba(0,0,0,0.55)]"
+                    />
+                </div>
+            )}
 
             <div className="absolute inset-0">
                 <CanvasArea
@@ -2046,7 +2121,12 @@ function LovartCanvasContent() {
                     onZoomTo={zoomTo}
                     elements={elements}
                     selectedIds={selectedIds}
-                    onSelect={setSelectedIds}
+                    onSelect={(ids) => {
+                        setSelectedIds(ids);
+                        if (relightTargetId && (ids.length !== 1 || ids[0] !== relightTargetId)) {
+                            closeRelightWorkspace({ restoreSelection: false, restoreAssetsPanel: true });
+                        }
+                    }}
                     onElementChange={handleElementChange}
                     onElementsChange={handleElementsChange}
                     onDelete={handleDeleteElement}
@@ -2078,6 +2158,7 @@ function LovartCanvasContent() {
                     onExitObjectAnnotation={exitAnnotationMode}
                     onDetectObjectAt={handleDetectObjectAt}
                     onAnnotateRegion={handleAnnotateRegion}
+                    relightTargetId={relightTargetId}
                 />
                 {annotationImageId && annotationObject && (() => {
                     const imageElement = elements.find((element) => element.id === annotationImageId);
@@ -2229,8 +2310,9 @@ function LovartCanvasContent() {
                     return null;
                 })()}
 
-                <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? 'right-[420px]' : 'right-4'}`}>
-                    <AssetsPanel
+                {shouldShowAssetsPanel && (
+                    <div className={`absolute top-20 bottom-4 z-30 transition-all duration-300 ${showChat ? 'right-[420px]' : 'right-4'}`}>
+                        <AssetsPanel
                         assets={projectAssets}
                         storyboard={storyboard}
                         selectedStoryboardItemId={selectedStoryboardItemId}
@@ -2263,7 +2345,8 @@ function LovartCanvasContent() {
                         onCreateVideoFromStoryboard={handleCreateVideoFromStoryboard}
                         onCreateStoryboardFlow={handleCreateStoryboardFlow}
                     />
-                </div>
+                    </div>
+                )}
 
                 <div className="absolute bottom-4 left-4 z-50 flex flex-col gap-3">
                     {showMiniMap && (() => {

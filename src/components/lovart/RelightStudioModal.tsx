@@ -17,12 +17,17 @@ export interface RelightConfig {
   fillLight: SingleLight;
 }
 
-interface RelightStudioModalProps {
-  open: boolean;
+interface RelightStudioPanelProps {
   imageUrl?: string;
   isSubmitting?: boolean;
   onClose: () => void;
   onApply: (config: RelightConfig, promptPatch: string) => void | Promise<void>;
+  showCloseButton?: boolean;
+  containerClassName?: string;
+}
+
+interface RelightStudioModalProps extends RelightStudioPanelProps {
+  open: boolean;
 }
 
 const DEFAULT_MAIN: SingleLight = {
@@ -49,6 +54,10 @@ const QUICK_POSITIONS = [
   { label: "底部", azimuth: 0, elevation: -90 },
   { label: "后方", azimuth: 180, elevation: 0 },
 ] as const;
+
+const RELIGHT_MODEL_LABEL = "Nanobanana Pro";
+const RELIGHT_RESOLUTION_LABEL = "2K";
+const RELIGHT_CREDIT_COST = 5;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -280,10 +289,18 @@ function LightBallPreview({ imageUrl, viewMode, light, onChange, onViewModeChang
   );
 }
 
-export function RelightStudioModal({ open, imageUrl, isSubmitting = false, onClose, onApply }: RelightStudioModalProps) {
+export function RelightStudioPanel({
+  imageUrl,
+  isSubmitting = false,
+  onClose,
+  onApply,
+  showCloseButton = true,
+  containerClassName,
+}: RelightStudioPanelProps) {
   const [viewMode, setViewMode] = useState<"perspective" | "front">("perspective");
   const [mainLight, setMainLight] = useState<SingleLight>({ ...DEFAULT_MAIN });
   const [fillLight, setFillLight] = useState<SingleLight>({ ...DEFAULT_FILL });
+  const currentDirection = useMemo(() => directionLabel(mainLight.azimuth, mainLight.elevation), [mainLight.azimuth, mainLight.elevation]);
 
   const patchMain = useCallback((partial: Partial<SingleLight>) => {
     setMainLight((prev) => ({ ...prev, ...partial }));
@@ -302,27 +319,26 @@ export function RelightStudioModal({ open, imageUrl, isSubmitting = false, onClo
     onClose();
   }, [fillLight, mainLight, onApply, onClose, viewMode]);
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/72 px-6 py-8" onClick={(e) => e.target === e.currentTarget && !isSubmitting && onClose()}>
-      <div className="w-[1080px] max-w-[96vw] rounded-[28px] border border-white/10 bg-[#17181C] shadow-[0_40px_120px_rgba(0,0,0,0.55)]">
-        <div className="flex items-center justify-between border-b border-white/8 px-6 py-5">
+    <div className={containerClassName ?? "w-[1080px] max-w-[96vw] rounded-[28px] border border-white/10 bg-[#17181C] shadow-[0_40px_120px_rgba(0,0,0,0.55)]"}>
+      <div className="flex items-center justify-between border-b border-white/8 px-6 py-5">
           <div>
             <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Relight</div>
             <h2 className="mt-1 text-lg font-semibold text-zinc-100">AI 画布重打光</h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSubmitting}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            关闭
-          </button>
+          {showCloseButton ? (
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSubmitting}
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-300 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              关闭
+            </button>
+          ) : <div />}
         </div>
 
-        <div className="grid grid-cols-[460px_minmax(0,1fr)] gap-6 p-6">
+        <div className="grid grid-cols-1 xl:grid-cols-[420px_minmax(0,1fr)] gap-6 p-6">
           <div className="rounded-[24px] bg-[#242426] p-4">
             <LightBallPreview imageUrl={imageUrl} viewMode={viewMode} light={mainLight} onChange={patchMain} onViewModeChange={setViewMode} />
 
@@ -342,6 +358,12 @@ export function RelightStudioModal({ open, imageUrl, isSubmitting = false, onClo
           <div className="flex min-w-0 flex-col gap-6">
             <div>
               <h3 className="text-base font-semibold text-white">主光源</h3>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-zinc-400">
+                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">方向：{currentDirection}</span>
+                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">视图：{viewMode === "perspective" ? "透视" : "正面"}</span>
+                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">模型：{RELIGHT_MODEL_LABEL}</span>
+                <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1">分辨率：{RELIGHT_RESOLUTION_LABEL}</span>
+              </div>
               <div className="mt-3 grid grid-cols-3 gap-3">
                 {QUICK_POSITIONS.map((item) => {
                   const active = mainLight.azimuth === item.azimuth && mainLight.elevation === item.elevation;
@@ -361,6 +383,7 @@ export function RelightStudioModal({ open, imageUrl, isSubmitting = false, onClo
 
             <div>
               <h3 className="text-base font-semibold text-white">全局</h3>
+              <div className="mt-1 text-xs text-zinc-500">拖动左侧光点、点快捷方向，或用滑杆做精细微调。</div>
               <div className="mt-4 space-y-5 rounded-[20px] border border-white/8 bg-black/12 p-4">
                 <SliderRow label="水平环绕" min={-180} max={180} value={mainLight.azimuth} unit="°" onChange={(value) => patchMain({ azimuth: value })} />
                 <SliderRow label="高度" min={-90} max={90} value={mainLight.elevation} unit="°" onChange={(value) => patchMain({ elevation: value })} />
@@ -389,14 +412,23 @@ export function RelightStudioModal({ open, imageUrl, isSubmitting = false, onClo
             </div>
 
             <div className="rounded-[20px] border border-white/8 bg-black/12 p-4">
-              <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Prompt Patch Preview</div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">Prompt Patch Preview</div>
+                  <div className="mt-1 text-xs text-zinc-500">提交时会把当前打光参数转成后端提示词约束。</div>
+                </div>
+                <div className="rounded-full border border-white/8 bg-white/5 px-3 py-1 text-xs text-zinc-300">
+                  {RELIGHT_CREDIT_COST} 积分
+                </div>
+              </div>
               <div className="mt-2 text-sm leading-6 text-zinc-300">{buildRelightPromptFromConfig({ viewMode, mainLight, fillLight })}</div>
             </div>
 
             <div className="mt-auto flex items-center justify-between gap-4 rounded-full border border-white/10 bg-[#202126] px-5 py-3">
               <div>
                 <div className="text-xs text-zinc-500">预计消耗</div>
-                <div className="text-lg font-semibold text-white">￥ 0.12</div>
+                <div className="text-lg font-semibold text-white">{RELIGHT_CREDIT_COST} 积分</div>
+                <div className="text-xs text-zinc-500">按 {RELIGHT_MODEL_LABEL} / {RELIGHT_RESOLUTION_LABEL} 生图链路扣费</div>
               </div>
               <button
                 type="button"
@@ -412,7 +444,16 @@ export function RelightStudioModal({ open, imageUrl, isSubmitting = false, onClo
             </div>
           </div>
         </div>
-      </div>
+    </div>
+  );
+}
+
+export function RelightStudioModal({ open, ...props }: RelightStudioModalProps) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/72 px-6 py-8" onClick={(e) => e.target === e.currentTarget && !props.isSubmitting && props.onClose()}>
+      <RelightStudioPanel {...props} />
     </div>
   );
 }
