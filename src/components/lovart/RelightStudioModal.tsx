@@ -58,6 +58,7 @@ const QUICK_POSITIONS = [
 const RELIGHT_MODEL_LABEL = "Nanobanana Pro";
 const RELIGHT_RESOLUTION_LABEL = "2K";
 const RELIGHT_CREDIT_COST = 5;
+const RELIGHT_COLOR_PRESETS = ["#FFFFFF", "#FFE8B5", "#FFD36B", "#FFC8A2", "#FFD1DC", "#CFE8FF", "#B8D5FF", "#D7C7FF"] as const;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -393,21 +394,41 @@ export function RelightStudioPanel({
 
             <div>
               <h3 className="text-sm font-semibold tracking-[0.01em] text-zinc-100">灯光颜色</h3>
-              <div className="mt-2 flex items-center gap-2 rounded-[18px] border border-white/6 bg-white/[0.03] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
-                <input
-                  type="color"
-                  value={mainLight.color}
-                  onChange={(e) => patchMain({ color: e.target.value.toUpperCase() })}
-                  className="h-8 w-8 cursor-pointer rounded-lg border-0 bg-transparent"
-                />
-                <div className="text-xs uppercase tracking-[0.14em] text-zinc-500">HEX</div>
-                <input
-                  type="text"
-                  value={mainLight.color}
-                  onChange={(e) => patchMain({ color: e.target.value.toUpperCase() })}
-                  className="flex-1 bg-transparent text-right text-xs font-medium text-zinc-100 outline-none"
-                  placeholder="#FFFFFF"
-                />
+              <div className="mt-2 rounded-[18px] border border-white/6 bg-white/[0.03] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <label className="relative block h-9 w-9 overflow-hidden rounded-xl border border-white/10 bg-white/[0.06] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                      <input
+                        type="color"
+                        value={mainLight.color}
+                        onChange={(e) => patchMain({ color: e.target.value.toUpperCase() })}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        aria-label="自定义灯光颜色"
+                      />
+                      <span className="absolute inset-1 rounded-lg border border-white/10" style={{ backgroundColor: mainLight.color }} />
+                    </label>
+                    <div>
+                      <div className="text-[11px] font-medium text-zinc-200">自定义取色</div>
+                      <div className="mt-0.5 text-[10px] text-zinc-500">当前颜色 {mainLight.color}</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-4 gap-2">
+                  {RELIGHT_COLOR_PRESETS.map((color) => {
+                    const active = mainLight.color.toUpperCase() === color;
+                    return (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => patchMain({ color })}
+                        className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 text-[11px] transition-colors ${active ? "border-white/30 bg-white/12 text-white" : "border-white/6 bg-white/[0.04] text-zinc-300 hover:border-white/10 hover:bg-white/[0.07]"}`}
+                      >
+                        <span className="h-4 w-4 rounded-full border border-black/10" style={{ backgroundColor: color }} />
+                        <span className="truncate">{color === "#FFFFFF" ? "白光" : color === "#FFE8B5" ? "暖白" : color === "#FFD36B" ? "日光" : color === "#FFC8A2" ? "夕照" : color === "#FFD1DC" ? "粉光" : color === "#CFE8FF" ? "冷白" : color === "#B8D5FF" ? "蓝调" : "紫调"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 

@@ -588,10 +588,32 @@ function LovartCanvasContent() {
     }, [relightRestoreAssetsCollapsed, relightRestoreSelection, relightTargetId]);
     const isRelightWorkspaceOpen = Boolean(relightTargetElement?.content);
     const shouldShowAssetsPanel = !isRelightWorkspaceOpen;
-    const relightPanelRightClass = showChat ? 'right-[420px]' : 'right-4';
-    const relightPanelWidthClass = showChat
-        ? 'w-[min(480px,calc(100vw-32rem))] max-w-[38vw]'
-        : 'w-[min(560px,calc(100vw-4rem))] max-w-[42vw]';
+    const relightFloatingStyle = useMemo(() => {
+        if (!relightTargetElement) return null;
+
+        const reservedRight = showChat ? 420 + 16 : 16;
+        const minPanelWidth = 320;
+        const maxPanelWidth = 440;
+        const panelWidth = Math.min(maxPanelWidth, Math.max(minPanelWidth, viewportSize.width - reservedRight - 32));
+        const targetLeft = relightTargetElement.x * scale + pan.x;
+        const targetTop = relightTargetElement.y * scale + pan.y;
+        const targetWidth = (relightTargetElement.width || 300) * scale;
+        const targetHeight = (relightTargetElement.height || 220) * scale;
+        const panelLeft = Math.min(
+            Math.max(16, targetLeft + targetWidth / 2 - panelWidth / 2),
+            Math.max(16, viewportSize.width - reservedRight - panelWidth)
+        );
+        const preferredTop = targetTop + targetHeight + 16;
+        const top = Math.max(84, preferredTop);
+        const maxHeight = Math.max(320, viewportSize.height - top - 16);
+
+        return {
+            left: `${panelLeft}px`,
+            top: `${top}px`,
+            width: `${panelWidth}px`,
+            maxHeight: `${maxHeight}px`,
+        } as const;
+    }, [pan.x, pan.y, relightTargetElement, scale, showChat, viewportSize.height, viewportSize.width]);
 
     const handleApplyRelight = useCallback(async (config: RelightConfig, promptPatch: string) => {
         if (!relightTargetElement?.content) return;
@@ -2085,28 +2107,18 @@ function LovartCanvasContent() {
                 </div>
             )}
 
-            {isRelightWorkspaceOpen && (
-                <div className={`absolute top-20 bottom-4 z-40 ${relightPanelRightClass} ${relightPanelWidthClass} min-w-[320px] pointer-events-auto animate-in slide-in-from-right-4 duration-300`}>
-                    <div className="mb-3 flex items-center justify-between rounded-2xl border border-white/10 bg-[#17181C]/92 px-4 py-3 text-white shadow-[0_18px_48px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-                        <div>
-                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200/90">AI 画布重打光</div>
-                            <div className="mt-1 text-xs text-white/60">当前正在调整这张图的布光，退出后右侧素材栏会自动恢复。</div>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => closeRelightWorkspace()}
-                            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/78 transition-colors hover:bg-white/10 hover:text-white"
-                        >
-                            退出
-                        </button>
-                    </div>
+            {isRelightWorkspaceOpen && relightFloatingStyle && (
+                <div
+                    className="absolute z-40 pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    style={relightFloatingStyle}
+                >
                     <RelightStudioPanel
                         key={relightTargetId ?? 'relight-closed'}
                         imageUrl={relightTargetElement?.content}
                         isSubmitting={isRelightSubmitting}
                         onClose={() => closeRelightWorkspace()}
                         onApply={handleApplyRelight}
-                        containerClassName="h-[calc(100%-4.5rem)] overflow-hidden rounded-[28px] border border-white/10 bg-[#17181C] shadow-[0_40px_120px_rgba(0,0,0,0.55)]"
+                        containerClassName="flex h-full max-h-full flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#17181C]/96 shadow-[0_28px_90px_rgba(0,0,0,0.42)] backdrop-blur-xl"
                     />
                 </div>
             )}
