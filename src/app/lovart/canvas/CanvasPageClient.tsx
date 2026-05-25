@@ -592,9 +592,10 @@ function LovartCanvasContent() {
         if (!relightTargetElement) return null;
 
         const reservedRight = showChat ? 420 + 16 : 16;
-        const minPanelWidth = 320;
-        const maxPanelWidth = 440;
-        const panelWidth = Math.min(maxPanelWidth, Math.max(minPanelWidth, viewportSize.width - reservedRight - 32));
+        const availableWidth = Math.max(360, viewportSize.width - reservedRight - 32);
+        const minPanelWidth = Math.min(620, availableWidth);
+        const maxPanelWidth = 860;
+        const panelWidth = Math.min(maxPanelWidth, Math.max(minPanelWidth, availableWidth));
         const targetLeft = relightTargetElement.x * scale + pan.x;
         const targetTop = relightTargetElement.y * scale + pan.y;
         const targetWidth = (relightTargetElement.width || 300) * scale;
@@ -2118,7 +2119,7 @@ function LovartCanvasContent() {
                         isSubmitting={isRelightSubmitting}
                         onClose={() => closeRelightWorkspace()}
                         onApply={handleApplyRelight}
-                        containerClassName="flex h-full max-h-full flex-col overflow-hidden rounded-[24px] border border-white/10 bg-[#17181C]/96 shadow-[0_28px_90px_rgba(0,0,0,0.42)] backdrop-blur-xl"
+                        containerClassName="flex h-full max-h-full flex-col overflow-y-auto rounded-[24px] border border-white/10 bg-[#17181C]/96 shadow-[0_28px_90px_rgba(0,0,0,0.42)] backdrop-blur-xl"
                     />
                 </div>
             )}
