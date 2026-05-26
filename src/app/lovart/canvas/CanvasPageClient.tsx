@@ -11,7 +11,7 @@ import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
 import { RelightStudioPanel, type RelightConfig } from '@/components/lovart/RelightStudioModal';
-import { AngleAdjustPanel, type AngleConfig } from '@/components/lovart/AngleAdjustPanel';
+import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
@@ -98,6 +98,7 @@ function LovartCanvasContent() {
     const [relightTargetId, setRelightTargetId] = useState<string | null>(null);
     const [isAngleSubmitting, setIsAngleSubmitting] = useState(false);
     const [angleTargetId, setAngleTargetId] = useState<string | null>(null);
+    const [angleBatchProgress, setAngleBatchProgress] = useState<{ current: number; total: number } | undefined>(undefined);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
     const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as AgentMode | null) || 'design', [searchParams]);
@@ -749,7 +750,7 @@ function LovartCanvasContent() {
         if (!angleTargetElement) return null;
 
         const reservedRight = showChat ? 420 + 16 : 16;
-        const panelWidth = 520;
+        const panelWidth = 680;
         const targetLeft = angleTargetElement.x * scale + pan.x;
         const targetTop = angleTargetElement.y * scale + pan.y;
         const targetWidth = (angleTargetElement.width || 300) * scale;
@@ -769,51 +770,72 @@ function LovartCanvasContent() {
         } as const;
     }, [angleTargetElement, pan.x, pan.y, scale, showChat, viewportSize.width]);
 
-    const handleApplyAngle = useCallback(async (config: AngleConfig, promptPatch: string) => {
-        if (!angleTargetElement?.content) return;
+    const handleApplyAngle = useCallback(async (items: MultiAngleGenerateItem[]) => {
+        if (!angleTargetElement?.content || items.length === 0) return;
 
         setIsAngleSubmitting(true);
         setIsGenerating(true);
-        try {
-            const result = await requestImageGeneration({
-                prompt: angleTargetElement.prompt || '保留主体身份与材质，仅调整视角与透视关系。',
-                resolution: '1K',
-                aspectRatio: 'auto',
-                referenceImages: [angleTargetElement.content],
-                modelVariant: 'pro',
-                editMode: 'angle',
-                promptPatch,
-            });
+        setAngleBatchProgress({ current: 0, total: items.length });
 
-            if (!result.imageData) {
-                throw new Error('角度调整生成失败');
+        const basePrompt = angleTargetElement.prompt || '保留主体身份与材质，仅调整视角与透视关系。';
+        const sourceX = angleTargetElement.x;
+        const sourceY = angleTargetElement.y;
+        const sourceWidth = angleTargetElement.width || 400;
+
+        // Start X position: right of source image, offset by index
+        const GAP = 24;
+        let nextX = sourceX + sourceWidth + 40;
+
+        const generatedIds: string[] = [];
+
+        try {
+            for (let i = 0; i < items.length; i++) {
+                // Update progress before each generation (1-based)
+                setAngleBatchProgress({ current: i + 1, total: items.length });
+                const item = items[i];
+                const result = await requestImageGeneration({
+                    prompt: basePrompt,
+                    resolution: '1K',
+                    aspectRatio: 'auto',
+                    referenceImages: [angleTargetElement.content],
+                    modelVariant: 'pro',
+                    editMode: 'angle',
+                    promptPatch: item.promptPatch,
+                });
+
+                if (!result.imageData) continue;
+
+                const dimensions = await getImageDimensions(result.imageData);
+                const displaySize = getSmartDisplaySize(dimensions);
+
+                const newElement: CanvasElement = {
+                    id: uuidv4(),
+                    type: 'image',
+                    x: nextX,
+                    y: sourceY,
+                    width: displaySize.width,
+                    height: displaySize.height,
+                    originalWidth: displaySize.originalWidth,
+                    originalHeight: displaySize.originalHeight,
+                    prompt: result.finalPrompt,
+                    generationMetadata: {
+                        ...result.generationMetadata,
+                        resolution: result.requestedResolution,
+                        aspectRatio: result.requestedAspectRatio,
+                        modelVariant: result.returnedModelVariant,
+                        provider: result.returnedProvider,
+                    },
+                    content: result.imageData,
+                };
+
+                setElements((prev) => [...prev, newElement]);
+                generatedIds.push(newElement.id);
+                nextX += displaySize.width + GAP;
             }
 
-            const dimensions = await getImageDimensions(result.imageData);
-            const displaySize = getSmartDisplaySize(dimensions);
-
-            const newElement: CanvasElement = {
-                id: uuidv4(),
-                type: 'image',
-                x: angleTargetElement.x + (angleTargetElement.width || 400) + 120,
-                y: angleTargetElement.y,
-                width: displaySize.width,
-                height: displaySize.height,
-                originalWidth: displaySize.originalWidth,
-                originalHeight: displaySize.originalHeight,
-                prompt: result.finalPrompt,
-                generationMetadata: {
-                    ...result.generationMetadata,
-                    resolution: result.requestedResolution,
-                    aspectRatio: result.requestedAspectRatio,
-                    modelVariant: result.returnedModelVariant,
-                    provider: result.returnedProvider,
-                },
-                content: result.imageData,
-            };
-
-            setElements((prev) => [...prev, newElement]);
-            setSelectedIds([newElement.id]);
+            if (generatedIds.length > 0) {
+                setSelectedIds(generatedIds);
+            }
             closeAnglePanel();
         } catch (error) {
             const message = error instanceof Error ? error.message : '角度调整失败';
@@ -822,6 +844,7 @@ function LovartCanvasContent() {
         } finally {
             setIsGenerating(false);
             setIsAngleSubmitting(false);
+            setAngleBatchProgress(undefined);
         }
     }, [angleTargetElement, closeAnglePanel, setElements, setSelectedIds]);
     // ── end Angle Adjust Panel ───────────────────────────────────────────────
@@ -2229,8 +2252,9 @@ function LovartCanvasContent() {
                         key={angleTargetId ?? 'angle-closed'}
                         imageUrl={angleTargetElement?.content}
                         isSubmitting={isAngleSubmitting}
+                        batchProgress={angleBatchProgress}
                         onClose={closeAnglePanel}
-                        onApply={handleApplyAngle}
+                        onApplyMulti={handleApplyAngle}
                     />
                 </div>
             )}
