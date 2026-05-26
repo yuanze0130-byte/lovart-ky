@@ -11,6 +11,7 @@ import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
 import { RelightStudioPanel, type RelightConfig } from '@/components/lovart/RelightStudioModal';
+import { AngleAdjustPanel, type AngleConfig } from '@/components/lovart/AngleAdjustPanel';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
@@ -95,6 +96,8 @@ function LovartCanvasContent() {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isRelightSubmitting, setIsRelightSubmitting] = useState(false);
     const [relightTargetId, setRelightTargetId] = useState<string | null>(null);
+    const [isAngleSubmitting, setIsAngleSubmitting] = useState(false);
+    const [angleTargetId, setAngleTargetId] = useState<string | null>(null);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
     const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as AgentMode | null) || 'design', [searchParams]);
@@ -522,6 +525,13 @@ function LovartCanvasContent() {
             return;
         }
 
+        if (mode === 'angle') {
+            setAngleTargetId(element.id);
+            setSelectedIds([element.id]);
+            setActiveTool('select');
+            return;
+        }
+
         const generatorElement = createImageGeneratorElement();
         const nextGenerator: CanvasElement = {
             ...generatorElement,
@@ -722,6 +732,99 @@ function LovartCanvasContent() {
             setIsRelightSubmitting(false);
         }
     }, [closeRelightWorkspace, relightTargetElement, setElements, setSelectedIds]);
+
+    // ── Angle Adjust Panel state & handlers ──────────────────────────────────
+    const angleTargetElement = useMemo(
+        () => (angleTargetId ? elements.find((el) => el.id === angleTargetId) : undefined),
+        [elements, angleTargetId]
+    );
+
+    const isAnglePanelOpen = Boolean(angleTargetElement?.content);
+
+    const closeAnglePanel = useCallback(() => {
+        setAngleTargetId(null);
+    }, []);
+
+    const angleFloatingStyle = useMemo(() => {
+        if (!angleTargetElement) return null;
+
+        const reservedRight = showChat ? 420 + 16 : 16;
+        const panelWidth = 520;
+        const targetLeft = angleTargetElement.x * scale + pan.x;
+        const targetTop = angleTargetElement.y * scale + pan.y;
+        const targetWidth = (angleTargetElement.width || 300) * scale;
+        const targetHeight = (angleTargetElement.height || 220) * scale;
+
+        const panelLeft = Math.min(
+            Math.max(16, targetLeft + targetWidth / 2 - panelWidth / 2),
+            Math.max(16, viewportSize.width - reservedRight - panelWidth)
+        );
+        const preferredTop = targetTop + targetHeight + 16;
+        const top = Math.max(84, preferredTop);
+
+        return {
+            left: `${panelLeft}px`,
+            top: `${top}px`,
+            width: `${panelWidth}px`,
+        } as const;
+    }, [angleTargetElement, pan.x, pan.y, scale, showChat, viewportSize.width]);
+
+    const handleApplyAngle = useCallback(async (config: AngleConfig, promptPatch: string) => {
+        if (!angleTargetElement?.content) return;
+
+        setIsAngleSubmitting(true);
+        setIsGenerating(true);
+        try {
+            const result = await requestImageGeneration({
+                prompt: angleTargetElement.prompt || '保留主体身份与材质，仅调整视角与透视关系。',
+                resolution: '1K',
+                aspectRatio: 'auto',
+                referenceImages: [angleTargetElement.content],
+                modelVariant: 'pro',
+                editMode: 'angle',
+                promptPatch,
+            });
+
+            if (!result.imageData) {
+                throw new Error('角度调整生成失败');
+            }
+
+            const dimensions = await getImageDimensions(result.imageData);
+            const displaySize = getSmartDisplaySize(dimensions);
+
+            const newElement: CanvasElement = {
+                id: uuidv4(),
+                type: 'image',
+                x: angleTargetElement.x + (angleTargetElement.width || 400) + 120,
+                y: angleTargetElement.y,
+                width: displaySize.width,
+                height: displaySize.height,
+                originalWidth: displaySize.originalWidth,
+                originalHeight: displaySize.originalHeight,
+                prompt: result.finalPrompt,
+                generationMetadata: {
+                    ...result.generationMetadata,
+                    resolution: result.requestedResolution,
+                    aspectRatio: result.requestedAspectRatio,
+                    modelVariant: result.returnedModelVariant,
+                    provider: result.returnedProvider,
+                },
+                content: result.imageData,
+            };
+
+            setElements((prev) => [...prev, newElement]);
+            setSelectedIds([newElement.id]);
+            closeAnglePanel();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : '角度调整失败';
+            alert(message);
+            throw error;
+        } finally {
+            setIsGenerating(false);
+            setIsAngleSubmitting(false);
+        }
+    }, [angleTargetElement, closeAnglePanel, setElements, setSelectedIds]);
+    // ── end Angle Adjust Panel ───────────────────────────────────────────────
 
     const projectAssets = useProjectAssets(elements);
     const {
@@ -2117,6 +2220,21 @@ function LovartCanvasContent() {
                 </div>
             )}
 
+            {isAnglePanelOpen && angleFloatingStyle && (
+                <div
+                    className="absolute z-40 pointer-events-auto animate-in fade-in slide-in-from-bottom-2 duration-300"
+                    style={angleFloatingStyle}
+                >
+                    <AngleAdjustPanel
+                        key={angleTargetId ?? 'angle-closed'}
+                        imageUrl={angleTargetElement?.content}
+                        isSubmitting={isAngleSubmitting}
+                        onClose={closeAnglePanel}
+                        onApply={handleApplyAngle}
+                    />
+                </div>
+            )}
+
             <div className="absolute inset-0">
                 <CanvasArea
                     scale={scale}
@@ -2131,6 +2249,9 @@ function LovartCanvasContent() {
                         setSelectedIds(ids);
                         if (relightTargetId && (ids.length !== 1 || ids[0] !== relightTargetId)) {
                             closeRelightWorkspace({ restoreSelection: false, restoreAssetsPanel: true });
+                        }
+                        if (angleTargetId && (ids.length !== 1 || ids[0] !== angleTargetId)) {
+                            closeAnglePanel();
                         }
                     }}
                     onElementChange={handleElementChange}
