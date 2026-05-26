@@ -28,7 +28,7 @@ import { useCanvasHistory } from '@/hooks/useCanvasHistory';
 import { useStoryboardManager } from '@/hooks/useStoryboardManager';
 import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
-import { createClient } from '@supabase/supabase-js';
+import { authedFetch } from '@/lib/authed-fetch';
 
 function LovartCanvasContent() {
     const buildAgentActionMeta = useCallback((result: AgentActionResult): Array<{ label: string; value: string }> => {
@@ -482,7 +482,6 @@ function LovartCanvasContent() {
             }
 
             setObjectEditPrompt('');
-            alert('???????');
         } catch (error) {
             const message = error instanceof Error ? error.message : '对象编辑失败';
             alert(message === 'NOT_AUTHENTICATED' ? '当前未登录或登录状态已过期，请先登录后再使用标记编辑。' : message);
@@ -781,6 +780,27 @@ function LovartCanvasContent() {
     });
     const { runAgent, isRunning: isAgentRunning } = useAgentRunner();
 
+    const buildCanvasElementBase = useCallback((input: {
+        id: string;
+        type: CanvasElement['type'];
+        x: number;
+        y: number;
+        width?: number;
+        height?: number;
+        content?: string;
+        prompt?: string;
+    }): CanvasElement => ({
+        id: input.id,
+        type: input.type,
+        x: input.x,
+        y: input.y,
+        width: input.width,
+        height: input.height,
+        originalWidth: input.width,
+        originalHeight: input.height,
+        content: input.content,
+        prompt: input.prompt,
+    }), []);
 
     const handleInsertAsset = useCallback((asset: ProjectAsset) => {
         const resolvedAspectRatio = asset.aspectRatio ?? inferStoryboardAspectRatio(asset.width, asset.height);
@@ -851,30 +871,6 @@ function LovartCanvasContent() {
         setSelectedIds([source.id]);
         setPan(centerPanForElement(source));
     }, [centerPanForElement, elements, handleLocateAsset, projectAssets, setPan, setSelectedStoryboardItemId]);
-
-    function buildCanvasElementBase(input: {
-        id: string;
-        type: CanvasElement['type'];
-        x: number;
-        y: number;
-        width?: number;
-        height?: number;
-        content?: string;
-        prompt?: string;
-    }): CanvasElement {
-        return {
-            id: input.id,
-            type: input.type,
-            x: input.x,
-            y: input.y,
-            width: input.width,
-            height: input.height,
-            originalWidth: input.width,
-            originalHeight: input.height,
-            content: input.content,
-            prompt: input.prompt,
-        };
-    }
 
     const miniMapData = useMemo(() => {
         const drawableElements = elements.filter((element) => element.type !== 'connector');
@@ -1385,14 +1381,11 @@ function LovartCanvasContent() {
 
     const updateProjectThumbnail = useCallback((thumbnail: string) => {
         if (!projectId || !thumbnail) return;
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        if (!supabaseUrl || !serviceRoleKey) return;
-
-        void createClient(supabaseUrl, serviceRoleKey)
-            .from('projects')
-            .update({ thumbnail })
-            .eq('id', projectId);
+        void authedFetch('/api/projects/thumbnail', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId, thumbnail }),
+        });
     }, [projectId]);
 
     const buildEditedImageDraft = useCallback((imageData: string, prompt: string): DraftCanvasElement => ({
@@ -2009,7 +2002,7 @@ function LovartCanvasContent() {
             meta: buildAgentActionMeta(nextResult),
             followUps: buildAgentFollowUps(nextResult),
         };
-    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, buildAgentFollowUps, buildAgentImageDrafts, buildEditedImageDraft, buildStoryboardItemsFromAgentResult, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent, setStoryboard, setStoryboardLayout]);
+    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, buildAgentFollowUps, buildAgentImageDrafts, buildEditedImageDraft, buildStoryboardItemsFromAgentResult, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent, setStoryboard, setStoryboardLayout, updateProjectThumbnail]);
 
     const handleUnifiedAgentSubmit = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
         setAgentStage('analyzing');
