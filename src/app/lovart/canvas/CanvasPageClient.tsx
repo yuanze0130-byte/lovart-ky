@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
-import { CanvasArea, CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
+import { CanvasArea, type CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
@@ -158,6 +158,7 @@ function LovartCanvasContent() {
         handleConnectFlow,
         handleGenerateFromImage,
         handleGenerateImage,
+        handleGenerateSelectedImages,
     } = useCanvasGeneration({
         pan,
         elements,
@@ -1511,6 +1512,8 @@ function LovartCanvasContent() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ projectId, thumbnail }),
+        }).catch((error) => {
+            console.warn('Failed to update project thumbnail', error);
         });
     }, [projectId]);
 
@@ -2414,6 +2417,25 @@ function LovartCanvasContent() {
                     onOpenImageGenerator={handleOpenImageGenerator}
                     onOpenVideoGenerator={handleOpenVideoGenerator}
                 />
+
+                {selectedIds.filter((id) => elements.find((el) => el.id === id)?.type === 'image-generator').length > 1 && !isDraggingElement && (
+                    <div className="absolute left-1/2 top-5 z-[110] flex -translate-x-1/2 items-center gap-3 rounded-2xl border border-violet-200 bg-white/95 px-4 py-3 shadow-[0_18px_50px_rgba(15,23,42,0.16)] backdrop-blur-xl dark:border-violet-400/20 dark:bg-black/75">
+                        <div>
+                            <div className="text-sm font-semibold text-gray-900 dark:text-white">批量图像生成</div>
+                            <div className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
+                                已选择 {selectedIds.filter((id) => elements.find((el) => el.id === id)?.type === 'image-generator').length} 个图像生成器
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => void handleGenerateSelectedImages()}
+                            disabled={isGenerating}
+                            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {isGenerating ? '生成中...' : '同时生成'}
+                        </button>
+                    </div>
+                )}
 
                 {selectedIds.length === 1 && !isDraggingElement && (() => {
                     const selectedEl = elements.find(el => el.id === selectedIds[0]);

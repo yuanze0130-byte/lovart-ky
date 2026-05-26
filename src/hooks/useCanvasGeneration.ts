@@ -46,6 +46,8 @@ function updateProjectThumbnail(projectId: string | undefined, thumbnail: string
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ projectId, thumbnail }),
+  }).catch((error) => {
+    console.warn('Failed to update project thumbnail', error);
   });
 }
 
@@ -626,10 +628,142 @@ export function useCanvasGeneration({
     [elements, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
   );
 
+  const handleGenerateSelectedImages = useCallback(
+    async () => {
+      const generatorElements = selectedIds
+        .map((id) => elements.find((el) => el.id === id))
+        .filter((el): el is CanvasElement => el?.type === 'image-generator');
+
+      if (generatorElements.length === 0) return;
+
+      setIsGenerating(true);
+      try {
+        const generatedIds: string[] = [];
+        const results = await Promise.allSettled(
+          generatorElements.map(async (generatorElement) => {
+            const prompt = typeof generatorElement.initialPrompt === 'string' && generatorElement.initialPrompt.trim()
+              ? generatorElement.initialPrompt.trim()
+              : typeof generatorElement.prompt === 'string' && generatorElement.prompt.trim()
+                ? generatorElement.prompt.trim()
+                : generatorElement.generatorKind === 'panorama'
+                  ? '生成一张 720° 全景图，要求超宽横向构图、连续空间感、左右两端自然衔接。'
+                  : '生成一张高质量图片。';
+            const resolution = isResolution(generatorElement.requestedResolution) ? generatorElement.requestedResolution : generatorElement.generatorKind === 'panorama' ? '2K' : '1K';
+            const aspectRatio = isAspectRatio(generatorElement.requestedAspectRatio) ? generatorElement.requestedAspectRatio : generatorElement.generatorKind === 'panorama' ? '21:9' : 'auto';
+            const referenceElement = generatorElement.referenceImageId
+              ? elements.find((item) => item.id === generatorElement.referenceImageId)
+              : undefined;
+            const referenceImages = referenceElement?.type === 'image' && typeof referenceElement.content === 'string' && referenceElement.content
+              ? [referenceElement.content]
+              : [];
+            const editMode = generatorElement.initialEditMode || 'generate';
+
+            const result = await requestImageGeneration({
+              prompt,
+              resolution,
+              aspectRatio,
+              referenceImages,
+              modelVariant: 'pro',
+              editMode,
+            });
+
+            if (!result.imageData) {
+              throw new Error(result.textResponse || '未返回图片');
+            }
+
+            const dimensions = await getImageDimensions(result.imageData);
+            const displaySize = getSmartDisplaySize(dimensions);
+
+            return {
+              generatorElement,
+              result,
+              displaySize,
+            };
+          })
+        );
+
+        const successfulResults = results
+          .filter((result): result is PromiseFulfilledResult<{
+            generatorElement: CanvasElement;
+            result: Awaited<ReturnType<typeof requestImageGeneration>>;
+            displaySize: ReturnType<typeof getSmartDisplaySize>;
+          }> => result.status === 'fulfilled')
+          .map((result) => result.value);
+
+        if (successfulResults.length > 0) {
+          const resultMap = new Map(successfulResults.map((item) => [item.generatorElement.id, item]));
+          successfulResults.forEach((item) => generatedIds.push(item.generatorElement.id));
+
+          setElements((prev) => prev.map((el) => {
+            const item = resultMap.get(el.id);
+            if (!item) return el;
+
+            const {
+              result,
+              displaySize,
+            } = item;
+            updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, result.imageData as string);
+
+            return {
+              ...el,
+              type: 'image',
+              content: result.imageData,
+              width: displaySize.width,
+              height: displaySize.height,
+              originalWidth: displaySize.originalWidth,
+              originalHeight: displaySize.originalHeight,
+              prompt: result.finalPrompt,
+              generationMetadata: {
+                ...result.generationMetadata,
+                assetKind: el.generatorKind === 'panorama' ? 'panorama' : 'image',
+                resolution: result.requestedResolution,
+                aspectRatio: result.requestedAspectRatio,
+                modelVariant: result.returnedModelVariant,
+                provider: result.returnedProvider,
+                providerMode: result.returnedProviderMode,
+                providerFallbackUsed: result.providerFallbackUsed,
+                fallbackFrom: result.fallbackFrom,
+                fallbackReason: result.fallbackReason,
+                model: result.returnedModel,
+                taskId: result.returnedTaskId,
+                proxyTarget: result.returnedProxyTarget,
+                taskStatus: result.returnedTaskStatus,
+                taskPollIntervalMs: result.returnedTaskPollIntervalMs,
+                taskPollTimeoutMs: result.returnedTaskPollTimeoutMs,
+                taskPollAttemptCount: result.returnedTaskPollAttemptCount,
+                taskDurationMs: result.returnedTaskDurationMs,
+                taskCompletedAt: result.returnedTaskCompletedAt,
+                taskPayload: result.returnedTaskPayload as GenerationMetadata['taskPayload'],
+              },
+              requestedAspectRatio: result.requestedAspectRatio,
+              requestedResolution: result.requestedResolution,
+            };
+          }));
+          setSelectedIds(generatedIds);
+        }
+
+        const failedCount = results.filter((result) => result.status === 'rejected').length;
+        if (failedCount > 0) {
+          alert(`批量生成完成：成功 ${successfulResults.length} 个，失败 ${failedCount} 个。请查看控制台错误。`);
+          results.forEach((result) => {
+            if (result.status === 'rejected') console.error('Batch image generation failed:', result.reason);
+          });
+        }
+      } catch (error) {
+        console.error('Batch image generation failed:', error);
+        alert(`批量生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+      } finally {
+        setIsGenerating(false);
+      }
+    },
+    [elements, selectedIds, setElements, setIsGenerating, setSelectedIds]
+  );
+
   return {
     handleGenerateVideo,
     handleConnectFlow,
     handleGenerateFromImage,
     handleGenerateImage,
+    handleGenerateSelectedImages,
   };
 }

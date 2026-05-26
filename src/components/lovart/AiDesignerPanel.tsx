@@ -164,6 +164,50 @@ function getGeneratingState(mode: AgentMode, prompt?: string) {
     }
 }
 
+type LovartQuickSkill = {
+    title: string;
+    category: string;
+    mode: AgentMode;
+    description: string;
+    prompt: string;
+    accentClass: string;
+};
+
+const quickSkills: LovartQuickSkill[] = [
+    {
+        title: '电商产品图组',
+        category: 'E-Commerce',
+        mode: 'design',
+        description: '主图、场景图、细节图一套规划，适合商品上架。',
+        accentClass: 'from-cyan-50 to-blue-50 border-cyan-100 text-cyan-900',
+        prompt: '使用「电商产品图组」Skill。请先帮我规划一套适合商品上架的产品视觉：包含 1 张主图、2 张场景图、1 张细节卖点图。请先输出执行计划、画布布局建议、每张图的生成提示词；如果缺少商品类型、品牌调性、目标平台或参考图，请先追问。',
+    },
+    {
+        title: '小红书封面',
+        category: 'Social Media',
+        mode: 'design',
+        description: '标题强、信息清楚、适合种草内容的封面。',
+        accentClass: 'from-rose-50 to-pink-50 border-rose-100 text-rose-900',
+        prompt: '使用「小红书封面」Skill。请帮我做一张适合小红书种草内容的封面：需要强标题、清晰卖点、平台感排版和高点击率视觉。请先给出 3 个方向，每个方向包含标题文案、画面构图、配色、主视觉提示词；如果缺少主题、受众或产品信息，请先追问。',
+    },
+    {
+        title: '品牌视觉方向',
+        category: 'Branding',
+        mode: 'branding',
+        description: '快速梳理品牌调性、色彩、字体和视觉关键词。',
+        accentClass: 'from-amber-50 to-orange-50 border-amber-100 text-amber-900',
+        prompt: '使用「品牌视觉方向」Skill。请帮我梳理一个品牌视觉方向：包括品牌关键词、目标受众、主色/辅助色、字体气质、Logo 方向、海报/包装/社媒延展建议。请先问我缺少的品牌名、行业、受众、调性和竞品信息。',
+    },
+    {
+        title: '15 秒视频分镜',
+        category: 'Video',
+        mode: 'design',
+        description: '把一句 brief 拆成镜头、运动、转场和视频提示词。',
+        accentClass: 'from-violet-50 to-purple-50 border-violet-100 text-violet-900',
+        prompt: '使用「15 秒视频分镜」Skill。请把我的创意 brief 拆成 3-5 个镜头，输出每镜的画面描述、镜头运动、时长、转场、旁白/字幕建议，以及可用于视频生成的提示词。请优先保持角色/产品一致性；如果缺少主题、风格或画幅，请先追问。',
+    },
+];
+
 export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialPrompt, initialMode = 'design' }: AiDesignerPanelProps) {
     const [inputValue, setInputValue] = useState(initialPrompt || '');
     const [messages, setMessages] = useState<Message[]>([]);
@@ -223,6 +267,11 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     const suggestions = suggestionsByMode[agentMode];
     const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content;
     const generatingState = getGeneratingState(agentMode, latestUserMessage || inputValue || initialPrompt);
+
+    const handleQuickSkillSelect = useCallback((skill: LovartQuickSkill) => {
+        setAgentMode(skill.mode);
+        setInputValue(skill.prompt);
+    }, []);
 
     const handleSend = useCallback(async () => {
         if (inputValue.trim() && !isGenerating) {
@@ -337,6 +386,34 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                             <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">
                                 你可以把我当成一个统一 Agent：既能聊创意/策略，也能直接执行生图、修图、分镜、视频动作。
                             </div>
+
+                            <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-gray-900">一键 Skill</div>
+                                        <div className="text-xs text-gray-400">先用工作流模板把需求拆清楚，再交给 Agent 执行</div>
+                                    </div>
+                                    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">Beta</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    {quickSkills.map((skill) => (
+                                        <button
+                                            key={skill.title}
+                                            type="button"
+                                            onClick={() => handleQuickSkillSelect(skill)}
+                                            className={`rounded-xl border bg-gradient-to-br p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${skill.accentClass}`}
+                                        >
+                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                                <span className="text-[11px] font-semibold uppercase tracking-wide opacity-60">{skill.category}</span>
+                                                <Zap size={13} className="opacity-60" />
+                                            </div>
+                                            <div className="text-sm font-bold">{skill.title}</div>
+                                            <div className="mt-1 text-xs leading-relaxed opacity-70">{skill.description}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
                             {suggestions.map((item, index) => (
                                 <div
                                     key={index}
