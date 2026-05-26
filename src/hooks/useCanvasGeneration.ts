@@ -1,6 +1,5 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { createClient } from '@supabase/supabase-js';
 import type { CanvasElement, GenerationMetadata } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
@@ -43,15 +42,11 @@ function isBananaVariant(value: unknown): value is BananaVariant {
 function updateProjectThumbnail(projectId: string | undefined, thumbnail: string) {
   if (!projectId || !thumbnail) return;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) return;
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
-  void supabase
-    .from('projects')
-    .update({ thumbnail })
-    .eq('id', projectId);
+  void authedFetch('/api/projects/thumbnail', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, thumbnail }),
+  });
 }
 
 interface UseCanvasGenerationParams {

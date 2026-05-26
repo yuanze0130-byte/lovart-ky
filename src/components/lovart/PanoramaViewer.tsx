@@ -212,11 +212,14 @@ function PanoramaStage({
             }}
           >
             {[0, 1, 2].map((index) => (
+              // eslint-disable-next-line @next/next/no-img-element -- 全景图需要 naturalWidth/naturalHeight 且三份平铺，不适合 next/image
               <img
                 key={index}
                 src={src}
                 alt={alt}
                 draggable={false}
+                loading={index === 1 ? 'eager' : 'lazy'}
+                decoding="async"
                 onLoad={(event) => {
                   const target = event.currentTarget;
                   setNaturalSize({ width: target.naturalWidth, height: target.naturalHeight });

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import type {
   CanvasElementInsert,
@@ -27,6 +28,7 @@ export function useProjectPersistence({
   onProjectLoaded,
 }: UseProjectPersistenceParams) {
   const supabase = useSupabase();
+  const router = useRouter();
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(initialProjectId);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'offline'>('saved');
   const [isLoading, setIsLoading] = useState(true);
@@ -118,9 +120,7 @@ export function useProjectPersistence({
         }
 
         setCurrentProjectId(newProjectId);
-        if (typeof window !== 'undefined') {
-          window.history.pushState({}, '', `/canvas?id=${newProjectId}`);
-        }
+        router.replace(`/canvas?id=${newProjectId}`);
       }
 
       setSaveStatus('saved');
@@ -130,7 +130,7 @@ export function useProjectPersistence({
     } finally {
       isSavingRef.current = false;
     }
-  }, [currentProjectId, elements, supabase, title, user]);
+  }, [currentProjectId, elements, router, supabase, title, user]);
 
   const scheduleSave = useCallback(
     (delayMs = 2000) => {
