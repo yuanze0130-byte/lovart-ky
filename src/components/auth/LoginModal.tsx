@@ -11,6 +11,24 @@ interface LoginModalProps {
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
+function getLoginErrorMessage(err: unknown) {
+  const rawMessage = err instanceof Error ? err.message : '发送登录邮件失败';
+  const lowerMessage = rawMessage.toLowerCase();
+
+  if (lowerMessage.includes('rate limit')) {
+    return { message: '发送过于频繁，请在 60 秒后再试，不要连续点击。', shouldCooldown: true };
+  }
+
+  if (lowerMessage.includes('failed to fetch')) {
+    return {
+      message: '无法连接 Supabase Auth。请检查 NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY 是否配置正确，以及 Supabase Auth 的 Site URL / Redirect URLs 是否允许当前域名。',
+      shouldCooldown: false,
+    };
+  }
+
+  return { message: rawMessage, shouldCooldown: false };
+}
+
 export function LoginModal({ open, onClose }: LoginModalProps) {
   const { signInWithOtp } = useAuth();
   const [email, setEmail] = useState('');
@@ -53,13 +71,11 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
       setCooldown(RESEND_COOLDOWN_SECONDS);
       setMessage('登录邮件已发送，请检查邮箱。60 秒内请勿重复点击；若未看到，也请先检查垃圾邮箱。');
     } catch (err) {
-      const rawMessage = err instanceof Error ? err.message : '发送登录邮件失败';
-      if (rawMessage.toLowerCase().includes('rate limit')) {
+      const { message: loginError, shouldCooldown } = getLoginErrorMessage(err);
+      if (shouldCooldown) {
         setCooldown(RESEND_COOLDOWN_SECONDS);
-        setError('发送过于频繁，请在 60 秒后再试，不要连续点击。');
-      } else {
-        setError(rawMessage);
       }
+      setError(loginError);
     } finally {
       setLoading(false);
     }
