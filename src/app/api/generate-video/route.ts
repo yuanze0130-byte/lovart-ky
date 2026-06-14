@@ -1,5 +1,3 @@
-import { randomUUID } from 'crypto';
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, getVideoCreditCost, refundCredits } from '@/lib/credits';
@@ -9,8 +7,8 @@ type SupportedVideoRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9' | '3
 
 const DEFAULT_VIDEO_MODEL = 'sora-2';
 const VIDEO_MODELS: Record<VideoModelMode, string> = {
-  standard: process.env.VIDEO_MODEL_STANDARD || process.env.VIDEO_MODEL || 'doubao-seedance-2-0-260128',
-  fast: process.env.VIDEO_MODEL_FAST || 'doubao-seedance-2-0-fast-260128',
+  standard: process.env.VIDEO_MODEL_STANDARD || process.env.VIDEO_MODEL || DEFAULT_VIDEO_MODEL,
+  fast: process.env.VIDEO_MODEL_FAST || DEFAULT_VIDEO_MODEL,
 };
 
 function stringifyErrorPayload(value: unknown): string {
@@ -49,49 +47,27 @@ function inferRatioFromSize(size?: string): SupportedVideoRatio {
   }
 }
 
-function decodeReferenceImage(referenceImage: string) {
-  const matched = referenceImage.match(/^data:(image\/[^;]+);base64,(.+)$/);
-  const mimeType = matched?.[1] || 'image/jpeg';
-  const base64Data = matched?.[2] || referenceImage;
-  const buffer = Buffer.from(base64Data, 'base64');
-  const extension = mimeType.split('/')[1] || 'jpg';
-  return { mimeType, buffer, extension };
+function normalizeVideoBaseURL(baseUrl: string) {
+  return baseUrl.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
 }
 
-async function uploadReferenceImage(userId: string, referenceImage: string) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const bucket = process.env.VIDEO_REFERENCE_BUCKET || 'video-references';
+function normalizeSoraAspectRatio(ratio: SupportedVideoRatio): '16:9' | '9:16' {
+  return ratio === '16:9' || ratio === '21:9' || ratio === '3:2' || ratio === '4:3' ? '16:9' : '9:16';
+}
 
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Supabase storage is not configured for video reference upload');
+function normalizeSoraDuration(seconds?: number): '10' | '15' | '25' {
+  if (!seconds) return '10';
+  if (seconds >= 25) return '25';
+  if (seconds >= 15) return '15';
+  return '10';
+}
+
+function normalizeReferenceImageForSora(referenceImage: string) {
+  if (/^data:image\/[^;]+;base64,/i.test(referenceImage)) {
+    return referenceImage;
   }
 
-  const { mimeType, buffer, extension } = decodeReferenceImage(referenceImage);
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
-  const path = `${userId}/${randomUUID()}.${extension}`;
-
-  const uploadResult = await supabase.storage
-    .from(bucket)
-    .upload(path, buffer, {
-      contentType: mimeType,
-      upsert: false,
-      cacheControl: '3600',
-    });
-
-  if (uploadResult.error) {
-    throw new Error(`Failed to upload reference image: ${uploadResult.error.message}`);
-  }
-
-  const signedUrlResult = await supabase.storage
-    .from(bucket)
-    .createSignedUrl(path, 60 * 60);
-
-  if (signedUrlResult.error || !signedUrlResult.data?.signedUrl) {
-    throw new Error(`Failed to create signed URL for reference image: ${signedUrlResult.error?.message || 'unknown error'}`);
-  }
-
-  return signedUrlResult.data.signedUrl;
+  return `data:image/jpeg;base64,${referenceImage}`;
 }
 
 export async function POST(request: NextRequest) {
@@ -139,35 +115,31 @@ export async function POST(request: NextRequest) {
       throw new Error('Prompt is required');
     }
 
-    const apiKey = process.env.VIDEO_API_KEY;
-    const baseUrl = process.env.VIDEO_API_BASE_URL || 'https://ai.t8star.cn';
+    const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
+    const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn');
 
     if (!apiKey) {
-      throw new Error('VIDEO_API_KEY not configured');
+      throw new Error('VIDEO_API_KEY or GEMINI_API_KEY not configured');
     }
 
     const resolvedModel = VIDEO_MODELS[selectedMode] || process.env.VIDEO_MODEL || DEFAULT_VIDEO_MODEL;
-    const ratio = inferRatioFromSize(size);
-    const promptWithRatio = prompt.includes('--ratio') ? prompt : `${prompt} --ratio ${ratio}`;
-
-    const content: Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }> = [
-      { type: 'text', text: promptWithRatio },
-    ];
-
-    if (referenceImage) {
-      const referenceUrl = await uploadReferenceImage(user.id, referenceImage);
-      content.push({
-        type: 'image_url',
-        image_url: { url: referenceUrl },
-      });
-    }
+    const ratio = normalizeSoraAspectRatio(inferRatioFromSize(size));
+    const duration = normalizeSoraDuration(body.seconds);
+    const effectiveModel = duration === '25' && resolvedModel === 'sora-2'
+      ? 'sora-2-pro'
+      : resolvedModel;
 
     const payload = {
-      model: resolvedModel,
-      content,
+      model: effectiveModel,
+      prompt,
+      aspect_ratio: ratio,
+      duration,
+      hd: false,
+      private: true,
+      ...(referenceImage ? { images: [normalizeReferenceImageForSora(referenceImage)] } : {}),
     };
 
-    const response = await fetch(`${baseUrl}/seedance/v3/contents/generations/tasks`, {
+    const response = await fetch(`${baseUrl}/v2/videos/generations`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -177,10 +149,10 @@ export async function POST(request: NextRequest) {
     });
 
     const rawText = await response.text();
-    let data: { id?: string; status?: string; error?: unknown; message?: unknown } = {};
+    let data: { id?: string; task_id?: string; status?: string; error?: unknown; message?: unknown } = {};
 
     try {
-      data = rawText ? (JSON.parse(rawText) as { id?: string; status?: string; error?: unknown; message?: unknown }) : {};
+      data = rawText ? (JSON.parse(rawText) as { id?: string; task_id?: string; status?: string; error?: unknown; message?: unknown }) : {};
     } catch {
       data = {};
     }
@@ -191,12 +163,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const taskId = data.task_id || data.id;
+    if (!taskId) {
+      throw new Error(`Upstream video API did not return task_id: ${rawText.slice(0, 500)}`);
+    }
+
     return NextResponse.json({
-      taskId: data.id,
+      taskId,
       status: data.status,
-      model: resolvedModel,
+      model: effectiveModel,
       modelMode: selectedMode,
       ratio,
+      duration,
     });
   } catch (error: unknown) {
     if (isNotAuthenticatedError(error)) {

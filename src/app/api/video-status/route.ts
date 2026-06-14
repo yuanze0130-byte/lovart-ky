@@ -32,12 +32,18 @@ interface VideoStatusResponse {
   data?: {
     status?: string;
     duration?: string;
+    output?: string;
+    fail_reason?: string;
     content?: {
       video_url?: string;
       url?: string;
       urls?: string[];
     };
   };
+}
+
+function normalizeVideoBaseURL(baseUrl: string) {
+  return baseUrl.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
 }
 
 export async function GET(request: NextRequest) {
@@ -48,14 +54,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
 
-    const apiKey = process.env.VIDEO_API_KEY;
-    const baseUrl = process.env.VIDEO_API_BASE_URL || 'https://ai.t8star.cn';
+    const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
+    const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn');
 
     if (!apiKey) {
-      return NextResponse.json({ error: 'VIDEO_API_KEY not configured' }, { status: 500 });
+      return NextResponse.json({ error: 'VIDEO_API_KEY or GEMINI_API_KEY not configured' }, { status: 500 });
     }
 
-    const response = await fetch(`${baseUrl}/seedance/v3/contents/generations/tasks/${taskId}`, {
+    const response = await fetch(`${baseUrl}/v2/videos/generations/${taskId}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}` },
     });
@@ -86,6 +92,7 @@ export async function GET(request: NextRequest) {
       data.output?.url ||
       data.urls?.[0] ||
       data.output?.urls?.[0] ||
+      data.data?.output ||
       data.data?.content?.video_url ||
       data.data?.content?.url ||
       data.data?.content?.urls?.[0];

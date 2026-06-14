@@ -7,7 +7,7 @@ import { consumeCredits, getImageCreditCost, refundCredits } from '@/lib/credits
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
-type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
+type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9' | '9:21' | '2:1' | '1:2';
 type SupportedResolution = '1K' | '2K' | '4K';
 type OfficialImageSizeValidationResult =
   | { ok: true; width: number; height: number; pixels: number }
@@ -172,7 +172,7 @@ function getProxyModel(payload: GenerateImagePayload) {
   }
 
   if (payload.modelVariant === 'gpt-image-2') {
-    return process.env.GEMINI_PROXY_GPT_IMAGE_2_MODEL || 'gpt-image-2';
+    return process.env.GEMINI_PROXY_GPT_IMAGE_2_MODEL || 'gpt-image-2-all';
   }
 
   if (payload.modelVariant === 'standard') {
@@ -235,6 +235,15 @@ const GPT_IMAGE_2_OFFICIAL_SIZE_MAP: Record<string, string> = {
   '21:9|1K': '1456x624',
   '21:9|2K': '3024x1296',
   '21:9|4K': '3696x1584',
+  '9:21|1K': '624x1456',
+  '9:21|2K': '1296x3024',
+  '9:21|4K': '1584x3696',
+  '2:1|1K': '2048x1024',
+  '2:1|2K': '2688x1344',
+  '2:1|4K': '3840x1920',
+  '1:2|1K': '1024x2048',
+  '1:2|2K': '1344x2688',
+  '1:2|4K': '1920x3840',
 };
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
@@ -306,10 +315,19 @@ function validateOfficialGptImage2Size(size: string): OfficialImageSizeValidatio
   return { ok: true, width, height, pixels };
 }
 
+function normalizeProxyBaseURL(baseURL: string) {
+  const trimmed = baseURL.trim().replace(/\/+$/, '');
+  if (!trimmed) return 'https://ai.t8star.cn/v1';
+  if (/\/v\d+$/i.test(trimmed)) return trimmed;
+  return `${trimmed}/v1`;
+}
+
 function getProxyTargets() {
-  const primaryBaseURL = process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1';
+  const primaryBaseURL = normalizeProxyBaseURL(process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1');
   const primaryApiKey = process.env.GEMINI_API_KEY;
-  const fallbackBaseURL = process.env.GEMINI_FALLBACK_BASE_URL;
+  const fallbackBaseURL = process.env.GEMINI_FALLBACK_BASE_URL
+    ? normalizeProxyBaseURL(process.env.GEMINI_FALLBACK_BASE_URL)
+    : undefined;
   const fallbackApiKey = process.env.GEMINI_FALLBACK_API_KEY;
 
   const targets = [
@@ -478,7 +496,7 @@ async function maybeTranslatePromptWithProxy(prompt: string) {
   const hasChinese = /[\u4e00-\u9fff]/.test(prompt);
   const targets = getProxyTargets();
 
-  if (process.env.GEMINI_PROXY_TRANSLATE_PROMPT === 'false' || !hasChinese || targets.length === 0) {
+  if (process.env.GEMINI_PROXY_TRANSLATE_PROMPT !== 'true' || !hasChinese || targets.length === 0) {
     return prompt;
   }
 
