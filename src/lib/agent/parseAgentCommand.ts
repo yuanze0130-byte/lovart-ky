@@ -32,12 +32,18 @@ function extractCount(message: string) {
 
 function normalizePrompt(message: string) {
   return message
+    .replace(/^\s*\/[a-z0-9_-]+/i, ' ')
     .replace(/帮我|请|给我|做一个|做一组|生成一下|生成一组/g, ' ')
     .replace(/加到当前画布|加到画布|放进当前项目|放进项目/g, ' ')
     .replace(/做成短视频|生成视频版本|生成一个视频版本/g, ' ')
     .replace(/分镜|storyboard|镜头/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function hasSlashCommand(message: string, commands: string[]) {
+  const normalized = message.trim().toLowerCase();
+  return commands.some((command) => normalized.startsWith(`/${command.toLowerCase()}`));
 }
 
 function extractShots(message: string, fallback = 6) {
@@ -122,6 +128,41 @@ export async function parseAgentCommand(input: {
   const raw = input.message.trim();
   const aspectRatio = extractAspectRatio(raw);
   const storyboardOrder = extractStoryboardOrder(raw);
+
+  if (hasSlashCommand(raw, ['grid9', 'grid', '9grid']) || /九宫格|9宫格/.test(raw)) {
+    return {
+      type: 'create_grid',
+      prompt: normalizePrompt(raw) || raw,
+      count: 9,
+      aspectRatio: aspectRatio || '1:1',
+    };
+  }
+
+  if (hasSlashCommand(raw, ['grid25', '25grid']) || /25\s*宫格|二十五宫格|25\s*格/.test(raw)) {
+    return {
+      type: 'create_grid',
+      prompt: normalizePrompt(raw) || raw,
+      count: 25,
+      aspectRatio: aspectRatio || '16:9',
+    };
+  }
+
+  if (hasSlashCommand(raw, ['quad', 'grid4']) || /四宫格|4宫格|剧情推演四宫格/.test(raw)) {
+    return {
+      type: 'create_grid',
+      prompt: normalizePrompt(raw) || raw,
+      count: 4,
+      aspectRatio: aspectRatio || '16:9',
+    };
+  }
+
+  if (hasSlashCommand(raw, ['character3view', 'threeview', '3view']) || /三视图|角色三视图|三面图/.test(raw)) {
+    return {
+      type: 'create_character_three_view',
+      prompt: normalizePrompt(raw) || raw,
+      aspectRatio: aspectRatio || '1:1',
+    };
+  }
 
   if (hasStoryboardBoardIntent(raw)) {
     return {

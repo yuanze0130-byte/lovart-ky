@@ -3,6 +3,8 @@ import type { AgentAction, AgentActionResult, AgentContext } from '@/lib/agent/a
 import { runAddToCanvasAction } from '@/lib/agent/executors/addToCanvas';
 import { runCreateStoryboardAction } from '@/lib/agent/executors/createStoryboard';
 import { runCreateStoryboardBoardAction } from '@/lib/agent/executors/createStoryboardBoard';
+import { runCreateCharacterThreeViewAction } from '@/lib/agent/executors/createCharacterThreeView';
+import { runCreateGridAction } from '@/lib/agent/executors/createGrid';
 import { runEditSelectedImageAction } from '@/lib/agent/executors/editSelectedImage';
 import { runGenerateImagesAction } from '@/lib/agent/executors/generateImages';
 import { runGenerateStoryboardImageAction } from '@/lib/agent/executors/generateStoryboardImage';
@@ -22,6 +24,10 @@ export async function executeAgentAction(input: {
       return runCreateStoryboardBoardAction({ context: input.context });
     case 'generate_images':
       return runGenerateImagesAction({ request: input.request, action: input.action, context: input.context });
+    case 'create_grid':
+      return runCreateGridAction({ request: input.request, action: input.action, context: input.context });
+    case 'create_character_three_view':
+      return runCreateCharacterThreeViewAction({ request: input.request, action: input.action, context: input.context });
     case 'generate_storyboard_image':
       return runGenerateStoryboardImageAction({ action: input.action, context: input.context });
     case 'generate_storyboard_video':

@@ -52,6 +52,19 @@ export type GenerateImagesAction = {
   addToProject?: boolean;
 };
 
+export type CreateGridAction = {
+  type: 'create_grid';
+  prompt: string;
+  count?: 4 | 9 | 25;
+  aspectRatio?: StoryboardAspectRatio;
+};
+
+export type CreateCharacterThreeViewAction = {
+  type: 'create_character_three_view';
+  prompt: string;
+  aspectRatio?: StoryboardAspectRatio;
+};
+
 export type GenerateStoryboardImageAction = {
   type: 'generate_storyboard_image';
   prompt?: string;
@@ -95,6 +108,8 @@ export type AgentAction =
   | CreateStoryboardAction
   | CreateStoryboardBoardAction
   | GenerateImagesAction
+  | CreateGridAction
+  | CreateCharacterThreeViewAction
   | GenerateStoryboardImageAction
   | GenerateStoryboardVideoAction
   | GenerateVideoAction

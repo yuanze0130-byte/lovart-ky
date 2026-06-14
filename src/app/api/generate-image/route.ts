@@ -201,6 +201,9 @@ function getProxyModel(payload: GenerateImagePayload) {
 const GPT_IMAGE_2_DEFAULT_ASPECT_RATIOS: SupportedAspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
 const DEFAULT_GPT_IMAGE_2_POLL_INTERVAL_MS = Number(process.env.GEMINI_PROXY_GPT_IMAGE_2_POLL_INTERVAL_MS || 3000);
 const DEFAULT_GPT_IMAGE_2_POLL_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_GPT_IMAGE_2_POLL_TIMEOUT_MS || 300000);
+const DEFAULT_PROMPT_TRANSLATION_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_PROMPT_TRANSLATION_TIMEOUT_MS || 8000);
+const DEFAULT_PROXY_IMAGE_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_IMAGE_TIMEOUT_MS || 180000);
+const DEFAULT_FETCH_IMAGE_TIMEOUT_MS = Number(process.env.GENERATED_IMAGE_FETCH_TIMEOUT_MS || 30000);
 const GPT_IMAGE_2_OFFICIAL_SIZE_MAP: Record<string, string> = {
   '1:1|1K': '1024x1024',
   '1:1|2K': '2048x2048',
@@ -233,6 +236,29 @@ const GPT_IMAGE_2_OFFICIAL_SIZE_MAP: Record<string, string> = {
   '21:9|2K': '3024x1296',
   '21:9|4K': '3696x1584',
 };
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  }) as Promise<T>;
+}
+
+function buildTimeoutSignal(timeoutMs: number) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(timeoutMs);
+  }
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), timeoutMs);
+  return controller.signal;
+}
 
 function normalizeAspectRatioForGptImage2(aspectRatio: SupportedAspectRatio | undefined) {
   if (aspectRatio && aspectRatio !== 'auto') {
@@ -323,7 +349,9 @@ function extractImageFromGeminiResponse(response: GeminiOfficialResponse, baseRe
 }
 
 async function fetchImageUrlAsDataUrl(imageUrl: string) {
-  const upstreamResponse = await fetch(imageUrl);
+  const upstreamResponse = await fetch(imageUrl, {
+    signal: buildTimeoutSignal(DEFAULT_FETCH_IMAGE_TIMEOUT_MS),
+  });
   if (!upstreamResponse.ok) {
     throw new Error(`Failed to fetch generated image URL (${upstreamResponse.status} ${upstreamResponse.statusText}): ${imageUrl}`);
   }
@@ -450,23 +478,28 @@ async function maybeTranslatePromptWithProxy(prompt: string) {
   const hasChinese = /[\u4e00-\u9fff]/.test(prompt);
   const targets = getProxyTargets();
 
-  if (!hasChinese || targets.length === 0) {
+  if (process.env.GEMINI_PROXY_TRANSLATE_PROMPT === 'false' || !hasChinese || targets.length === 0) {
     return prompt;
   }
 
   try {
     const client = new OpenAI({ apiKey: targets[0].apiKey, baseURL: targets[0].baseURL });
-    const translateRes = await client.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: `Translate the following image generation prompt to English. Only return the translated prompt, nothing else:\n${prompt}`,
-        },
-      ],
-    });
+    const translateRes = await withTimeout(
+      client.chat.completions.create({
+        model: process.env.GEMINI_PROXY_PROMPT_TRANSLATION_MODEL || 'gpt-4o',
+        messages: [
+          {
+            role: 'user',
+            content: `Translate the following image generation prompt to English. Only return the translated prompt, nothing else:\n${prompt}`,
+          },
+        ],
+      }),
+      DEFAULT_PROMPT_TRANSLATION_TIMEOUT_MS,
+      'Prompt translation'
+    );
     return translateRes.choices?.[0]?.message?.content?.trim() || prompt;
-  } catch {
+  } catch (error) {
+    console.warn('[generate-image] prompt translation skipped:', error instanceof Error ? error.message : String(error));
     return prompt;
   }
 }
@@ -779,10 +812,14 @@ async function generateViaProxy(payload: GenerateImagePayload) {
         taskMetadata = taskResult.pollMetadata;
       } else {
         const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL });
-        response = (await client.chat.completions.create({
-          model: proxyModel,
-          messages: [{ role: 'user', content }],
-        })) as unknown as GeminiChatCompletion;
+        response = (await withTimeout(
+          client.chat.completions.create({
+            model: proxyModel,
+            messages: [{ role: 'user', content }],
+          }),
+          DEFAULT_PROXY_IMAGE_TIMEOUT_MS,
+          `Proxy image generation (${target.label})`
+        )) as unknown as GeminiChatCompletion;
       }
 
       const baseResult = {

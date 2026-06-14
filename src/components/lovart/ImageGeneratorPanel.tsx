@@ -104,6 +104,7 @@ export function ImageGeneratorPanel({
   const [showCanvasReferencePicker, setShowCanvasReferencePicker] = useState(false);
   const [editMode] = useState<ImageEditMode>(initialMode);
   const [progress, setProgress] = useState(0);
+  const [generationStatus, setGenerationStatus] = useState('');
   const [officialQuality, setOfficialQuality] = useState<OfficialQuality>('auto');
   const [officialBackground, setOfficialBackground] = useState<OfficialBackground>('auto');
   const [officialOutputFormat, setOfficialOutputFormat] = useState<OfficialOutputFormat>('png');
@@ -244,12 +245,15 @@ export function ImageGeneratorPanel({
     }
 
     setProgress(8);
+    setGenerationStatus('正在提交到中转站…');
     const steps = [18, 36, 54, 72, 88];
+    const labels = ['正在分析提示词…', '正在准备生成参数…', '正在连接中转站…', '中转站正在生成…', '等待中转站返回结果…'];
     let index = 0;
     const timer = window.setInterval(() => {
       setProgress((prev) => {
         if (index >= steps.length || prev >= 90) return prev;
         const next = steps[index] ?? prev;
+        setGenerationStatus(labels[index] || '等待中转站返回结果…');
         index += 1;
         return next;
       });
@@ -279,7 +283,11 @@ export function ImageGeneratorPanel({
     } finally {
       window.clearInterval(timer);
       setProgress(100);
-      window.setTimeout(() => setProgress(0), 800);
+      setGenerationStatus('生成完成');
+      window.setTimeout(() => {
+        setProgress(0);
+        setGenerationStatus('');
+      }, 800);
     }
   };
 
@@ -312,7 +320,7 @@ export function ImageGeneratorPanel({
           <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/80 p-3 dark:border-violet-400/20 dark:bg-violet-500/10">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-200">
               <Loader2 size={14} className="animate-spin" />
-              {progress >= 100 ? '生成完成' : '正在生成中'}
+              {progress >= 100 ? '生成完成' : generationStatus || '正在生成中'}
               <span className="ml-auto text-xs">{progress}%</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-violet-100 dark:bg-white/10">
