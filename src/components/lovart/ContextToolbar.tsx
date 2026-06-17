@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- Toolbar previews render transient data URLs from canvas operations. */
 import React, { useMemo, useRef, useState } from 'react';
-import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw } from 'lucide-react';
+import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, WandSparkles } from 'lucide-react';
 import { CREDIT_COSTS, getUpscaleCreditCost } from '@/lib/credits';
 import { CanvasElement } from './CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
@@ -146,6 +146,7 @@ export function ContextToolbar({
         return reference?.type === 'image' ? reference : null;
     }, [canvasElements, element]);
     const hasActionableImage = Boolean(actionableImage?.content);
+    const isSlashLayoutImage = Boolean(actionableImage?.generationMetadata?.layoutLabel || actionableImage?.groupId);
 
     const safeWidth = useMemo(
         () => Math.max(1, Math.round(actionableImage?.originalWidth || element.originalWidth || element.width || 300)),
@@ -505,9 +506,22 @@ export function ContextToolbar({
                                     ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white'
                                     : 'hover:bg-gray-50 text-gray-700 dark:text-slate-200 dark:hover:bg-white/8'
                             }`}
-                            title="编辑 / 重新生成 · 3 积分起"
+                            title={isSlashLayoutImage ? '继续变体 / 重新生成 · 3 积分起' : '编辑 / 重新生成 · 3 积分起'}
                         >
                             <Wand2 size={18} />
+                        </button>
+                    )}
+
+                    {onGenerateFromImage && actionableImage && (
+                        <button
+                            onClick={() => {
+                                setEditPrompt(actionableImage.prompt || element.prompt || '基于当前图片继续生成一版风格一致但构图不同的变体。');
+                                setShowEditPanel(true);
+                            }}
+                            className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
+                            title="继续变体"
+                        >
+                            <WandSparkles size={18} />
                         </button>
                     )}
 
@@ -515,7 +529,7 @@ export function ContextToolbar({
                         <button
                             onClick={() => onConnectFlow(element)}
                             className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
-                            title="创建流程图连接"
+                            title="作为视频参考 / 进入分镜流程"
                         >
                             <ArrowRight size={16} />
                         </button>
