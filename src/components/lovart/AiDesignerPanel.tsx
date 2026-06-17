@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import {
     Paperclip, AtSign, Lightbulb, Zap, Globe, Box, ArrowUp,
-    RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X, Bot, AlertTriangle, ShieldAlert, KeyRound, TimerReset
+    RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X, Bot, AlertTriangle, ShieldAlert, KeyRound, TimerReset, Workflow, UserRound, Film
 } from 'lucide-react';
 import type { AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
 
@@ -181,6 +181,7 @@ type SlashCommandItem = {
     template: string;
     badge: string;
     mode: AgentMode;
+    group: 'image' | 'character' | 'video';
 };
 
 const slashCommands: SlashCommandItem[] = [
@@ -192,6 +193,7 @@ const slashCommands: SlashCommandItem[] = [
         template: '/grid9 请围绕【主体/产品】生成 9 张方向图，分别探索不同构图、材质、色彩和氛围；保持核心设定一致，优先突出最有商业感的方案。',
         badge: '3×3',
         mode: 'design',
+        group: 'image',
     },
     {
         command: '/grid25',
@@ -201,6 +203,7 @@ const slashCommands: SlashCommandItem[] = [
         template: '/grid25 请围绕【主体/产品】发散 25 个视觉方向，覆盖构图、配色、材质、场景、镜头和风格关键词；请先广泛探索，再挑出最适合落地的方向。',
         badge: '5×5',
         mode: 'design',
+        group: 'image',
     },
     {
         command: '/quad',
@@ -210,6 +213,7 @@ const slashCommands: SlashCommandItem[] = [
         template: '/quad 请围绕【主体/产品】输出 4 张可比选方案，分别体现不同构图、风格、色彩和视觉重心；要求都保持方向明确，方便快速定稿。',
         badge: '2×2',
         mode: 'design',
+        group: 'image',
     },
     {
         command: '/character3view',
@@ -219,6 +223,7 @@ const slashCommands: SlashCommandItem[] = [
         template: '/character3view 请生成【角色名称】的正面、侧面、背面三视图，保持角色比例、服装、发型和材质统一；背景尽量干净，方便后续设定集和建模参考。',
         badge: '三视图',
         mode: 'design',
+        group: 'character',
     },
     {
         command: '/storyboard',
@@ -228,7 +233,14 @@ const slashCommands: SlashCommandItem[] = [
         template: '/storyboard 请把【创意 brief】拆成 3-5 个镜头，输出每镜头的画面描述、镜头运动、时长、转场和可直接用于视频生成的提示词。',
         badge: 'Video',
         mode: 'design',
+        group: 'video',
     },
+];
+
+const slashCommandGroups: Array<{ key: SlashCommandItem['group']; title: string; hint: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = [
+    { key: 'image', title: '图像工作流', hint: '版式、探索、比选', icon: Workflow },
+    { key: 'character', title: '角色工作流', hint: '一致性、设定、三视图', icon: UserRound },
+    { key: 'video', title: '视频工作流', hint: '分镜、节奏、脚本', icon: Film },
 ];
 
 const quickSkills: LovartQuickSkill[] = [
@@ -713,26 +725,45 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                 <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">/ commands</span>
                             </div>
                             <div className="max-h-72 overflow-y-auto p-2">
-                                {filteredSlashCommands.map((item, index) => (
-                                    <button
-                                        key={item.command}
-                                        type="button"
-                                        onClick={() => handleSlashCommandSelect(item)}
-                                        className={`flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors ${index === selectedSlashIndex ? 'bg-blue-50 text-blue-950' : 'text-gray-700 hover:bg-gray-50'}`}
-                                    >
-                                        <div className={`mt-0.5 rounded-lg px-2 py-1 font-mono text-xs font-semibold ${index === selectedSlashIndex ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
-                                            {item.command}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-semibold">{item.title}</span>
-                                                <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 ring-1 ring-gray-100">{item.badge}</span>
+                                {slashCommandGroups.map((group) => {
+                                    const groupItems = filteredSlashCommands.filter((item) => item.group === group.key);
+                                    if (groupItems.length === 0) return null;
+
+                                    return (
+                                        <div key={group.key} className="mb-2 last:mb-0">
+                                            <div className="flex items-center gap-2 px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                                                <group.icon size={13} className="text-gray-500" />
+                                                <span>{group.title}</span>
+                                                <span className="ml-1 rounded-full bg-gray-100 px-2 py-0.5 font-normal tracking-normal text-gray-500 normal-case">{group.hint}</span>
                                             </div>
-                                            <div className="mt-1 text-xs leading-relaxed text-gray-500">{item.description}</div>
-                                            <div className="mt-1 truncate font-mono text-[11px] text-gray-400">{item.template}</div>
+                                            <div className="space-y-1">
+                                                {groupItems.map((item) => {
+                                                    const globalIndex = filteredSlashCommands.findIndex((candidate) => candidate.command === item.command);
+                                                    return (
+                                                        <button
+                                                            key={item.command}
+                                                            type="button"
+                                                            onClick={() => handleSlashCommandSelect(item)}
+                                                            className={`flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors ${globalIndex === selectedSlashIndex ? 'bg-blue-50 text-blue-950' : 'text-gray-700 hover:bg-gray-50'}`}
+                                                        >
+                                                            <div className={`mt-0.5 rounded-lg px-2 py-1 font-mono text-xs font-semibold ${globalIndex === selectedSlashIndex ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                                                {item.command}
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="text-sm font-semibold">{item.title}</span>
+                                                                    <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 ring-1 ring-gray-100">{item.badge}</span>
+                                                                </div>
+                                                                <div className="mt-1 text-xs leading-relaxed text-gray-500">{item.description}</div>
+                                                                <div className="mt-1 truncate font-mono text-[11px] text-gray-400">{item.template}</div>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
-                                    </button>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
