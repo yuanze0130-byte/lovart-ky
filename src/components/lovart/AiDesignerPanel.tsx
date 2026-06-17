@@ -178,6 +178,7 @@ type SlashCommandItem = {
     title: string;
     description: string;
     placeholder: string;
+    template: string;
     badge: string;
     mode: AgentMode;
 };
@@ -188,6 +189,7 @@ const slashCommands: SlashCommandItem[] = [
         title: '九宫格探索',
         description: '一次生成 9 张方向图，适合快速跑风格、构图和角色方案。',
         placeholder: '/grid9 赛博朋克猫咪角色，潮玩风，透明背景',
+        template: '/grid9 请围绕【主体/产品】生成 9 张方向图，分别探索不同构图、材质、色彩和氛围；保持核心设定一致，优先突出最有商业感的方案。',
         badge: '3×3',
         mode: 'design',
     },
@@ -196,6 +198,7 @@ const slashCommands: SlashCommandItem[] = [
         title: '25 宫格风格墙',
         description: '一次生成 25 张小图，适合做 moodboard、角色探索或视觉发散。',
         placeholder: '/grid25 未来感运动鞋产品海报方向，银色材质，科技感',
+        template: '/grid25 请围绕【主体/产品】发散 25 个视觉方向，覆盖构图、配色、材质、场景、镜头和风格关键词；请先广泛探索，再挑出最适合落地的方向。',
         badge: '5×5',
         mode: 'design',
     },
@@ -204,6 +207,7 @@ const slashCommands: SlashCommandItem[] = [
         title: '四宫格方案',
         description: '输出 4 张可比选方案，适合给客户或团队快速定方向。',
         placeholder: '/quad 高端香水广告 KV，黑金配色，电影感光影',
+        template: '/quad 请围绕【主体/产品】输出 4 张可比选方案，分别体现不同构图、风格、色彩和视觉重心；要求都保持方向明确，方便快速定稿。',
         badge: '2×2',
         mode: 'design',
     },
@@ -212,6 +216,7 @@ const slashCommands: SlashCommandItem[] = [
         title: '角色三视图',
         description: '生成正面、侧面、背面三张一致性角色图。',
         placeholder: '/character3view 原创机器人少女角色，白色外骨骼，蓝色发光细节',
+        template: '/character3view 请生成【角色名称】的正面、侧面、背面三视图，保持角色比例、服装、发型和材质统一；背景尽量干净，方便后续设定集和建模参考。',
         badge: '三视图',
         mode: 'design',
     },
@@ -220,6 +225,7 @@ const slashCommands: SlashCommandItem[] = [
         title: '分镜脚本',
         description: '把创意拆成镜头、时长、画面描述和后续生成步骤。',
         placeholder: '/storyboard 15 秒咖啡品牌短片，温暖晨光，3 个镜头',
+        template: '/storyboard 请把【创意 brief】拆成 3-5 个镜头，输出每镜头的画面描述、镜头运动、时长、转场和可直接用于视频生成的提示词。',
         badge: 'Video',
         mode: 'design',
     },
@@ -338,7 +344,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
 
     const handleSlashCommandSelect = useCallback((item: SlashCommandItem) => {
         setAgentMode(item.mode);
-        setInputValue(`${item.command} `);
+        setInputValue(item.template);
         setSelectedSlashIndex(0);
     }, []);
 
@@ -723,7 +729,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                                 <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 ring-1 ring-gray-100">{item.badge}</span>
                                             </div>
                                             <div className="mt-1 text-xs leading-relaxed text-gray-500">{item.description}</div>
-                                            <div className="mt-1 truncate font-mono text-[11px] text-gray-400">{item.placeholder}</div>
+                                            <div className="mt-1 truncate font-mono text-[11px] text-gray-400">{item.template}</div>
                                         </div>
                                     </button>
                                 ))}
