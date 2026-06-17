@@ -43,6 +43,8 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     officialBackground?: 'auto' | 'transparent' | 'opaque';
     officialOutputFormat?: 'png' | 'jpeg' | 'webp';
     officialModeration?: 'auto' | 'low';
+    layoutRole?: 'grid-item' | 'character-view';
+    layoutLabel?: string;
 }
 
 export interface CanvasElement extends Record<string, Json | undefined> {
@@ -1623,6 +1625,14 @@ export function CanvasArea({
                                             ? el.prompt
                                             : undefined;
                                     const isPanorama = metadata?.assetKind === 'panorama';
+                                    const layoutLabel = typeof metadata?.layoutLabel === 'string' && metadata.layoutLabel
+                                        ? metadata.layoutLabel
+                                        : undefined;
+                                    const layoutRole = metadata?.layoutRole === 'character-view'
+                                        ? '三视图'
+                                        : metadata?.layoutRole === 'grid-item'
+                                            ? '宫格'
+                                            : undefined;
 
                                     if (isPanorama) {
                                         return (
@@ -1669,6 +1679,12 @@ export function CanvasArea({
                                     return (
                                         <div className="relative w-full h-full overflow-hidden rounded-lg bg-slate-950">
                                             <img src={el.content} alt="Upload" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />
+                                            {layoutLabel && (
+                                                <div className="pointer-events-none absolute left-2.5 top-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-white/18 bg-slate-950/68 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md">
+                                                    {layoutRole && <span className="text-white/55">{layoutRole}</span>}
+                                                    <span className="truncate">{layoutLabel}</span>
+                                                </div>
+                                            )}
                                             {(providerLabel || modelLabel || officialOptionChips.length > 0 || taskDebugChips.length > 0 || taskDebugSummary || fallbackSummary || promptPreview) && (
                                                 <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/88 via-slate-950/48 to-transparent p-3 text-white">
                                                     <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
