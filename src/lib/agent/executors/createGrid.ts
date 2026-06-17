@@ -74,5 +74,13 @@ export async function runCreateGridAction(input: {
     images,
     count: images.length,
     message: `已生成 ${images.length} 张${count === 25 ? '连贯分镜' : count === 4 ? '剧情推演四宫格' : '九宫格视觉探索'}`,
+    layout: {
+      kind: 'grid',
+      columns: count === 4 ? 2 : count === 25 ? 5 : 3,
+      rows: count === 4 ? 2 : count === 25 ? 5 : 3,
+      gap: count === 25 ? 18 : 28,
+      title: count === 25 ? '25宫格连贯分镜' : count === 4 ? '四宫格剧情推演' : '九宫格视觉探索',
+      labels: images.map((_, index) => String(index + 1).padStart(2, '0')),
+    },
   };
 }

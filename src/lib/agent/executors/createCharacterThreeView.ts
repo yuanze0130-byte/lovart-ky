@@ -61,5 +61,13 @@ export async function runCreateCharacterThreeViewAction(input: {
     images,
     count: images.length,
     message: '已生成角色三视图：正面 / 侧面 / 背面',
+    layout: {
+      kind: 'character_three_view',
+      columns: 3,
+      rows: 1,
+      gap: 32,
+      title: '角色三视图',
+      labels: ['Front 正面', 'Side 侧面', 'Back 背面'],
+    },
   };
 }

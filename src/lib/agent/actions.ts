@@ -138,6 +138,18 @@ export type DraftCanvasElement = {
   content: string;
   prompt?: string;
   title?: string;
+  groupId?: string;
+  layoutRole?: 'grid-item' | 'character-view';
+  layoutLabel?: string;
+};
+
+export type AgentImageLayout = {
+  kind: 'grid' | 'character_three_view';
+  columns: number;
+  rows: number;
+  gap?: number;
+  title?: string;
+  labels?: string[];
 };
 
 export type AgentActionResult =
@@ -159,6 +171,7 @@ export type AgentActionResult =
       images: Array<{ assetId: string; imageData: string; prompt: string }>;
       count: number;
       message: string;
+      layout?: AgentImageLayout;
     }
   | {
       kind: 'storyboard_image_generation_requested';

@@ -27,7 +27,7 @@ import { useAgentContext } from '@/hooks/useAgentContext';
 import { useViewportSize } from '@/hooks/useViewportSize';
 import { useCanvasHistory } from '@/hooks/useCanvasHistory';
 import { useStoryboardManager } from '@/hooks/useStoryboardManager';
-import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult } from '@/lib/agent/actions';
+import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult, AgentImageLayout } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 import { authedFetch } from '@/lib/authed-fetch';
 
@@ -1478,21 +1478,62 @@ function LovartCanvasContent() {
     const applyAgentCanvasDrafts = useCallback((drafts: DraftCanvasElement[]) => {
         setElements((prev) => [
             ...prev,
-            ...drafts.map((draft): CanvasElement => buildCanvasElementBase({
-                id: draft.id,
-                type: draft.type,
-                x: draft.x,
-                y: draft.y,
-                width: draft.width,
-                height: draft.height,
-                content: draft.content,
-                prompt: draft.prompt,
+            ...drafts.map((draft): CanvasElement => ({
+                ...buildCanvasElementBase({
+                    id: draft.id,
+                    type: draft.type,
+                    x: draft.x,
+                    y: draft.y,
+                    width: draft.width,
+                    height: draft.height,
+                    content: draft.content,
+                    prompt: draft.prompt,
+                }),
+                groupId: draft.groupId,
+                generationMetadata: draft.layoutRole || draft.layoutLabel
+                    ? {
+                        layoutRole: draft.layoutRole,
+                        layoutLabel: draft.layoutLabel,
+                    }
+                    : undefined,
             })),
         ]);
     }, [buildCanvasElementBase, setElements]);
 
-    const buildAgentImageDrafts = useCallback((images: Array<{ imageData: string; prompt: string }>): DraftCanvasElement[] => {
+    const buildAgentImageDrafts = useCallback((
+        images: Array<{ imageData: string; prompt: string }>,
+        layout?: AgentImageLayout,
+    ): DraftCanvasElement[] => {
         const timestamp = Date.now();
+        const columns = layout?.columns || images.length;
+        const gap = layout?.gap ?? 24;
+        const groupId = layout ? `agent-layout-${layout.kind}-${timestamp}` : undefined;
+        const cellSize = layout?.kind === 'grid' && images.length >= 25 ? 168 : layout ? 240 : 260;
+        const baseX = 120;
+        const baseY = 120;
+
+        if (layout) {
+            return images.map((image, index) => {
+                const col = index % columns;
+                const row = Math.floor(index / columns);
+                const label = layout.labels?.[index];
+                return {
+                    id: `agent-image-draft-${index}-${timestamp}`,
+                    type: 'image' as const,
+                    x: baseX + col * (cellSize + gap),
+                    y: baseY + row * (cellSize + gap + (layout.kind === 'character_three_view' ? 22 : 0)),
+                    width: cellSize,
+                    height: cellSize,
+                    content: image.imageData,
+                    prompt: image.prompt,
+                    title: label || `Agent Image ${index + 1}`,
+                    groupId,
+                    layoutRole: layout.kind === 'character_three_view' ? 'character-view' as const : 'grid-item' as const,
+                    layoutLabel: label,
+                };
+            });
+        }
+
         return images.map((image, index) => ({
             id: `agent-image-draft-${index}-${timestamp}`,
             type: 'image',
@@ -2084,7 +2125,7 @@ function LovartCanvasContent() {
         }
 
         if (nextResult.kind === 'images_generated') {
-            applyAgentCanvasDrafts(buildAgentImageDrafts(nextResult.images));
+            applyAgentCanvasDrafts(buildAgentImageDrafts(nextResult.images, nextResult.layout));
             const lastImage = nextResult.images.at(-1)?.imageData;
             if (lastImage) {
                 updateProjectThumbnail(lastImage);
