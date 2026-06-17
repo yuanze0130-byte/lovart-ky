@@ -173,6 +173,58 @@ type LovartQuickSkill = {
     accentClass: string;
 };
 
+type SlashCommandItem = {
+    command: string;
+    title: string;
+    description: string;
+    placeholder: string;
+    badge: string;
+    mode: AgentMode;
+};
+
+const slashCommands: SlashCommandItem[] = [
+    {
+        command: '/grid9',
+        title: '九宫格探索',
+        description: '一次生成 9 张方向图，适合快速跑风格、构图和角色方案。',
+        placeholder: '/grid9 赛博朋克猫咪角色，潮玩风，透明背景',
+        badge: '3×3',
+        mode: 'design',
+    },
+    {
+        command: '/grid25',
+        title: '25 宫格风格墙',
+        description: '一次生成 25 张小图，适合做 moodboard、角色探索或视觉发散。',
+        placeholder: '/grid25 未来感运动鞋产品海报方向，银色材质，科技感',
+        badge: '5×5',
+        mode: 'design',
+    },
+    {
+        command: '/quad',
+        title: '四宫格方案',
+        description: '输出 4 张可比选方案，适合给客户或团队快速定方向。',
+        placeholder: '/quad 高端香水广告 KV，黑金配色，电影感光影',
+        badge: '2×2',
+        mode: 'design',
+    },
+    {
+        command: '/character3view',
+        title: '角色三视图',
+        description: '生成正面、侧面、背面三张一致性角色图。',
+        placeholder: '/character3view 原创机器人少女角色，白色外骨骼，蓝色发光细节',
+        badge: '三视图',
+        mode: 'design',
+    },
+    {
+        command: '/storyboard',
+        title: '分镜脚本',
+        description: '把创意拆成镜头、时长、画面描述和后续生成步骤。',
+        placeholder: '/storyboard 15 秒咖啡品牌短片，温暖晨光，3 个镜头',
+        badge: 'Video',
+        mode: 'design',
+    },
+];
+
 const quickSkills: LovartQuickSkill[] = [
     {
         title: '电商产品图组',
@@ -213,6 +265,7 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     const [messages, setMessages] = useState<Message[]>([]);
     const [hasAutoSent, setHasAutoSent] = useState(false);
     const [agentMode, setAgentMode] = useState<AgentMode>(initialMode);
+    const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
 
     const modeConfig: Record<AgentMode, { label: string; greeting: string; subtitle: string; placeholder: string }> = {
         design: {
@@ -267,10 +320,26 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
     const suggestions = suggestionsByMode[agentMode];
     const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user')?.content;
     const generatingState = getGeneratingState(agentMode, latestUserMessage || inputValue || initialPrompt);
+    const slashQuery = inputValue.trimStart().startsWith('/') ? inputValue.trimStart().slice(1).toLowerCase() : '';
+    const filteredSlashCommands = React.useMemo(() => {
+        if (!inputValue.trimStart().startsWith('/')) return [];
+        return slashCommands.filter((item) => {
+            const haystack = `${item.command} ${item.title} ${item.description}`.toLowerCase();
+            return haystack.includes(slashQuery);
+        });
+    }, [inputValue, slashQuery]);
+    const isCompleteSlashPrompt = slashCommands.some((item) => inputValue.trimStart().startsWith(`${item.command} `));
+    const showSlashMenu = filteredSlashCommands.length > 0 && !isGenerating;
 
     const handleQuickSkillSelect = useCallback((skill: LovartQuickSkill) => {
         setAgentMode(skill.mode);
         setInputValue(skill.prompt);
+    }, []);
+
+    const handleSlashCommandSelect = useCallback((item: SlashCommandItem) => {
+        setAgentMode(item.mode);
+        setInputValue(`${item.command} `);
+        setSelectedSlashIndex(0);
     }, []);
 
     const handleSend = useCallback(async () => {
@@ -352,6 +421,16 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
             });
         }
     }, [hasAutoSent, initialMode, initialPrompt, isGenerating, onGenerate]);
+
+    React.useEffect(() => {
+        setSelectedSlashIndex(0);
+    }, [slashQuery]);
+
+    React.useEffect(() => {
+        if (selectedSlashIndex >= filteredSlashCommands.length) {
+            setSelectedSlashIndex(Math.max(0, filteredSlashCommands.length - 1));
+        }
+    }, [filteredSlashCommands.length, selectedSlashIndex]);
 
     return (
         <div className="flex flex-col h-full bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
@@ -618,12 +697,66 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
 
             <div className="p-6 pt-2">
                 <div className="relative border border-gray-200 rounded-2xl bg-white shadow-sm focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all">
+                    {showSlashMenu && (
+                        <div className="absolute bottom-full left-0 right-0 z-20 mb-3 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
+                            <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                                <div>
+                                    <div className="text-sm font-semibold text-gray-900">Slash 工作流</div>
+                                    <div className="text-xs text-gray-400">选择命令后继续输入主题，Enter 即可执行</div>
+                                </div>
+                                <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-500">/ commands</span>
+                            </div>
+                            <div className="max-h-72 overflow-y-auto p-2">
+                                {filteredSlashCommands.map((item, index) => (
+                                    <button
+                                        key={item.command}
+                                        type="button"
+                                        onClick={() => handleSlashCommandSelect(item)}
+                                        className={`flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors ${index === selectedSlashIndex ? 'bg-blue-50 text-blue-950' : 'text-gray-700 hover:bg-gray-50'}`}
+                                    >
+                                        <div className={`mt-0.5 rounded-lg px-2 py-1 font-mono text-xs font-semibold ${index === selectedSlashIndex ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                            {item.command}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-sm font-semibold">{item.title}</span>
+                                                <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium text-gray-500 ring-1 ring-gray-100">{item.badge}</span>
+                                            </div>
+                                            <div className="mt-1 text-xs leading-relaxed text-gray-500">{item.description}</div>
+                                            <div className="mt-1 truncate font-mono text-[11px] text-gray-400">{item.placeholder}</div>
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     <textarea
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         placeholder={modeConfig[agentMode].placeholder}
                         className="w-full h-24 p-4 resize-none outline-none text-gray-700 placeholder-gray-300 bg-transparent rounded-t-2xl"
                         onKeyDown={(e) => {
+                            if (showSlashMenu && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                                e.preventDefault();
+                                setSelectedSlashIndex((current) => {
+                                    const delta = e.key === 'ArrowDown' ? 1 : -1;
+                                    return (current + delta + filteredSlashCommands.length) % filteredSlashCommands.length;
+                                });
+                                return;
+                            }
+                            if (showSlashMenu && (e.key === 'Enter' || e.key === 'Tab') && !isCompleteSlashPrompt) {
+                                e.preventDefault();
+                                const selected = filteredSlashCommands[selectedSlashIndex] || filteredSlashCommands[0];
+                                if (selected) {
+                                    handleSlashCommandSelect(selected);
+                                }
+                                return;
+                            }
+                            if (showSlashMenu && e.key === 'Escape') {
+                                e.preventDefault();
+                                setInputValue('');
+                                return;
+                            }
                             if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
                                 void handleSend();
