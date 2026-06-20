@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Images } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageCreditCost } from '@/lib/credits';
+import { PROMPT_TEMPLATES, PROMPT_TEMPLATE_CATEGORY_LABELS, extractTemplateVariables, type PromptTemplateCategory } from '@/lib/prompt-templates';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
@@ -102,6 +103,9 @@ export function ImageGeneratorPanel({
   const [modelVariant, setModelVariant] = useState<BananaVariant>('pro');
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [showCanvasReferencePicker, setShowCanvasReferencePicker] = useState(false);
+  const [templateCategory, setTemplateCategory] = useState<PromptTemplateCategory | 'all'>('all');
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
+  const [templateVariableValues, setTemplateVariableValues] = useState<Record<string, string>>({});
   const [editMode] = useState<ImageEditMode>(initialMode);
   const [progress, setProgress] = useState(0);
   const [generationStatus, setGenerationStatus] = useState('');
@@ -132,6 +136,21 @@ export function ImageGeneratorPanel({
   const canvasImageElements = useMemo(
     () => canvasElements.filter((item) => item.type === 'image' && typeof item.content === 'string' && item.content),
     [canvasElements]
+  );
+  const filteredTemplates = useMemo(() => {
+    return PROMPT_TEMPLATES.filter((template) => {
+      if (templateCategory !== 'all' && template.category !== templateCategory) return false;
+      if (template.suggestedImageModes && !template.suggestedImageModes.includes(editMode)) return false;
+      return true;
+    });
+  }, [editMode, templateCategory]);
+  const activeTemplate = useMemo(
+    () => PROMPT_TEMPLATES.find((template) => template.id === activeTemplateId) ?? null,
+    [activeTemplateId]
+  );
+  const activeTemplateVariables = useMemo(
+    () => (activeTemplate?.variables?.length ? activeTemplate.variables : activeTemplate ? extractTemplateVariables(activeTemplate.prompt) : []),
+    [activeTemplate]
   );
 
   const isPanorama = selectedElement?.generatorKind === 'panorama';
@@ -199,6 +218,59 @@ export function ImageGeneratorPanel({
 
       return [image, ...prev].slice(0, 4);
     });
+  };
+
+  const handleTemplateApply = (templateId: string) => {
+    const template = PROMPT_TEMPLATES.find((item) => item.id === templateId);
+    if (!template) return;
+
+    const variables = template.variables?.length ? template.variables : extractTemplateVariables(template.prompt);
+    const nextValues = variables.reduce<Record<string, string>>((acc, variable) => {
+      acc[variable] = templateVariableValues[variable] ?? '';
+      return acc;
+    }, {});
+
+    setActiveTemplateId(template.id);
+    setTemplateVariableValues(nextValues);
+    setPrompt(template.prompt);
+
+    if (template.recommendedModelVariant) {
+      setModelVariant(template.recommendedModelVariant);
+    }
+
+    if (template.recommendedResolution) {
+      setResolution(template.recommendedResolution);
+    }
+
+    if (template.defaultAspectRatio && availableAspectRatios.includes(template.defaultAspectRatio as AspectRatio)) {
+      setAspectRatio(template.defaultAspectRatio as AspectRatio);
+      return;
+    }
+
+    const firstSuggestedRatio = template.suggestedAspectRatios?.find((ratio) => availableAspectRatios.includes(ratio as AspectRatio));
+    if (firstSuggestedRatio) {
+      setAspectRatio(firstSuggestedRatio as AspectRatio);
+    }
+  };
+
+  const handleTemplateVariableChange = (variable: string, value: string) => {
+    setTemplateVariableValues((prev) => ({
+      ...prev,
+      [variable]: value,
+    }));
+  };
+
+  const applyTemplateVariablesToPrompt = () => {
+    if (!activeTemplate) return;
+
+    const resolvedPrompt = activeTemplateVariables.reduce((result, variable) => {
+      const replacement = templateVariableValues[variable]?.trim();
+      if (!replacement) return result;
+      const pattern = new RegExp(`【${variable.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}】`, 'g');
+      return result.replace(pattern, replacement);
+    }, activeTemplate.prompt);
+
+    setPrompt(resolvedPrompt);
   };
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -334,6 +406,105 @@ export function ImageGeneratorPanel({
             当前是全景资产：会优先使用 21:9，并保留超宽场景连续性。
           </div>
         )}
+
+        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/5">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-gray-500 dark:text-slate-400">模板库</div>
+              <div className="mt-1 text-xs text-gray-500 dark:text-slate-400">先选一个成熟模板，再按你的产品/主题替换关键词，能更快得到稳定结果。</div>
+            </div>
+            <span className="rounded-full bg-white px-2 py-1 text-[11px] font-medium text-violet-700 shadow-sm dark:bg-white/10 dark:text-violet-200">MVP</span>
+          </div>
+
+          <div className="mb-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setTemplateCategory('all')}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${templateCategory === 'all' ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-white/8 dark:text-slate-300 dark:hover:bg-white/12'}`}
+            >
+              全部
+            </button>
+            {(Object.entries(PROMPT_TEMPLATE_CATEGORY_LABELS) as Array<[PromptTemplateCategory, string]>).map(([category, label]) => (
+              <button
+                key={category}
+                type="button"
+                onClick={() => setTemplateCategory(category)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium transition ${templateCategory === category ? 'bg-black text-white dark:bg-white dark:text-black' : 'bg-white text-gray-600 hover:bg-gray-100 dark:bg-white/8 dark:text-slate-300 dark:hover:bg-white/12'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            {filteredTemplates.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => handleTemplateApply(template.id)}
+                disabled={isGenerating}
+                className={`rounded-xl border bg-white p-3 text-left transition hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white/6 ${activeTemplateId === template.id ? 'border-violet-400 shadow-sm dark:border-violet-400/50' : 'border-gray-200 hover:border-violet-300 dark:border-white/10 dark:hover:border-violet-400/40'}`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="rounded-full bg-violet-50 px-2 py-1 text-[11px] font-medium text-violet-700 dark:bg-violet-500/12 dark:text-violet-200">
+                    {PROMPT_TEMPLATE_CATEGORY_LABELS[template.category]}
+                  </span>
+                  <span className="text-[11px] text-gray-400 dark:text-slate-500">一键填充</span>
+                </div>
+                <div className="text-sm font-semibold text-gray-900 dark:text-white">{template.title}</div>
+                <div className="mt-1 text-xs leading-relaxed text-gray-500 dark:text-slate-400">{template.summary}</div>
+                {template.suggestedAspectRatios?.length ? (
+                  <div className="mt-2 text-[11px] text-gray-400 dark:text-slate-500">
+                    推荐比例：{template.suggestedAspectRatios.join(' / ')}{template.defaultAspectRatio ? ` · 默认 ${template.defaultAspectRatio}` : ''}
+                  </div>
+                ) : null}
+                {(template.recommendedModelVariant || template.recommendedResolution || template.recommendedImageMode) ? (
+                  <div className="mt-1 text-[11px] text-violet-600 dark:text-violet-300">
+                    推荐：
+                    {template.recommendedModelVariant ? ` 模型 ${template.recommendedModelVariant}` : ''}
+                    {template.recommendedResolution ? ` · ${template.recommendedResolution}` : ''}
+                    {template.recommendedImageMode ? ` · 模式 ${template.recommendedImageMode}` : ''}
+                  </div>
+                ) : null}
+              </button>
+            ))}
+          </div>
+
+          {activeTemplate && activeTemplateVariables.length > 0 ? (
+            <div className="mt-3 rounded-xl border border-dashed border-violet-200 bg-violet-50/70 p-3 dark:border-violet-400/30 dark:bg-violet-500/10">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs font-semibold text-violet-900 dark:text-violet-100">模板变量</div>
+                  <div className="mt-1 text-[11px] text-violet-700/80 dark:text-violet-200/80">把占位字段补完整，再一键替换到 prompt 里。</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={applyTemplateVariablesToPrompt}
+                  className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500"
+                  disabled={isGenerating}
+                >
+                  应用变量
+                </button>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {activeTemplateVariables.map((variable) => (
+                  <label key={variable} className="text-xs text-violet-900 dark:text-violet-100">
+                    <span className="mb-1 block">{variable}</span>
+                    <input
+                      type="text"
+                      value={templateVariableValues[variable] ?? ''}
+                      onChange={(event) => handleTemplateVariableChange(variable, event.target.value)}
+                      placeholder={`填写${variable}`}
+                      disabled={isGenerating}
+                      className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm text-gray-700 outline-none placeholder:text-gray-400 focus:border-violet-400 dark:border-violet-300/20 dark:bg-black/20 dark:text-white"
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Prompt</div>
         <textarea
@@ -527,6 +698,12 @@ export function ImageGeneratorPanel({
           分辨率：<span className="font-medium text-gray-900 dark:text-white">{resolution}</span>
           <span className="mx-2">·</span>
           消耗：<span className="font-medium text-violet-700 dark:text-violet-300">{imageCreditCost} 积分</span>
+          {activeTemplate ? (
+            <>
+              <span className="mx-2">·</span>
+              <span className="text-violet-700 dark:text-violet-300">模板：{activeTemplate.title}</span>
+            </>
+          ) : null}
         </div>
 
         {selectedElement?.type === 'image-generator' && (

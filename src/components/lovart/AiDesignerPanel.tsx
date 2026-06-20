@@ -4,6 +4,7 @@ import {
     RefreshCw, MessageSquare, Clock, Share2, Layout, Maximize2, X, Bot, AlertTriangle, ShieldAlert, KeyRound, TimerReset, Workflow, UserRound, Film
 } from 'lucide-react';
 import type { AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
+import { PROMPT_TEMPLATES, PROMPT_TEMPLATE_CATEGORY_LABELS, extractTemplateVariables } from '@/lib/prompt-templates';
 
 interface AiDesignerPanelProps {
     onGenerate: (prompt: string, options?: { mode?: AgentMode }) => Promise<AgentPanelResponse>;
@@ -506,6 +507,40 @@ export function AiDesignerPanel({ onGenerate, isGenerating, onClose, initialProm
                                             </div>
                                             <div className="text-sm font-bold">{skill.title}</div>
                                             <div className="mt-1 text-xs leading-relaxed opacity-70">{skill.description}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+                                <div className="mb-3 flex items-center justify-between gap-3">
+                                    <div>
+                                        <div className="text-sm font-semibold text-gray-900">Prompt 模板库</div>
+                                        <div className="text-xs text-gray-400">先选成熟模板，再把产品名、风格、受众等信息替换进去</div>
+                                    </div>
+                                    <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700">New</span>
+                                </div>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    {PROMPT_TEMPLATES.slice(0, 6).map((template) => (
+                                        <button
+                                            key={template.id}
+                                            type="button"
+                                            onClick={() => setInputValue(template.prompt)}
+                                            className="rounded-xl border border-gray-100 bg-gradient-to-r from-white to-gray-50 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-md"
+                                        >
+                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                                <span className="rounded-full bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-600">
+                                                    {PROMPT_TEMPLATE_CATEGORY_LABELS[template.category]}
+                                                </span>
+                                                <span className="text-[11px] text-gray-400">填入输入框</span>
+                                            </div>
+                                            <div className="text-sm font-bold text-gray-900">{template.title}</div>
+                                            <div className="mt-1 text-xs leading-relaxed text-gray-500">{template.summary}</div>
+                                            {extractTemplateVariables(template.prompt).length > 0 ? (
+                                                <div className="mt-2 text-[11px] text-violet-600">
+                                                    变量：{extractTemplateVariables(template.prompt).join(' / ')}
+                                                </div>
+                                            ) : null}
                                         </button>
                                     ))}
                                 </div>
