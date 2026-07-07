@@ -1354,17 +1354,52 @@ export function CanvasArea({
                                 onMouseDown={(e) => handleMouseDown(e, el.id, el.x, el.y, el.width, el.height)}
                                 onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
                             >
-                                {el.type === 'image-generator' && (
-                                    <div className="w-full h-full rounded-2xl border border-sky-400/35 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.24),_rgba(15,23,42,0.92)_62%)] flex flex-col items-center justify-center text-sky-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_40px_rgba(2,6,23,0.35)] backdrop-blur-sm">
-                                        <div className="w-20 h-20 mb-4 opacity-60">
-                                            <svg viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-                                            </svg>
+                                {el.type === 'image-generator' && (() => {
+                                    const metadata = el.generationMetadata;
+                                    const outputCount = typeof metadata?.generationRunCount === 'number' ? metadata.generationRunCount : 0;
+                                    const hasReference = typeof el.referenceImageId === 'string' && el.referenceImageId.length > 0;
+                                    const lastModel = typeof metadata?.lastGeneratedModelVariant === 'string'
+                                        ? metadata.lastGeneratedModelVariant
+                                        : typeof metadata?.lastGeneratedProvider === 'string'
+                                            ? metadata.lastGeneratedProvider
+                                            : undefined;
+                                    const promptPreview = typeof el.initialPrompt === 'string' && el.initialPrompt
+                                        ? el.initialPrompt
+                                        : typeof el.prompt === 'string' && el.prompt
+                                            ? el.prompt
+                                            : undefined;
+
+                                    return (
+                                        <div className="relative flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl border border-sky-400/35 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.24),_rgba(15,23,42,0.92)_62%)] p-4 text-sky-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_16px_40px_rgba(2,6,23,0.35)] backdrop-blur-sm">
+                                            <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-sky-300/10 to-transparent" />
+                                            <div className="relative flex items-start justify-between gap-3">
+                                                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-sky-300/20 bg-white/8 text-sky-100">
+                                                    <svg viewBox="0 0 24 24" fill="currentColor" className="h-8 w-8 opacity-80">
+                                                        <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+                                                    </svg>
+                                                </div>
+                                                <div className="flex flex-wrap justify-end gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
+                                                    <span className="rounded-full border border-sky-300/20 bg-sky-400/12 px-2.5 py-1 text-sky-50">{outputCount > 0 ? `已输出 ${outputCount}` : '待生成'}</span>
+                                                    {hasReference && <span className="rounded-full border border-emerald-300/20 bg-emerald-400/12 px-2.5 py-1 text-emerald-50">参考图</span>}
+                                                </div>
+                                            </div>
+                                            <div className="relative">
+                                                <div className="text-sm font-semibold text-sky-50">{el.generatorKind === 'panorama' ? 'Panorama Generator' : 'Image Generator'}</div>
+                                                <div className="mt-1 text-xs text-sky-100/70">{Math.round(el.width || 0)} x {Math.round(el.height || 0)}</div>
+                                                {promptPreview && (
+                                                    <div className="mt-3 line-clamp-2 rounded-xl border border-sky-300/12 bg-black/18 px-3 py-2 text-[11px] leading-5 text-sky-50/78">
+                                                        {promptPreview}
+                                                    </div>
+                                                )}
+                                                {lastModel && (
+                                                    <div className="mt-2 text-[10px] font-medium uppercase tracking-[0.14em] text-sky-100/55">
+                                                        Last: {lastModel}
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="text-sm font-medium">Image Generator</div>
-                                        <div className="text-xs opacity-70">{Math.round(el.width || 0)} x {Math.round(el.height || 0)}</div>
-                                    </div>
-                                )}
+                                    );
+                                })()}
 
                                 {el.type === 'video-generator' && (() => {
                                     const promptText = typeof el.prompt === 'string' ? el.prompt : '';
@@ -1633,6 +1668,14 @@ export function CanvasArea({
                                         : metadata?.layoutRole === 'grid-item'
                                             ? '宫格'
                                             : undefined;
+                                    const lineageLabel = metadata?.generatedFromNode
+                                        ? '生成器输出'
+                                        : metadata?.branchedFromCanvasAction && typeof metadata.imageActionLabel === 'string'
+                                            ? metadata.imageActionLabel
+                                            : undefined;
+                                    const generatorRunCount = typeof metadata?.generatorRunCount === 'number'
+                                        ? metadata.generatorRunCount
+                                        : undefined;
 
                                     if (isPanorama) {
                                         return (
@@ -1683,6 +1726,12 @@ export function CanvasArea({
                                                 <div className="pointer-events-none absolute left-2.5 top-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-white/18 bg-slate-950/68 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md">
                                                     {layoutRole && <span className="text-white/55">{layoutRole}</span>}
                                                     <span className="truncate">{layoutLabel}</span>
+                                                </div>
+                                            )}
+                                            {lineageLabel && (
+                                                <div className={`pointer-events-none absolute left-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-violet-300/20 bg-violet-500/22 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-50 shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md ${layoutLabel ? 'top-10' : 'top-2.5'}`}>
+                                                    <span>{lineageLabel}</span>
+                                                    {generatorRunCount && <span className="text-violet-100/65">#{generatorRunCount}</span>}
                                                 </div>
                                             )}
                                             {(providerLabel || modelLabel || officialOptionChips.length > 0 || taskDebugChips.length > 0 || taskDebugSummary || fallbackSummary || promptPreview) && (

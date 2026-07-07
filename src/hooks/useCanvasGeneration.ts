@@ -304,6 +304,132 @@ export async function requestImageGeneration(input: {
   };
 }
 
+type ImageGenerationResult = Awaited<ReturnType<typeof requestImageGeneration>>;
+type GeneratedImageResult = ImageGenerationResult & { imageData: string };
+type GeneratedImageDisplaySize = ReturnType<typeof getSmartDisplaySize>;
+
+function buildGeneratedImageMetadata(
+  generatorElement: CanvasElement,
+  result: GeneratedImageResult
+): GenerationMetadata {
+  return {
+    ...result.generationMetadata,
+    assetKind: generatorElement.generatorKind === 'panorama' ? 'panorama' : 'image',
+    resolution: result.requestedResolution,
+    aspectRatio: result.requestedAspectRatio,
+    modelVariant: result.returnedModelVariant,
+    provider: result.returnedProvider,
+    providerMode: result.returnedProviderMode,
+    providerFallbackUsed: result.providerFallbackUsed,
+    fallbackFrom: result.fallbackFrom,
+    fallbackReason: result.fallbackReason,
+    model: result.returnedModel,
+    taskId: result.returnedTaskId,
+    proxyTarget: result.returnedProxyTarget,
+    taskStatus: result.returnedTaskStatus,
+    taskPollIntervalMs: result.returnedTaskPollIntervalMs,
+    taskPollTimeoutMs: result.returnedTaskPollTimeoutMs,
+    taskPollAttemptCount: result.returnedTaskPollAttemptCount,
+    taskDurationMs: result.returnedTaskDurationMs,
+    taskCompletedAt: result.returnedTaskCompletedAt,
+    taskPayload: result.returnedTaskPayload as GenerationMetadata['taskPayload'],
+    generatorElementId: generatorElement.id,
+    generatorRunCount: getNextGenerationRunCount(generatorElement),
+    generatedFromNode: true,
+  };
+}
+
+function appendLinkedId(existing: CanvasElement['linkedElements'], ...ids: string[]) {
+  return Array.from(new Set([
+    ...(Array.isArray(existing) ? existing.filter((id): id is string => typeof id === 'string') : []),
+    ...ids,
+  ]));
+}
+
+function getNextGenerationRunCount(generatorElement: CanvasElement) {
+  const currentCount = generatorElement.generationMetadata?.generationRunCount;
+  return (typeof currentCount === 'number' ? currentCount : 0) + 1;
+}
+
+function updateGeneratorAfterImageRun(
+  generatorElement: CanvasElement,
+  result: GeneratedImageResult,
+  resultId: string,
+  connectorId: string
+): CanvasElement {
+  return {
+    ...generatorElement,
+    prompt: result.finalPrompt,
+    initialPrompt: result.generationMetadata.sourcePrompt || result.finalPrompt,
+    requestedAspectRatio: result.requestedAspectRatio,
+    requestedResolution: result.requestedResolution,
+    linkedElements: appendLinkedId(generatorElement.linkedElements, connectorId, resultId),
+    generationMetadata: {
+      ...(generatorElement.generationMetadata || {}),
+      generationRunCount: getNextGenerationRunCount(generatorElement),
+      lastResultElementId: resultId,
+      lastConnectorElementId: connectorId,
+      lastGeneratedAt: result.returnedTaskCompletedAt || new Date().toISOString(),
+      lastGeneratedPrompt: result.finalPrompt,
+      lastGeneratedModelVariant: result.returnedModelVariant,
+      lastGeneratedProvider: result.returnedProvider,
+      lastGeneratedTaskId: result.returnedTaskId,
+    },
+  };
+}
+
+function createGeneratedImageResultElement({
+  generatorElement,
+  result,
+  displaySize,
+  resultId,
+  connectorId,
+}: {
+  generatorElement: CanvasElement;
+  result: GeneratedImageResult;
+  displaySize: GeneratedImageDisplaySize;
+  resultId: string;
+  connectorId: string;
+}): CanvasElement {
+  const sourceWidth = generatorElement.width || displaySize.width || 320;
+
+  return {
+    id: resultId,
+    type: 'image',
+    x: generatorElement.x + sourceWidth + 96,
+    y: generatorElement.y,
+    width: displaySize.width,
+    height: displaySize.height,
+    originalWidth: displaySize.originalWidth,
+    originalHeight: displaySize.originalHeight,
+    requestedAspectRatio: result.requestedAspectRatio,
+    requestedResolution: result.requestedResolution,
+    referenceImageId: generatorElement.referenceImageId,
+    prompt: result.finalPrompt,
+    generationMetadata: buildGeneratedImageMetadata(generatorElement, result),
+    content: result.imageData,
+    linkedElements: [generatorElement.id, connectorId],
+  };
+}
+
+function createGeneratedImageConnector(
+  generatorElement: CanvasElement,
+  resultId: string,
+  connectorId: string
+): CanvasElement {
+  return {
+    id: connectorId,
+    type: 'connector',
+    x: 0,
+    y: 0,
+    connectorFrom: generatorElement.id,
+    connectorTo: resultId,
+    connectorStyle: 'dashed',
+    color: '#8B5CF6',
+    strokeWidth: 2,
+  };
+}
+
 export function useCanvasGeneration({
   pan,
   elements,
@@ -526,48 +652,38 @@ export function useCanvasGeneration({
           });
 
           if (generatorElementId) {
-            setElements((prev) =>
-              prev.map((el) => {
+            const generatorElement = elements.find((el) => el.id === generatorElementId);
+            if (!generatorElement) return;
+
+            const imageResult: GeneratedImageResult = { ...result, imageData };
+            const resultId = uuidv4();
+            const connectorId = uuidv4();
+            const resultElement = createGeneratedImageResultElement({
+              generatorElement,
+              result: imageResult,
+              displaySize,
+              resultId,
+              connectorId,
+            });
+            const connectorElement = createGeneratedImageConnector(generatorElement, resultId, connectorId);
+
+            updateProjectThumbnail(typeof generatorElement.projectId === 'string' ? generatorElement.projectId : undefined, imageData);
+
+            setElements((prev) => {
+              let updatedGenerator = false;
+              const nextElements = prev.map((el) => {
                 if (el.id === generatorElementId) {
-                  updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, imageData);
-                  return {
-                    ...el,
-                    type: 'image',
-                    content: imageData,
-                    width: displaySize.width,
-                    height: displaySize.height,
-                    originalWidth: displaySize.originalWidth,
-                    originalHeight: displaySize.originalHeight,
-                    prompt: finalPrompt,
-                    generationMetadata: {
-                      ...generationMetadata,
-                      assetKind: el.generatorKind === 'panorama' ? 'panorama' : 'image',
-                      resolution: requestedResolution,
-                      aspectRatio: requestedAspectRatio,
-                      modelVariant: returnedModelVariant,
-                      provider: returnedProvider,
-                      providerMode: returnedProviderMode,
-                      providerFallbackUsed,
-                      fallbackFrom,
-                      fallbackReason,
-                      model: returnedModel,
-                      taskId: returnedTaskId,
-                      proxyTarget: returnedProxyTarget,
-                      taskStatus: returnedTaskStatus,
-                      taskPollIntervalMs: returnedTaskPollIntervalMs,
-                      taskPollTimeoutMs: returnedTaskPollTimeoutMs,
-                      taskPollAttemptCount: returnedTaskPollAttemptCount,
-                      taskDurationMs: returnedTaskDurationMs,
-                      taskCompletedAt: returnedTaskCompletedAt,
-                      taskPayload: returnedTaskPayload as GenerationMetadata['taskPayload'],
-                    },
-                    requestedAspectRatio,
-                    requestedResolution,
-                  };
+                  updatedGenerator = true;
+                  return updateGeneratorAfterImageRun(el, imageResult, resultId, connectorId);
                 }
                 return el;
-              })
-            );
+              });
+
+              return updatedGenerator
+                ? [...nextElements, connectorElement, resultElement]
+                : prev;
+            });
+            setSelectedIds([resultId]);
           } else {
             const newElement: CanvasElement = {
               id: uuidv4(),
@@ -671,12 +787,13 @@ export function useCanvasGeneration({
               throw new Error(result.textResponse || '未返回图片');
             }
 
-            const dimensions = await getImageDimensions(result.imageData);
+            const imageResult: GeneratedImageResult = { ...result, imageData: result.imageData };
+            const dimensions = await getImageDimensions(imageResult.imageData);
             const displaySize = getSmartDisplaySize(dimensions);
 
             return {
               generatorElement,
-              result,
+              result: imageResult,
               displaySize,
             };
           })
@@ -685,60 +802,43 @@ export function useCanvasGeneration({
         const successfulResults = results
           .filter((result): result is PromiseFulfilledResult<{
             generatorElement: CanvasElement;
-            result: Awaited<ReturnType<typeof requestImageGeneration>>;
+            result: GeneratedImageResult;
             displaySize: ReturnType<typeof getSmartDisplaySize>;
           }> => result.status === 'fulfilled')
           .map((result) => result.value);
 
         if (successfulResults.length > 0) {
-          const resultMap = new Map(successfulResults.map((item) => [item.generatorElement.id, item]));
-          successfulResults.forEach((item) => generatedIds.push(item.generatorElement.id));
-
-          setElements((prev) => prev.map((el) => {
-            const item = resultMap.get(el.id);
-            if (!item) return el;
-
-            const {
-              result,
-              displaySize,
-            } = item;
-            updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, result.imageData as string);
-
-            return {
-              ...el,
-              type: 'image',
-              content: result.imageData,
-              width: displaySize.width,
-              height: displaySize.height,
-              originalWidth: displaySize.originalWidth,
-              originalHeight: displaySize.originalHeight,
-              prompt: result.finalPrompt,
-              generationMetadata: {
-                ...result.generationMetadata,
-                assetKind: el.generatorKind === 'panorama' ? 'panorama' : 'image',
-                resolution: result.requestedResolution,
-                aspectRatio: result.requestedAspectRatio,
-                modelVariant: result.returnedModelVariant,
-                provider: result.returnedProvider,
-                providerMode: result.returnedProviderMode,
-                providerFallbackUsed: result.providerFallbackUsed,
-                fallbackFrom: result.fallbackFrom,
-                fallbackReason: result.fallbackReason,
-                model: result.returnedModel,
-                taskId: result.returnedTaskId,
-                proxyTarget: result.returnedProxyTarget,
-                taskStatus: result.returnedTaskStatus,
-                taskPollIntervalMs: result.returnedTaskPollIntervalMs,
-                taskPollTimeoutMs: result.returnedTaskPollTimeoutMs,
-                taskPollAttemptCount: result.returnedTaskPollAttemptCount,
-                taskDurationMs: result.returnedTaskDurationMs,
-                taskCompletedAt: result.returnedTaskCompletedAt,
-                taskPayload: result.returnedTaskPayload as GenerationMetadata['taskPayload'],
-              },
-              requestedAspectRatio: result.requestedAspectRatio,
-              requestedResolution: result.requestedResolution,
-            };
+          const branchResults = successfulResults.map((item) => ({
+            ...item,
+            resultId: uuidv4(),
+            connectorId: uuidv4(),
           }));
+          const resultMap = new Map(branchResults.map((item) => [item.generatorElement.id, item]));
+          generatedIds.push(...branchResults.map((item) => item.resultId));
+
+          setElements((prev) => {
+            const elementsToAdd: CanvasElement[] = [];
+            const nextElements = prev.map((el) => {
+              const item = resultMap.get(el.id);
+              if (!item) return el;
+
+              const resultElement = createGeneratedImageResultElement({
+                generatorElement: el,
+                result: item.result,
+                displaySize: item.displaySize,
+                resultId: item.resultId,
+                connectorId: item.connectorId,
+              });
+              const connectorElement = createGeneratedImageConnector(el, item.resultId, item.connectorId);
+
+              elementsToAdd.push(connectorElement, resultElement);
+              updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, item.result.imageData);
+
+              return updateGeneratorAfterImageRun(el, item.result, item.resultId, item.connectorId);
+            });
+
+            return [...nextElements, ...elementsToAdd];
+          });
           setSelectedIds(generatedIds);
         }
 

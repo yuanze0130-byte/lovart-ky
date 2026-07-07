@@ -171,6 +171,7 @@ function LovartCanvasContent() {
 
     const { handleRemoveBackground, handleUpscale, handleCrop } = useCanvasImageActions({
         setElements,
+        setSelectedIds,
     });
 
     const {

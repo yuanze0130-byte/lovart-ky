@@ -1,10 +1,12 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 
 interface UseCanvasImageActionsParams {
   setElements: Dispatch<SetStateAction<CanvasElement[]>>;
+  setSelectedIds: Dispatch<SetStateAction<string[]>>;
 }
 
 interface CropOptions {
@@ -86,7 +88,65 @@ async function pollUpscaleTask(taskId: string, timeoutMs = 300000, pollIntervalM
   }
 }
 
-export function useCanvasImageActions({ setElements }: UseCanvasImageActionsParams) {
+type ImageActionKind = 'remove-background' | 'upscale' | 'crop';
+
+interface ImageActionBranchInput {
+  resultId: string;
+  connectorId: string;
+  source: CanvasElement;
+  imageData: string;
+  width: number;
+  height: number;
+  originalWidth: number;
+  originalHeight: number;
+  actionKind: ImageActionKind;
+  actionLabel: string;
+}
+
+function appendImageActionBranch(prev: CanvasElement[], input: ImageActionBranchInput) {
+  const sourceWidth = input.source.width || input.width || 320;
+
+  const resultElement: CanvasElement = {
+    id: input.resultId,
+    type: 'image',
+    x: input.source.x + sourceWidth + 96,
+    y: input.source.y,
+    width: input.width,
+    height: input.height,
+    originalWidth: input.originalWidth,
+    originalHeight: input.originalHeight,
+    requestedAspectRatio: input.source.requestedAspectRatio,
+    requestedResolution: input.source.requestedResolution,
+    prompt: input.source.prompt,
+    content: input.imageData,
+    previousContent: typeof input.source.content === 'string' ? input.source.content : undefined,
+    linkedElements: [input.source.id, input.connectorId],
+    generationMetadata: {
+      ...(input.source.generationMetadata || {}),
+      assetKind: input.source.generationMetadata?.assetKind || 'image',
+      sourceElementId: input.source.id,
+      imageActionKind: input.actionKind,
+      imageActionLabel: input.actionLabel,
+      branchedFromCanvasAction: true,
+    },
+  };
+
+  const connectorElement: CanvasElement = {
+    id: input.connectorId,
+    type: 'connector',
+    x: 0,
+    y: 0,
+    connectorFrom: input.source.id,
+    connectorTo: input.resultId,
+    connectorStyle: 'dashed',
+    color: '#94A3B8',
+    strokeWidth: 2,
+  };
+
+  return [...prev, connectorElement, resultElement];
+}
+
+export function useCanvasImageActions({ setElements, setSelectedIds }: UseCanvasImageActionsParams) {
   const handleRemoveBackground = useCallback(
     async (element: CanvasElement) => {
       if (!element.content) {
@@ -110,18 +170,28 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
         throw new Error('去背景结果为空');
       }
 
+      const dimensions = await getImageDimensions(data.imageData);
+      const displaySize = getSmartDisplaySize(dimensions);
+      const resultId = uuidv4();
+      const connectorId = uuidv4();
+
       setElements((prev) =>
-        prev.map((item) =>
-          item.id === element.id
-            ? {
-                ...item,
-                content: data.imageData,
-              }
-            : item
-        )
+        appendImageActionBranch(prev, {
+          resultId,
+          connectorId,
+          source: element,
+          imageData: data.imageData,
+          width: displaySize.width,
+          height: displaySize.height,
+          originalWidth: displaySize.originalWidth,
+          originalHeight: displaySize.originalHeight,
+          actionKind: 'remove-background',
+          actionLabel: '去背景',
+        })
       );
+      setSelectedIds([resultId]);
     },
-    [setElements]
+    [setElements, setSelectedIds]
   );
 
   const handleUpscale = useCallback(
@@ -146,21 +216,24 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
       if (data.imageData) {
         const dimensions = await getImageDimensions(data.imageData);
         const displaySize = getSmartDisplaySize(dimensions);
+        const resultId = uuidv4();
+        const connectorId = uuidv4();
 
         setElements((prev) =>
-          prev.map((item) =>
-            item.id === element.id
-              ? {
-                  ...item,
-                  content: data.imageData,
-                  width: displaySize.width,
-                  height: displaySize.height,
-                  originalWidth: displaySize.originalWidth,
-                  originalHeight: displaySize.originalHeight,
-                }
-              : item
-          )
+          appendImageActionBranch(prev, {
+            resultId,
+            connectorId,
+            source: element,
+            imageData: data.imageData,
+            width: displaySize.width,
+            height: displaySize.height,
+            originalWidth: displaySize.originalWidth,
+            originalHeight: displaySize.originalHeight,
+            actionKind: 'upscale',
+            actionLabel: `${scale}x 超分`,
+          })
         );
+        setSelectedIds([resultId]);
         return;
       }
 
@@ -171,23 +244,26 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
       const imageData = await pollUpscaleTask(data.taskId);
       const dimensions = await getImageDimensions(imageData);
       const displaySize = getSmartDisplaySize(dimensions);
+      const resultId = uuidv4();
+      const connectorId = uuidv4();
 
       setElements((prev) =>
-        prev.map((item) =>
-          item.id === element.id
-            ? {
-                ...item,
-                content: imageData,
-                width: displaySize.width,
-                height: displaySize.height,
-                originalWidth: displaySize.originalWidth,
-                originalHeight: displaySize.originalHeight,
-              }
-            : item
-        )
+        appendImageActionBranch(prev, {
+          resultId,
+          connectorId,
+          source: element,
+          imageData,
+          width: displaySize.width,
+          height: displaySize.height,
+          originalWidth: displaySize.originalWidth,
+          originalHeight: displaySize.originalHeight,
+          actionKind: 'upscale',
+          actionLabel: `${scale}x 超分`,
+        })
       );
+      setSelectedIds([resultId]);
     },
-    [setElements]
+    [setElements, setSelectedIds]
   );
 
   const handleCrop = useCallback(
@@ -197,23 +273,26 @@ export function useCanvasImageActions({ setElements }: UseCanvasImageActionsPara
       }
 
       const cropped = await cropImageWithCanvas(element.content, options);
+      const resultId = uuidv4();
+      const connectorId = uuidv4();
 
       setElements((prev) =>
-        prev.map((item) =>
-          item.id === element.id
-            ? {
-                ...item,
-                content: cropped.imageData,
-                width: cropped.width,
-                height: cropped.height,
-                originalWidth: cropped.width,
-                originalHeight: cropped.height,
-              }
-            : item
-        )
+        appendImageActionBranch(prev, {
+          resultId,
+          connectorId,
+          source: element,
+          imageData: cropped.imageData,
+          width: cropped.width,
+          height: cropped.height,
+          originalWidth: cropped.width,
+          originalHeight: cropped.height,
+          actionKind: 'crop',
+          actionLabel: '裁切',
+        })
       );
+      setSelectedIds([resultId]);
     },
-    [setElements]
+    [setElements, setSelectedIds]
   );
 
   return {
