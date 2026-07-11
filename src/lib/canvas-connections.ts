@@ -1,16 +1,11 @@
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
+import { getRegisteredNodePorts, type NodePortDefinition, type NodePortDirection, type NodePortKind } from '@/lib/node-definitions';
 
-export type CanvasPortDirection = 'input' | 'output';
-export type CanvasPortKind = 'prompt' | 'image' | 'video' | 'any';
+export type CanvasPortDirection = NodePortDirection;
+export type CanvasPortKind = NodePortKind;
 export type CanvasConnectionKind = 'prompt' | 'reference' | 'result' | 'control';
 
-export interface CanvasPortDefinition {
-  id: string;
-  label: string;
-  direction: CanvasPortDirection;
-  kind: CanvasPortKind;
-  multiple?: boolean;
-}
+export type CanvasPortDefinition = NodePortDefinition;
 
 export const PORT_COLORS: Record<CanvasPortKind, string> = {
   prompt: '#f59e0b',
@@ -20,36 +15,7 @@ export const PORT_COLORS: Record<CanvasPortKind, string> = {
 };
 
 export function getNodePorts(element: CanvasElement): CanvasPortDefinition[] {
-  switch (element.type) {
-    case 'text':
-      return [{ id: 'prompt-out', label: '提示词', direction: 'output', kind: 'prompt' }];
-    case 'image':
-      return [
-        { id: 'image-in', label: '生成结果', direction: 'input', kind: 'image' },
-        { id: 'image-out', label: '图片', direction: 'output', kind: 'image' },
-      ];
-    case 'video':
-      return [
-        { id: 'video-in', label: '生成结果', direction: 'input', kind: 'video' },
-        { id: 'video-out', label: '视频', direction: 'output', kind: 'video' },
-      ];
-    case 'image-generator':
-      return [
-        { id: 'prompt-in', label: '提示词', direction: 'input', kind: 'prompt' },
-        { id: 'reference-in', label: '参考图', direction: 'input', kind: 'image', multiple: true },
-        { id: 'image-out', label: '图片结果', direction: 'output', kind: 'image' },
-      ];
-    case 'video-generator':
-      return [
-        { id: 'prompt-in', label: '提示词', direction: 'input', kind: 'prompt' },
-        { id: 'reference-in', label: '参考素材', direction: 'input', kind: 'image', multiple: true },
-        { id: 'first-frame-in', label: '首帧', direction: 'input', kind: 'image' },
-        { id: 'last-frame-in', label: '尾帧', direction: 'input', kind: 'image' },
-        { id: 'video-out', label: '视频结果', direction: 'output', kind: 'video' },
-      ];
-    default:
-      return [];
-  }
+  return getRegisteredNodePorts(element.type);
 }
 
 export function getPort(element: CanvasElement, portId?: string) {
@@ -149,4 +115,16 @@ export function resolveConnectedInputs(targetId: string, elements: CanvasElement
     else if (edge.connectorTargetPort === 'reference-in') references.push(value);
   }
   return { prompt: promptParts.join('\n\n'), references, firstFrame, lastFrame, edges };
+}
+
+export function resolveConnectedNodeContents(targetId: string, targetPortId: string, elements: CanvasElement[]) {
+  const byId = new Map(elements.map((element) => [element.id, element]));
+  return normalizeCanvasConnections(elements)
+    .filter((element) => element.type === 'connector'
+      && element.connectorTo === targetId
+      && element.connectorTargetPort === targetPortId)
+    .sort((a, b) => (a.connectorOrder || 0) - (b.connectorOrder || 0))
+    .map((edge) => edge.connectorFrom ? byId.get(edge.connectorFrom) : undefined)
+    .map((source) => source && typeof source.content === 'string' ? source.content : '')
+    .filter(Boolean);
 }

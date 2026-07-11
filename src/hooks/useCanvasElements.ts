@@ -3,6 +3,13 @@ import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
+import { loadImageModelPreferences } from '@/lib/image-model-preferences';
+import { getNodeDefinition } from '@/lib/node-definitions';
+
+const IMAGE_GENERATOR_SIZE = getNodeDefinition('image-generator')?.defaultSize || { width: 400, height: 400 };
+const VIDEO_GENERATOR_SIZE = getNodeDefinition('video-generator')?.defaultSize || { width: 400, height: 300 };
+const IMAGE_COMPARE_SIZE = getNodeDefinition('image-compare')?.defaultSize || { width: 420, height: 300 };
+const INPAINT_SIZE = getNodeDefinition('inpaint')?.defaultSize || { width: 440, height: 360 };
 
 interface UseCanvasElementsParams {
   pan: CanvasPan;
@@ -21,6 +28,14 @@ export function useCanvasElements({
   setSelectedIds,
   setActiveTool,
 }: UseCanvasElementsParams) {
+  const getNextWorkflowPosition = useCallback(() => {
+    const nodeCount = elements.filter((element) => element.type !== 'connector').length;
+    return {
+      x: 160 - pan.x + (nodeCount % 2) * 520,
+      y: 140 - pan.y + Math.floor(nodeCount / 2) * 440,
+    };
+  }, [elements, pan.x, pan.y]);
+
   const appendElement = useCallback(
     (element: CanvasElement) => {
       setElements((prev) => [...prev, element]);
@@ -137,15 +152,21 @@ export function useCanvasElements({
     [setElements, setSelectedIds]
   );
 
-  const createImageGeneratorElement = useCallback((): CanvasElement => ({
-    id: uuidv4(),
-    type: 'image-generator',
-    x: 300 - pan.x + elements.length * 20,
-    y: 300 - pan.y + elements.length * 20,
-    width: 400,
-    height: 400,
-    generatorKind: 'image',
-  }), [elements.length, pan.x, pan.y]);
+  const createImageGeneratorElement = useCallback((): CanvasElement => {
+    const preferences = loadImageModelPreferences();
+    return {
+      id: uuidv4(),
+      type: 'image-generator',
+      ...getNextWorkflowPosition(),
+      ...IMAGE_GENERATOR_SIZE,
+      generatorKind: 'image',
+      imageModelId: preferences.defaults.modelId,
+      requestedResolution: preferences.defaults.resolution,
+      requestedAspectRatio: preferences.defaults.aspectRatio as CanvasElement['requestedAspectRatio'],
+      imageOutputCount: preferences.defaults.outputCount,
+      imageExecutionMode: preferences.defaults.executionMode,
+    };
+  }, [getNextWorkflowPosition]);
 
   const createPanoramaGeneratorElement = useCallback((): CanvasElement => ({
     id: uuidv4(),
@@ -165,8 +186,27 @@ export function useCanvasElements({
     type: 'video-generator',
     x: 300 - pan.x + elements.length * 20,
     y: 300 - pan.y + elements.length * 20,
-    width: 400,
-    height: 300,
+    ...VIDEO_GENERATOR_SIZE,
+  }), [elements.length, pan.x, pan.y]);
+
+  const createImageCompareElement = useCallback((): CanvasElement => ({
+    id: uuidv4(),
+    type: 'image-compare',
+    x: 300 - pan.x + elements.length * 20,
+    y: 300 - pan.y + elements.length * 20,
+    ...IMAGE_COMPARE_SIZE,
+    imageCompareSplit: 50,
+    imageCompareSwapped: false,
+  }), [elements.length, pan.x, pan.y]);
+
+  const createInpaintElement = useCallback((): CanvasElement => ({
+    id: uuidv4(),
+    type: 'inpaint',
+    x: 300 - pan.x + elements.length * 20,
+    y: 300 - pan.y + elements.length * 20,
+    ...INPAINT_SIZE,
+    inpaintBrushSize: 32,
+    inpaintFeather: 4,
   }), [elements.length, pan.x, pan.y]);
 
   const handleOpenImageGenerator = useCallback(() => {
@@ -176,6 +216,14 @@ export function useCanvasElements({
   const handleOpenVideoGenerator = useCallback(() => {
     appendElement(createVideoGeneratorElement());
   }, [appendElement, createVideoGeneratorElement]);
+
+  const handleOpenImageCompare = useCallback(() => {
+    appendElement(createImageCompareElement());
+  }, [appendElement, createImageCompareElement]);
+
+  const handleOpenInpaint = useCallback(() => {
+    appendElement(createInpaintElement());
+  }, [appendElement, createInpaintElement]);
 
   return {
     appendElement,
@@ -189,8 +237,12 @@ export function useCanvasElements({
     handleDeleteMany,
     handleOpenImageGenerator,
     handleOpenVideoGenerator,
+    handleOpenImageCompare,
+    handleOpenInpaint,
     createImageGeneratorElement,
     createPanoramaGeneratorElement,
     createVideoGeneratorElement,
+    createImageCompareElement,
+    createInpaintElement,
   };
 }

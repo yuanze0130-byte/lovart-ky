@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
-import { Plus, Minus, ChevronDown, Cloud, CloudOff, Download, Map as MapIcon, Upload } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Cloud, CloudOff, Download, Map as MapIcon, Upload, History as HistoryIcon, Bot } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
@@ -13,6 +13,8 @@ import { RelightStudioPanel, type RelightConfig } from '@/components/lovart/Reli
 import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { ProjectImportPreviewDialog } from '@/components/lovart/ProjectImportPreviewDialog';
+import { GenerationHistoryPanel } from '@/components/lovart/GenerationHistoryPanel';
+import { AgentPanel } from '@/components/lovart/AgentPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
@@ -24,6 +26,7 @@ import { useCanvasImageActions } from '@/hooks/useCanvasImageActions';
 import { useObjectAnnotation } from '@/hooks/useObjectAnnotation';
 import { useAgentRunner } from '@/hooks/useAgentRunner';
 import { useAgentContext } from '@/hooks/useAgentContext';
+import { useAgentPanelController } from '@/hooks/useAgentPanelController';
 import { useViewportSize } from '@/hooks/useViewportSize';
 import { useCanvasHistory } from '@/hooks/useCanvasHistory';
 import { useStoryboardManager } from '@/hooks/useStoryboardManager';
@@ -33,8 +36,11 @@ import { authedFetch } from '@/lib/authed-fetch';
 import { downloadQdmyProject, importQdmyProject, mergeQdmyElements, type QdmyImportResult } from '@/lib/qdmy-project';
 import { normalizeCanvasConnections } from '@/lib/canvas-connections';
 import type { ImageModelId } from '@/lib/image-models';
+import { addGenerationHistoryItem, type GenerationHistoryItem } from '@/lib/generation-history';
+import { isFeatureEnabled } from '@/lib/feature-flags';
 
 function LovartCanvasContent() {
+    const agentPanelEnabled = isFeatureEnabled('agentPanel');
     const buildAgentActionMeta = useCallback((result: AgentActionResult): Array<{ label: string; value: string }> => {
         switch (result.kind) {
             case 'storyboard_created':
@@ -103,7 +109,7 @@ function LovartCanvasContent() {
     const [angleTargetId, setAngleTargetId] = useState<string | null>(null);
     const [angleBatchProgress, setAngleBatchProgress] = useState<{ current: number; total: number } | undefined>(undefined);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
-    const showChat = false;
+    const [showChat, setShowChat] = useState(false);
     const [assetsCollapsed, setAssetsCollapsed] = useState(false);
     const [showMiniMap, setShowMiniMap] = useState(false);
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
@@ -111,7 +117,6 @@ function LovartCanvasContent() {
     const [relightRestoreSelection, setRelightRestoreSelection] = useState<string[] | null>(null);
     const [relightRestoreAssetsCollapsed, setRelightRestoreAssetsCollapsed] = useState<boolean | null>(null);
     const viewportSize = useViewportSize();
-    const [agentStage, setAgentStage] = useState<'idle' | 'analyzing' | 'planning' | 'building' | 'done'>('idle');
     const [canvasBackground, setCanvasBackground] = useState('#F4F4F5');
     const [annotationSubject, setAnnotationSubject] = useState('');
     const [objectEditPrompt, setObjectEditPrompt] = useState('');
@@ -120,6 +125,7 @@ function LovartCanvasContent() {
     const lastFocusedRelightTargetRef = useRef<string | null>(null);
     const [projectTransferStatus, setProjectTransferStatus] = useState<string | null>(null);
     const [pendingProjectImport, setPendingProjectImport] = useState<QdmyImportResult | null>(null);
+    const [showGenerationHistory, setShowGenerationHistory] = useState(false);
 
     const {
         saveStatus,
@@ -145,6 +151,8 @@ function LovartCanvasContent() {
         handleElementChange,
         handleElementsChange,
         handleOpenImageGenerator,
+        handleOpenImageCompare,
+        handleOpenInpaint,
         handleOpenVideoGenerator,
         createImageGeneratorElement,
         createPanoramaGeneratorElement,
@@ -524,7 +532,7 @@ function LovartCanvasContent() {
                 image: imageElement,
                 object: {
                     ...annotationObject,
-                    label: annotationSubject.trim() || annotationObject.label || '?????',
+                    label: annotationSubject.trim() || annotationObject.label || '已标记区域',
                 },
                 prompt: objectEditPrompt.trim(),
             });
@@ -559,6 +567,123 @@ function LovartCanvasContent() {
             };
         }));
     }, [annotationImageId, setElements]);
+
+    const handleInpaintGenerate = useCallback(async (
+        element: CanvasElement,
+        input: { image: string; mask: string; prompt: string },
+    ) => {
+        setIsGenerating(true);
+        try {
+            const response = await authedFetch('/api/inpaint-image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ...input,
+                    modelVariant: element.imageModelId || 'nano-banana-pro',
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.details || data.error || '局部重绘失败');
+            if (typeof data.imageData !== 'string' || !data.imageData) throw new Error('局部重绘未返回图片');
+
+            const dimensions = await getImageDimensions(data.imageData);
+            const displaySize = getSmartDisplaySize(dimensions);
+            const resultId = uuidv4();
+            const connectorId = uuidv4();
+            const resultElement: CanvasElement = {
+                id: resultId,
+                type: 'image',
+                x: element.x + (element.width || 440) + 96,
+                y: element.y,
+                width: displaySize.width,
+                height: displaySize.height,
+                originalWidth: displaySize.originalWidth,
+                originalHeight: displaySize.originalHeight,
+                content: data.imageData,
+                prompt: input.prompt,
+                generationMetadata: {
+                    sourcePrompt: input.prompt,
+                    finalPrompt: input.prompt,
+                    imageEditMode: 'generate',
+                    modelVariant: element.imageModelId || 'nano-banana-pro',
+                    provider: data.provider === 'official' ? 'official' : 'proxy',
+                    model: typeof data.model === 'string' ? data.model : undefined,
+                    generatedFromNode: true,
+                    generatorElementId: element.id,
+                },
+                linkedElements: [element.id, connectorId],
+            };
+            const connector: CanvasElement = {
+                id: connectorId,
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: element.id,
+                connectorTo: resultId,
+                connectorSourcePort: 'image-out',
+                connectorTargetPort: 'image-in',
+                connectorDataKind: 'image',
+                connectorKind: 'result',
+                connectorStyle: 'solid',
+                color: '#f43f5e',
+            };
+            void addGenerationHistoryItem({
+                id: resultId,
+                kind: 'image',
+                content: data.imageData,
+                prompt: input.prompt,
+                model: typeof data.model === 'string' ? data.model : element.imageModelId,
+                createdAt: new Date().toISOString(),
+                width: displaySize.originalWidth,
+                height: displaySize.originalHeight,
+                metadata: resultElement.generationMetadata,
+            });
+            setElements((previous) => [
+                ...previous.map((item) => item.id === element.id ? { ...item, prompt: input.prompt } : item),
+                connector,
+                resultElement,
+            ]);
+            setSelectedIds([resultId]);
+        } catch (error) {
+            alert(error instanceof Error ? error.message : '局部重绘失败');
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [setElements, setSelectedIds]);
+
+    const handleInsertHistoryItem = useCallback(async (item: GenerationHistoryItem) => {
+        if (item.kind === 'image') {
+            const dimensions = item.width && item.height
+                ? { width: item.width, height: item.height }
+                : await getImageDimensions(item.content);
+            const displaySize = getSmartDisplaySize(dimensions);
+            appendElement({
+                id: uuidv4(),
+                type: 'image',
+                x: 300 - pan.x,
+                y: 220 - pan.y,
+                width: displaySize.width,
+                height: displaySize.height,
+                originalWidth: displaySize.originalWidth,
+                originalHeight: displaySize.originalHeight,
+                content: item.content,
+                prompt: item.prompt,
+                generationMetadata: item.metadata,
+            });
+            return;
+        }
+        appendElement({
+            id: uuidv4(),
+            type: 'video',
+            x: 300 - pan.x,
+            y: 220 - pan.y,
+            width: 400,
+            height: 300,
+            content: item.content,
+            prompt: item.prompt,
+            generationMetadata: item.metadata,
+        });
+    }, [appendElement, pan.x, pan.y]);
 
     const handleDropImages = useCallback((files: File[], point: { x: number; y: number }) => {
         files.forEach((file, index) => {
@@ -960,7 +1085,7 @@ function LovartCanvasContent() {
             thumbnailUrl: item.thumbnailUrl,
         })),
     });
-    const { runAgent, isRunning: isAgentRunning } = useAgentRunner();
+    const { runAgent, isRunning: isAgentRunning, cancelAgent } = useAgentRunner();
 
     const buildCanvasElementBase = useCallback((input: {
         id: string;
@@ -2229,22 +2354,7 @@ function LovartCanvasContent() {
         };
     }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, buildAgentFollowUps, buildAgentImageDrafts, buildEditedImageDraft, buildStoryboardItemsFromAgentResult, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent, setStoryboard, setStoryboardLayout, updateProjectThumbnail]);
 
-    const handleUnifiedAgentSubmit = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
-        setAgentStage('analyzing');
-        try {
-            const response = await handleAgentRun(message.trim(), options);
-            if (response.plan && Object.keys(response.plan).length > 0) {
-                setAgentStage('planning');
-            } else {
-                setAgentStage('building');
-            }
-            return response;
-        } finally {
-            setAgentStage('done');
-            window.setTimeout(() => setAgentStage('idle'), 1200);
-        }
-    }, [handleAgentRun]);
-
+    const { agentStage, submit: handleUnifiedAgentSubmit } = useAgentPanelController(handleAgentRun);
     if (isLoading) {
         return (
             <div className="h-screen w-full bg-[radial-gradient(circle_at_top,_#13233f_0%,_#0b1220_34%,_#070b14_100%)] flex items-center justify-center">
@@ -2332,6 +2442,32 @@ function LovartCanvasContent() {
                         <Download size={15} />
                         <span>导出</span>
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowChat(false);
+                            setShowGenerationHistory((value) => !value);
+                        }}
+                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showGenerationHistory ? 'bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
+                        title="打开生成历史"
+                    >
+                        <HistoryIcon size={15} />
+                        <span>历史</span>
+                    </button>
+                    {agentPanelEnabled && (
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setShowGenerationHistory(false);
+                                setShowChat((value) => !value);
+                            }}
+                            className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showChat ? 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
+                            title="打开 Lovart Agent"
+                        >
+                            <Bot size={15} />
+                            <span>Agent</span>
+                        </button>
+                    )}
                     <ThemeToggle />
                 </div>
             </header>
@@ -2348,6 +2484,25 @@ function LovartCanvasContent() {
                     onCancel={() => setPendingProjectImport(null)}
                     onMerge={handleMergeImportedProject}
                     onReplace={handleReplaceWithImportedProject}
+                />
+            )}
+
+            {showGenerationHistory && (
+                <GenerationHistoryPanel
+                    onClose={() => setShowGenerationHistory(false)}
+                    onInsert={(item) => {
+                        void handleInsertHistoryItem(item);
+                        setShowGenerationHistory(false);
+                    }}
+                />
+            )}
+
+            {agentPanelEnabled && showChat && (
+                <AgentPanel
+                    onClose={() => setShowChat(false)}
+                    onSubmit={handleUnifiedAgentSubmit}
+                    isRunning={isAgentRunning}
+                    onCancel={cancelAgent}
                 />
             )}
 
@@ -2433,6 +2588,7 @@ function LovartCanvasContent() {
                     onRemoveBackground={handleRemoveBackground}
                     onUpscale={handleUpscale}
                     onCrop={handleCrop}
+                    onInpaintGenerate={handleInpaintGenerate}
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}
                     isDetectingObject={isDetectingObject}
@@ -2543,6 +2699,8 @@ function LovartCanvasContent() {
                     onAddText={handleAddText}
                     onAddShape={handleAddShape}
                     onOpenImageGenerator={handleOpenImageGenerator}
+                    onOpenImageCompare={handleOpenImageCompare}
+                    onOpenInpaint={handleOpenInpaint}
                     onOpenVideoGenerator={handleOpenVideoGenerator}
                 />
 
@@ -2568,13 +2726,8 @@ function LovartCanvasContent() {
                 {selectedIds.length === 1 && !isDraggingElement && (() => {
                     const selectedEl = elements.find(el => el.id === selectedIds[0]);
                     if (selectedEl?.type === 'image-generator') {
-                        const panelWidth = 480;
-                        const panelHeight = Math.min(760, Math.max(420, viewportSize.height - 96));
-                        const reservedRight = shouldShowAssetsPanel && !assetsCollapsed ? 372 : 16;
-                        const desiredLeft = ((selectedEl.x + (selectedEl.width || 400)) * scale) + pan.x + 20;
-                        const desiredTop = (selectedEl.y * scale) + pan.y;
-                        const left = Math.max(16, Math.min(desiredLeft, viewportSize.width - reservedRight - panelWidth));
-                        const top = Math.max(64, Math.min(desiredTop, viewportSize.height - panelHeight - 16));
+                        const left = (selectedEl.x * scale) + pan.x;
+                        const top = ((selectedEl.y + (selectedEl.height || 400)) * scale) + pan.y + 20;
 
                         return (
                             <ImageGeneratorPanel

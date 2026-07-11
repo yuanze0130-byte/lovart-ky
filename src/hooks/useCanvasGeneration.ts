@@ -6,6 +6,7 @@ import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 import { resolveConnectedInputs } from '@/lib/canvas-connections';
 import { isImageModelId, type ImageModelId } from '@/lib/image-models';
+import { addGenerationHistoryItem } from '@/lib/generation-history';
 
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type OfficialImageOptions = {
@@ -448,6 +449,17 @@ export function useCanvasGeneration({
         .find((el) => el?.type === 'video-generator');
 
       if (generatorElement) {
+        void addGenerationHistoryItem({
+          id: uuidv4(),
+          kind: 'video',
+          content: videoUrl,
+          prompt: generatorElement.prompt,
+          model: generatorElement.videoModelMode,
+          createdAt: new Date().toISOString(),
+          width: generatorElement.originalWidth || generatorElement.width,
+          height: generatorElement.originalHeight || generatorElement.height,
+          metadata: generatorElement.generationMetadata,
+        });
         setElements((prev) =>
           prev.map((el) => {
             if (el.id === generatorElement.id) {
@@ -498,8 +510,9 @@ export function useCanvasGeneration({
           })
         );
       } else {
+        const resultId = uuidv4();
         const newElement: CanvasElement = {
-          id: uuidv4(),
+          id: resultId,
           type: 'video',
           x: 300 - pan.x,
           y: 300 - pan.y,
@@ -509,6 +522,14 @@ export function useCanvasGeneration({
         };
         setElements((prev) => [...prev, newElement]);
         setSelectedIds([newElement.id]);
+        void addGenerationHistoryItem({
+          id: resultId,
+          kind: 'video',
+          content: videoUrl,
+          createdAt: new Date().toISOString(),
+          width: 400,
+          height: 300,
+        });
       }
     },
     [elements, pan.x, pan.y, selectedIds, setElements, setSelectedIds]
@@ -680,6 +701,17 @@ export function useCanvasGeneration({
               connectorId,
             });
             const connectorElement = createGeneratedImageConnector(generatorElement, resultId, connectorId);
+            void addGenerationHistoryItem({
+              id: resultId,
+              kind: 'image',
+              content: imageData,
+              prompt: finalPrompt,
+              model: returnedModel || returnedModelVariant,
+              createdAt: new Date().toISOString(),
+              width: displaySize.originalWidth,
+              height: displaySize.originalHeight,
+              metadata: resultElement.generationMetadata,
+            });
 
             updateProjectThumbnail(typeof generatorElement.projectId === 'string' ? generatorElement.projectId : undefined, imageData);
 
@@ -750,6 +782,17 @@ export function useCanvasGeneration({
             };
             setElements((prev) => [...prev, newElement]);
             setSelectedIds([newElement.id]);
+            void addGenerationHistoryItem({
+              id: newElement.id,
+              kind: 'image',
+              content: imageData,
+              prompt: finalPrompt,
+              model: returnedModel || returnedModelVariant,
+              createdAt: new Date().toISOString(),
+              width: displaySize.originalWidth,
+              height: displaySize.originalHeight,
+              metadata: newElement.generationMetadata,
+            });
           }
         } else if (textResponse) {
           const newElement: CanvasElement = {
@@ -849,6 +892,19 @@ export function useCanvasGeneration({
           }));
           const resultMap = new Map(branchResults.map((item) => [item.generatorElement.id, item]));
           generatedIds.push(...branchResults.map((item) => item.resultId));
+          branchResults.forEach((item) => {
+            void addGenerationHistoryItem({
+              id: item.resultId,
+              kind: 'image',
+              content: item.result.imageData,
+              prompt: item.result.finalPrompt,
+              model: item.result.returnedModel || item.result.returnedModelVariant,
+              createdAt: new Date().toISOString(),
+              width: item.displaySize.originalWidth,
+              height: item.displaySize.originalHeight,
+              metadata: item.result.generationMetadata,
+            });
+          });
 
           setElements((prev) => {
             const elementsToAdd: CanvasElement[] = [];

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { authedFetch } from '@/lib/authed-fetch';
 import type { AgentActionResult, AgentChatResult, AgentContext, AgentMode, AgentRunResponse } from '@/lib/agent/actions';
 
@@ -21,8 +21,14 @@ export function useAgentRunner() {
   const [result, setResult] = useState<AgentActionResult | null>(null);
   const [chat, setChat] = useState<AgentChatResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const activeRequestRef = useRef<AbortController | null>(null);
 
   const runAgent = useCallback(async (message: string, context: AgentContext, options?: { mode?: AgentMode }) => {
+    if (activeRequestRef.current) {
+      throw new Error('Agent 正在执行，请等待当前任务完成或先取消');
+    }
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
     setIsRunning(true);
     setError(null);
 
@@ -33,6 +39,7 @@ export function useAgentRunner() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ message, context, mode: options?.mode }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -50,12 +57,21 @@ export function useAgentRunner() {
     } catch (err) {
       setResult(null);
       setChat(null);
-      const message = err instanceof Error ? err.message : 'Agent run failed';
+      const message = controller.signal.aborted
+        ? 'Agent 请求已取消'
+        : err instanceof Error ? err.message : 'Agent run failed';
       setError(message);
-      throw err;
+      throw new Error(message);
     } finally {
-      setIsRunning(false);
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null;
+        setIsRunning(false);
+      }
     }
+  }, []);
+
+  const cancelAgent = useCallback(() => {
+    activeRequestRef.current?.abort();
   }, []);
 
   return {
@@ -64,5 +80,6 @@ export function useAgentRunner() {
     result,
     chat,
     error,
+    cancelAgent,
   };
 }

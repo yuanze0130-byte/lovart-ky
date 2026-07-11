@@ -4,6 +4,8 @@ import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJusti
 import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
 import { PanoramaViewer } from './PanoramaViewer';
+import { ImageCompareNode } from './ImageCompareNode';
+import { InpaintNode } from './InpaintNode';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -15,12 +17,13 @@ import {
     getNodePorts,
     getPortAnchor,
     inferLegacyPorts,
+    resolveConnectedNodeContents,
     wouldCreateConnectionCycle,
     type CanvasPortDefinition,
 } from '@/lib/canvas-connections';
 import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-models';
 
-export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'connector';
+export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'inpaint' | 'connector';
 
 export interface GenerationMetadata extends Record<string, Json | undefined> {
     sourcePrompt?: string;
@@ -112,6 +115,11 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     imageModelId?: ImageModelId;
     imageOutputCount?: number;
     imageExecutionMode?: ImageGenerationExecutionMode;
+    imageCompareSplit?: number;
+    imageCompareSwapped?: boolean;
+    inpaintBrushSize?: number;
+    inpaintFeather?: number;
+    inpaintMask?: string;
     groupId?: string;
     linkedElements?: string[];
     connectorFrom?: string;
@@ -271,6 +279,7 @@ interface CanvasAreaProps {
         element: CanvasElement,
         options: { x: number; y: number; width: number; height: number }
     ) => Promise<void>;
+    onInpaintGenerate?: (element: CanvasElement, input: { image: string; mask: string; prompt: string }) => Promise<void>;
     annotationImageId?: string | null;
     annotationObject?: DetectedObject | null;
     isDetectingObject?: boolean;
@@ -310,6 +319,7 @@ export function CanvasArea({
     onRemoveBackground,
     onUpscale,
     onCrop,
+    onInpaintGenerate,
     annotationImageId,
     annotationObject,
     isDetectingObject,
@@ -1812,6 +1822,39 @@ export function CanvasArea({
                                         </div>
                                     </>
                                 )}
+
+                                {el.type === 'image-compare' && (() => {
+                                    const firstImage = resolveConnectedNodeContents(el.id, 'compare-a-in', elements)[0];
+                                    const secondImage = resolveConnectedNodeContents(el.id, 'compare-b-in', elements)[0];
+                                    return (
+                                        <ImageCompareNode
+                                            firstImage={firstImage}
+                                            secondImage={secondImage}
+                                            split={el.imageCompareSplit ?? 50}
+                                            swapped={el.imageCompareSwapped ?? false}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                        />
+                                    );
+                                })()}
+
+                                {el.type === 'inpaint' && (() => {
+                                    const sourceImage = resolveConnectedNodeContents(el.id, 'image-in', elements)[0];
+                                    return (
+                                        <InpaintNode
+                                            sourceImage={sourceImage}
+                                            width={el.width || 440}
+                                            height={el.height || 360}
+                                            prompt={el.prompt || ''}
+                                            brushSize={el.inpaintBrushSize || 32}
+                                            feather={el.inpaintFeather || 4}
+                                            mask={el.inpaintMask}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                            onGenerate={sourceImage && onInpaintGenerate
+                                                ? (input) => onInpaintGenerate(el, input)
+                                                : undefined}
+                                        />
+                                    );
+                                })()}
 
                                 {el.type === 'image' && el.content && (() => {
                                     const metadata = el.generationMetadata;

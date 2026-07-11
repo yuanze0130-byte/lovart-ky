@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Images } from 'lucide-react';
+import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Images, Settings2, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageCreditCost } from '@/lib/credits';
 import {
@@ -13,6 +13,7 @@ import {
   type ImageGenerationExecutionMode,
   type ImageModelId,
 } from '@/lib/image-models';
+import { DEFAULT_IMAGE_MODEL_PREFERENCES, loadImageModelPreferences, saveImageModelPreferences, type ImageModelPreferences } from '@/lib/image-model-preferences';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
@@ -112,6 +113,8 @@ export function ImageGeneratorPanel({
     initialElement?.imageExecutionMode === 'sequential' ? 'sequential' : 'parallel'
   );
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
+  const [showModelManager, setShowModelManager] = useState(false);
+  const [modelPreferences, setModelPreferences] = useState<ImageModelPreferences>(DEFAULT_IMAGE_MODEL_PREFERENCES);
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [showCanvasReferencePicker, setShowCanvasReferencePicker] = useState(false);
   const [editMode] = useState<ImageEditMode>(initialMode);
@@ -164,6 +167,29 @@ export function ImageGeneratorPanel({
   const totalCreditCost = imageCreditCost * outputCount;
   const isOfficialModel = modelDefinition.transport === 'official-image-task';
   const isBusy = isGenerating || isBatchSubmitting;
+  const orderedModelOptions = useMemo(() => modelPreferences.modelOrder
+    .map((id) => IMAGE_MODEL_OPTIONS.find((model) => model.id === id))
+    .filter((model): model is (typeof IMAGE_MODEL_OPTIONS)[number] => Boolean(model))
+    .filter((model) => !modelPreferences.hiddenModelIds.includes(model.id) || model.id === modelVariant), [modelPreferences, modelVariant]);
+
+  const updatePreferences = (next: ImageModelPreferences) => {
+    setModelPreferences(next);
+    saveImageModelPreferences(next);
+  };
+
+  useEffect(() => {
+    const preferences = loadImageModelPreferences();
+    setModelPreferences(preferences);
+    if (!initialElement?.imageModelId) {
+      setModelVariant(preferences.lastUsedModelId);
+      setResolution(preferences.defaults.resolution);
+      if (ASPECT_RATIO_OPTIONS.includes(preferences.defaults.aspectRatio as AspectRatio)) {
+        setAspectRatio(preferences.defaults.aspectRatio as AspectRatio);
+      }
+      setOutputCount(preferences.defaults.outputCount);
+      setExecutionMode(preferences.defaults.executionMode);
+    }
+  }, [initialElement?.imageModelId]);
 
   useEffect(() => {
     onConfigChange?.(elementId, {
@@ -566,10 +592,14 @@ export function ImageGeneratorPanel({
           </label>
           <label className="text-xs text-gray-600">
             模型
-            <select value={modelVariant} onChange={(e) => setModelVariant(e.target.value as ImageModelId)} disabled={isBusy} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+            <select value={modelVariant} onChange={(e) => {
+              const modelId = e.target.value as ImageModelId;
+              setModelVariant(modelId);
+              updatePreferences({ ...modelPreferences, lastUsedModelId: modelId });
+            }} disabled={isBusy} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
               {IMAGE_MODEL_CATEGORIES.map((category) => (
                 <optgroup key={category} label={category}>
-                  {IMAGE_MODEL_OPTIONS.filter((model) => model.category === category).map((model) => (
+                  {orderedModelOptions.filter((model) => model.category === category).map((model) => (
                     <option key={model.id} value={model.id}>{model.label}</option>
                   ))}
                 </optgroup>
@@ -584,10 +614,32 @@ export function ImageGeneratorPanel({
               <div className="text-xs font-semibold text-gray-800 dark:text-slate-100">{modelDefinition.label}</div>
               <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">{modelDefinition.description}</div>
             </div>
-            <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-medium text-gray-500 shadow-sm dark:bg-white/10 dark:text-slate-300">
-              {modelDefinition.category}
-            </span>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <span className="rounded-full bg-white px-2 py-1 text-[10px] font-medium text-gray-500 shadow-sm dark:bg-white/10 dark:text-slate-300">{modelDefinition.category}</span>
+              <button type="button" onClick={() => setShowModelManager((value) => !value)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-gray-500 shadow-sm hover:text-gray-900 dark:bg-white/10 dark:text-slate-300" title="管理模型"><Settings2 size={13} /></button>
+            </div>
           </div>
+
+          {showModelManager && (
+            <div className="mt-3 space-y-2 border-t border-gray-200 pt-3 dark:border-white/10">
+              <div className="flex items-center justify-between"><span className="text-[11px] font-semibold text-gray-700 dark:text-slate-200">模型显示与排序</span><button type="button" onClick={() => updatePreferences({ ...modelPreferences, defaults: { modelId: modelVariant, resolution, aspectRatio, outputCount, executionMode } })} className="rounded-lg bg-black px-2.5 py-1.5 text-[10px] font-medium text-white dark:bg-white dark:text-black">设为全局默认</button></div>
+              <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                {modelPreferences.modelOrder.map((id, index) => {
+                  const model = IMAGE_MODEL_OPTIONS.find((item) => item.id === id);
+                  if (!model) return null;
+                  const hidden = modelPreferences.hiddenModelIds.includes(id);
+                  const move = (offset: number) => {
+                    const nextOrder = [...modelPreferences.modelOrder];
+                    const target = index + offset;
+                    if (target < 0 || target >= nextOrder.length) return;
+                    [nextOrder[index], nextOrder[target]] = [nextOrder[target], nextOrder[index]];
+                    updatePreferences({ ...modelPreferences, modelOrder: nextOrder });
+                  };
+                  return <div key={id} className="flex items-center gap-2 rounded-lg bg-white px-2 py-1.5 text-[11px] dark:bg-white/5"><button type="button" onClick={() => updatePreferences({ ...modelPreferences, hiddenModelIds: hidden ? modelPreferences.hiddenModelIds.filter((item) => item !== id) : [...modelPreferences.hiddenModelIds, id] })} className="text-gray-400" title={hidden ? '显示模型' : '隐藏模型'}>{hidden ? <EyeOff size={13} /> : <Eye size={13} />}</button><span className={`min-w-0 flex-1 truncate ${hidden ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-slate-200'}`}>{model.label}</span><button type="button" onClick={() => move(-1)} disabled={index === 0} className="text-gray-400 disabled:opacity-25" title="上移"><ChevronUp size={13} /></button><button type="button" onClick={() => move(1)} disabled={index === modelPreferences.modelOrder.length - 1} className="text-gray-400 disabled:opacity-25" title="下移"><ChevronDown size={13} /></button></div>;
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="mt-3 grid grid-cols-[1fr_auto] gap-4 border-t border-gray-200 pt-3 dark:border-white/10">
             <div>

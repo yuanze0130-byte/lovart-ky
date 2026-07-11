@@ -90,6 +90,22 @@ try {
   assert.equal(exported.nodes.find((node) => node.id === 'agent-1').type, 'custom-agent');
   assert.equal(exported.nodes.find((node) => node.id === 'comfy-1').type, 'comfy-ui');
 
+  const parityProject = exportQdmyProject({
+    title: '节点状态往返',
+    elements: [
+      { id: 'compare-1', type: 'image-compare', x: 0, y: 0, width: 420, height: 300, imageCompareSplit: 37, imageCompareSwapped: true },
+      { id: 'inpaint-1', type: 'inpaint', x: 500, y: 0, width: 440, height: 360, prompt: '替换天空', inpaintBrushSize: 48, inpaintFeather: 7, inpaintMask: 'data:image/png;base64,TUFDSw==' },
+    ],
+  });
+  const parityImported = importQdmyProject(parityProject);
+  const compare = parityImported.elements.find((element) => element.id === 'compare-1');
+  const inpaint = parityImported.elements.find((element) => element.id === 'inpaint-1');
+  assert.equal(compare?.imageCompareSplit, 37);
+  assert.equal(compare?.imageCompareSwapped, true);
+  assert.equal(inpaint?.inpaintBrushSize, 48);
+  assert.equal(inpaint?.inpaintFeather, 7);
+  assert.equal(inpaint?.inpaintMask, 'data:image/png;base64,TUFDSw==');
+
   const merged = mergeQdmyElements([
     { id: 'generate-1', type: 'text', x: 0, y: 0, content: 'existing' },
   ], imported.elements);

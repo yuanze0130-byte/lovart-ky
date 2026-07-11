@@ -85,10 +85,10 @@ function mapDesktopType(type: string): CanvasElementType | null {
     case 'input-image': return 'image';
     case 'gen-image': return 'image-generator';
     case 'gen-video': return 'video-generator';
-    case 'inpaint-menu': return 'image-generator';
+    case 'inpaint-menu': return 'inpaint';
     case 'comfy-ui': return 'image-generator';
     case 'preview': return 'image';
-    case 'image-compare': return 'image';
+    case 'image-compare': return 'image-compare';
     case 'custom-agent': return 'text';
     case 'storyboard-menu': return 'text';
     case 'gen-music': return 'text';
@@ -106,6 +106,8 @@ function mapOnlineType(type: CanvasElementType): string {
     case 'image-generator': return 'gen-image';
     case 'video-generator': return 'gen-video';
     case 'video': return 'preview';
+    case 'image-compare': return 'image-compare';
+    case 'inpaint': return 'inpaint-menu';
     case 'shape': return 'group';
     case 'path': return 'preview';
     case 'connector': return 'connector';
@@ -167,6 +169,11 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
   const ratio = normalizeRatio(node.ratio ?? settings.ratio ?? settings.aspectRatio ?? data.ratio);
   const resolution = normalizeResolution(node.resolution ?? settings.resolution ?? data.resolution);
   const platformGroup = firstString(node.platformGroup, settings.platformGroup, data.platformGroup);
+  const imageCompareSplit = firstNumber(node.imageCompareSplit, settings.imageCompareSplit);
+  const imageCompareSwapped = node.imageCompareSwapped ?? settings.imageCompareSwapped;
+  const inpaintBrushSize = firstNumber(node.inpaintBrushSize, settings.inpaintBrushSize);
+  const inpaintFeather = firstNumber(node.inpaintFeather, settings.inpaintFeather);
+  const inpaintMask = firstString(node.inpaintMask, settings.inpaintMask);
 
   const element: CanvasElement = {
     id,
@@ -188,6 +195,11 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
     imageExecutionMode: type === 'image-generator' && (imageExecutionMode === 'parallel' || imageExecutionMode === 'sequential')
       ? imageExecutionMode
       : undefined,
+    imageCompareSplit: type === 'image-compare' ? imageCompareSplit : undefined,
+    imageCompareSwapped: type === 'image-compare' && typeof imageCompareSwapped === 'boolean' ? imageCompareSwapped : undefined,
+    inpaintBrushSize: type === 'inpaint' ? inpaintBrushSize : undefined,
+    inpaintFeather: type === 'inpaint' ? inpaintFeather : undefined,
+    inpaintMask: type === 'inpaint' ? inpaintMask : undefined,
     generationMetadata: model || platformGroup ? {
       model,
       desktopPlatformGroup: platformGroup,
@@ -295,6 +307,11 @@ export function exportQdmyProject(input: QdmyExportInput) {
         imageModelId: element.imageModelId,
         imageOutputCount: element.imageOutputCount,
         imageExecutionMode: element.imageExecutionMode,
+        imageCompareSplit: element.imageCompareSplit,
+        imageCompareSwapped: element.imageCompareSwapped,
+        inpaintBrushSize: element.inpaintBrushSize,
+        inpaintFeather: element.inpaintFeather,
+        inpaintMask: element.inpaintMask,
         platformGroup: firstString(element.generationMetadata?.desktopPlatformGroup, settings.platformGroup),
         ratio: element.requestedAspectRatio,
         resolution: element.requestedResolution,
