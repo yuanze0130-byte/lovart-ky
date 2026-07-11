@@ -4,8 +4,9 @@ import type { CanvasElement, GenerationMetadata } from '@/components/lovart/Canv
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
+import { resolveConnectedInputs } from '@/lib/canvas-connections';
+import { isImageModelId, type ImageModelId } from '@/lib/image-models';
 
-type BananaVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type OfficialImageOptions = {
   quality?: 'auto' | 'high' | 'medium' | 'low';
@@ -33,10 +34,6 @@ function isResolution(value: unknown): value is Resolution {
 
 function isAspectRatio(value: unknown): value is AspectRatio {
   return value === 'auto' || value === '4:3' || value === '8:1' || value === '1:1' || value === '3:2' || value === '1:8' || value === '9:16' || value === '2:3' || value === '4:1' || value === '16:9' || value === '4:5' || value === '1:4' || value === '3:4' || value === '5:4' || value === '21:9';
-}
-
-function isBananaVariant(value: unknown): value is BananaVariant {
-  return value === 'standard' || value === 'pro' || value === 'gpt-image-2' || value === 'gpt-image-2-official';
 }
 
 function updateProjectThumbnail(projectId: string | undefined, thumbnail: string) {
@@ -83,7 +80,7 @@ function buildGenerationMetadata({
   promptPresetLabel?: string;
   promptDebug?: string;
   editMode: ImageEditMode;
-  modelVariant: BananaVariant;
+  modelVariant: ImageModelId;
   referenceCount: number;
   assetKind?: 'image' | 'panorama';
   resolution: Resolution;
@@ -135,7 +132,7 @@ export async function requestImageGeneration(input: {
   resolution: Resolution;
   aspectRatio: AspectRatio;
   referenceImages?: string[];
-  modelVariant?: BananaVariant;
+  modelVariant?: ImageModelId;
   editMode?: ImageEditMode;
   promptPatch?: string;
   promptPresetId?: string;
@@ -215,7 +212,7 @@ export async function requestImageGeneration(input: {
   const requestedResolution = isResolution(data.requestedResolution)
     ? data.requestedResolution
     : resolution;
-  const returnedModelVariant = isBananaVariant(data.modelVariant)
+  const returnedModelVariant = isImageModelId(data.modelVariant)
     ? data.modelVariant
     : modelVariant;
   const returnedProvider: 'official' | 'proxy' | undefined = data.provider === 'official' || data.provider === 'proxy'
@@ -424,6 +421,11 @@ function createGeneratedImageConnector(
     y: 0,
     connectorFrom: generatorElement.id,
     connectorTo: resultId,
+    connectorSourcePort: 'image-out',
+    connectorTargetPort: 'image-in',
+    connectorDataKind: 'image',
+    connectorKind: 'result',
+    connectorOrder: 0,
     connectorStyle: 'dashed',
     color: '#8B5CF6',
     strokeWidth: 2,
@@ -540,6 +542,11 @@ export function useCanvasGeneration({
         y: 0,
         connectorFrom: sourceElement.id,
         connectorTo: generatorId,
+        connectorSourcePort: 'image-out',
+        connectorTargetPort: 'reference-in',
+        connectorDataKind: 'image',
+        connectorKind: 'reference',
+        connectorOrder: 0,
         connectorStyle: 'dashed',
         color: '#6B7280',
         strokeWidth: 2,
@@ -579,7 +586,7 @@ export function useCanvasGeneration({
       resolution: Resolution,
       aspectRatio: AspectRatio,
       referenceImages: string[] = [],
-      modelVariant: BananaVariant = 'pro',
+      modelVariant: ImageModelId = 'nano-banana-pro',
       editMode: ImageEditMode = 'generate',
       promptPatch?: string,
       promptPresetId?: string,
@@ -589,11 +596,22 @@ export function useCanvasGeneration({
     ) => {
       setIsGenerating(true);
       try {
+        const generatorElementId = selectedIds.find(
+          (id) => elements.find((el) => el.id === id)?.type === 'image-generator'
+        );
+        const connectedInputs = generatorElementId
+          ? resolveConnectedInputs(generatorElementId, elements)
+          : null;
+        const effectivePrompt = connectedInputs?.prompt.trim() || prompt;
+        const effectiveReferences = Array.from(new Set([
+          ...(connectedInputs?.references || []),
+          ...referenceImages,
+        ].filter(Boolean)));
         const result = await requestImageGeneration({
-          prompt,
+          prompt: effectivePrompt,
           resolution,
           aspectRatio,
-          referenceImages,
+          referenceImages: effectiveReferences,
           modelVariant,
           editMode,
           promptPatch,
@@ -602,10 +620,6 @@ export function useCanvasGeneration({
           promptDebug,
           officialOptions,
         });
-
-        const generatorElementId = selectedIds.find(
-          (id) => elements.find((el) => el.id === id)?.type === 'image-generator'
-        );
 
         const {
           imageData,
@@ -648,7 +662,7 @@ export function useCanvasGeneration({
             model: returnedModel,
             modelVariant: returnedModelVariant,
             editMode,
-            referenceCount: referenceImages.length,
+            referenceCount: effectiveReferences.length,
           });
 
           if (generatorElementId) {
@@ -670,6 +684,20 @@ export function useCanvasGeneration({
             updateProjectThumbnail(typeof generatorElement.projectId === 'string' ? generatorElement.projectId : undefined, imageData);
 
             setElements((prev) => {
+              const outputIndex = prev.filter((element) => element.type === 'connector'
+                && element.connectorFrom === generatorElementId
+                && element.connectorKind === 'result').length;
+              const outputColumn = Math.floor(outputIndex / 3);
+              const outputRow = outputIndex % 3;
+              const positionedResultElement: CanvasElement = {
+                ...resultElement,
+                x: generatorElement.x + (generatorElement.width || 320) + 96 + outputColumn * (displaySize.width + 40),
+                y: generatorElement.y + outputRow * (displaySize.height + 32),
+              };
+              const orderedConnectorElement: CanvasElement = {
+                ...connectorElement,
+                connectorOrder: outputIndex,
+              };
               let updatedGenerator = false;
               const nextElements = prev.map((el) => {
                 if (el.id === generatorElementId) {
@@ -680,7 +708,7 @@ export function useCanvasGeneration({
               });
 
               return updatedGenerator
-                ? [...nextElements, connectorElement, resultElement]
+                ? [...nextElements, orderedConnectorElement, positionedResultElement]
                 : prev;
             });
             setSelectedIds([resultId]);
@@ -757,21 +785,27 @@ export function useCanvasGeneration({
         const generatedIds: string[] = [];
         const results = await Promise.allSettled(
           generatorElements.map(async (generatorElement) => {
-            const prompt = typeof generatorElement.initialPrompt === 'string' && generatorElement.initialPrompt.trim()
+            const connectedInputs = resolveConnectedInputs(generatorElement.id, elements);
+            const fallbackPrompt = typeof generatorElement.initialPrompt === 'string' && generatorElement.initialPrompt.trim()
               ? generatorElement.initialPrompt.trim()
               : typeof generatorElement.prompt === 'string' && generatorElement.prompt.trim()
                 ? generatorElement.prompt.trim()
                 : generatorElement.generatorKind === 'panorama'
                   ? '生成一张 720° 全景图，要求超宽横向构图、连续空间感、左右两端自然衔接。'
                   : '生成一张高质量图片。';
+            const prompt = connectedInputs.prompt.trim() || fallbackPrompt;
             const resolution = isResolution(generatorElement.requestedResolution) ? generatorElement.requestedResolution : generatorElement.generatorKind === 'panorama' ? '2K' : '1K';
             const aspectRatio = isAspectRatio(generatorElement.requestedAspectRatio) ? generatorElement.requestedAspectRatio : generatorElement.generatorKind === 'panorama' ? '21:9' : 'auto';
             const referenceElement = generatorElement.referenceImageId
               ? elements.find((item) => item.id === generatorElement.referenceImageId)
               : undefined;
-            const referenceImages = referenceElement?.type === 'image' && typeof referenceElement.content === 'string' && referenceElement.content
+            const fallbackReferences = referenceElement?.type === 'image' && typeof referenceElement.content === 'string' && referenceElement.content
               ? [referenceElement.content]
               : [];
+            const referenceImages = Array.from(new Set([
+              ...connectedInputs.references,
+              ...fallbackReferences,
+            ].filter(Boolean)));
             const editMode = generatorElement.initialEditMode || 'generate';
 
             const result = await requestImageGeneration({

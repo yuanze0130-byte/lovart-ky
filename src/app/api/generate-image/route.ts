@@ -3,9 +3,10 @@ import { GoogleGenAI, Modality } from '@google/genai';
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, getImageCreditCost, refundCredits } from '@/lib/credits';
+import { getImageModelDefinition, type ImageModelId } from '@/lib/image-models';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
-type ModelVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
+type ModelVariant = ImageModelId;
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9' | '9:21' | '2:1' | '1:2';
 type SupportedResolution = '1K' | '2K' | '4K';
@@ -166,6 +167,8 @@ function normalizeReferenceImages(referenceImages?: string[], referenceImage?: s
 
 function getProxyModel(payload: GenerateImagePayload) {
   const resolution = payload.resolution || '1K';
+  const modelVariant = payload.modelVariant || 'pro';
+  const definition = getImageModelDefinition(modelVariant);
 
   if (payload.modelVariant === 'gpt-image-2-official') {
     return process.env.GEMINI_PROXY_GPT_IMAGE_2_OFFICIAL_MODEL || 'gpt-image-2';
@@ -175,7 +178,15 @@ function getProxyModel(payload: GenerateImagePayload) {
     return process.env.GEMINI_PROXY_GPT_IMAGE_2_MODEL || 'gpt-image-2-all';
   }
 
-  if (payload.modelVariant === 'standard') {
+  if (payload.modelVariant === 'gpt-image-1.5') {
+    return process.env.GEMINI_PROXY_GPT_IMAGE_1_5_MODEL || definition.proxyModel;
+  }
+
+  if (payload.modelVariant === 'gpt-image-1') {
+    return process.env.GEMINI_PROXY_GPT_IMAGE_1_MODEL || definition.proxyModel;
+  }
+
+  if (payload.modelVariant === 'standard' || payload.modelVariant === 'nano-banana-2') {
     if (resolution === '2K') {
       return process.env.GEMINI_PROXY_STANDARD_MODEL_2K || process.env.GEMINI_PROXY_STANDARD_MODEL_HD || 'nano-banana-hd';
     }
@@ -187,15 +198,23 @@ function getProxyModel(payload: GenerateImagePayload) {
     return process.env.GEMINI_PROXY_STANDARD_MODEL || 'nano-banana';
   }
 
-  if (resolution === '2K') {
-    return process.env.GEMINI_PROXY_PRO_MODEL_2K || 'nano-banana-pro-2k';
+  if (payload.modelVariant === 'nano-banana') {
+    return process.env.GEMINI_PROXY_NANO_BANANA_MODEL || definition.proxyModel;
   }
 
-  if (resolution === '4K') {
-    return process.env.GEMINI_PROXY_PRO_MODEL_4K || 'nano-banana-pro-4k';
+  if (payload.modelVariant === 'pro' || payload.modelVariant === 'nano-banana-pro') {
+    if (resolution === '2K') {
+      return process.env.GEMINI_PROXY_PRO_MODEL_2K || 'nano-banana-pro-2k';
+    }
+
+    if (resolution === '4K') {
+      return process.env.GEMINI_PROXY_PRO_MODEL_4K || 'nano-banana-pro-4k';
+    }
+
+    return process.env.GEMINI_PROXY_PRO_MODEL || process.env.GEMINI_PROXY_MODEL || 'nano-banana-pro';
   }
 
-  return process.env.GEMINI_PROXY_PRO_MODEL || process.env.GEMINI_PROXY_MODEL || 'nano-banana-pro';
+  return definition.proxyModel;
 }
 
 const GPT_IMAGE_2_DEFAULT_ASPECT_RATIOS: SupportedAspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
@@ -657,7 +676,8 @@ async function generateViaProxy(payload: GenerateImagePayload) {
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
   const translatedPrompt = await maybeTranslatePromptWithProxy(payload.prompt);
   const normalizedAspectRatio = normalizeAspectRatioForGptImage2(payload.aspectRatio);
-  const finalPrompt = payload.modelVariant === 'gpt-image-2'
+  const modelDefinition = getImageModelDefinition(payload.modelVariant || 'pro');
+  const finalPrompt = modelDefinition.transport === 'image-task'
     ? `${translatedPrompt}\n 纵横比：${normalizedAspectRatio}`
     : buildPrompt(
         translatedPrompt,
@@ -715,7 +735,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
           }
         | undefined;
 
-      if (payload.modelVariant === 'gpt-image-2') {
+      if (modelDefinition.transport === 'image-task') {
         const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/generations?async=true`;
         const imageResponse = await fetch(endpoint, {
           method: 'POST',
@@ -743,14 +763,14 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 
         const rawText = await imageResponse.text();
         if (!imageResponse.ok) {
-          throw new Error(`gpt-image-2 proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+          throw new Error(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
         }
 
         let submitPayload: Record<string, unknown>;
         try {
           submitPayload = JSON.parse(rawText) as Record<string, unknown>;
         } catch {
-          throw new Error(`gpt-image-2 proxy returned non-JSON: ${rawText.slice(0, 500)}`);
+          throw new Error(`${proxyModel} proxy returned non-JSON: ${rawText.slice(0, 500)}`);
         }
 
         taskId = typeof submitPayload.task_id === 'string'
@@ -760,7 +780,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
             : undefined;
 
         if (!taskId) {
-          throw new Error(`gpt-image-2 proxy missing task_id: ${rawText.slice(0, 500)}`);
+          throw new Error(`${proxyModel} proxy missing task_id: ${rawText.slice(0, 500)}`);
         }
 
         const taskResult = await pollGptImage2Task({
@@ -771,7 +791,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
         response = taskResult.response;
         taskPayload = taskResult.taskPayload as Record<string, unknown>;
         taskMetadata = taskResult.pollMetadata;
-      } else if (payload.modelVariant === 'gpt-image-2-official') {
+      } else if (modelDefinition.transport === 'official-image-task') {
         const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/edits?async=true`;
         const officialSize = getOfficialGptImage2Size(normalizedAspectRatio, payload.resolution || '1K');
         const officialSizeValidation = validateOfficialGptImage2Size(officialSize);
@@ -953,7 +973,8 @@ async function generateViaGeminiRest(
 
 async function generateViaOfficial(payload: GenerateImagePayload) {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
-  const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
+  const selectedModel = getImageModelDefinition(payload.modelVariant || 'pro');
+  const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || selectedModel.proxyModel;
   const geminiBaseUrl = process.env.GOOGLE_GEMINI_BASE_URL;
   const geminiApiVersion = process.env.GOOGLE_GEMINI_API_VERSION;
 
@@ -1111,6 +1132,7 @@ export async function POST(request: NextRequest) {
     };
 
     const provider = getProvider();
+    const modelDefinition = getImageModelDefinition(modelVariant);
 
     if (provider === 'proxy') {
       const result = await generateViaProxy(payload);
@@ -1118,7 +1140,16 @@ export async function POST(request: NextRequest) {
     }
 
     if (provider === 'official') {
+      if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
+        const result = await generateViaProxy(payload);
+        return NextResponse.json(result);
+      }
       const result = await generateViaOfficial(payload);
+      return NextResponse.json(result);
+    }
+
+    if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
+      const result = await generateViaProxy(payload);
       return NextResponse.json(result);
     }
 

@@ -5,11 +5,17 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Images } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageCreditCost } from '@/lib/credits';
-import { PROMPT_TEMPLATES, PROMPT_TEMPLATE_CATEGORY_LABELS, extractTemplateVariables, type PromptTemplateCategory } from '@/lib/prompt-templates';
+import {
+  IMAGE_MODEL_CATEGORIES,
+  IMAGE_MODEL_OPTIONS,
+  getImageModelDefinition,
+  isImageModelId,
+  type ImageGenerationExecutionMode,
+  type ImageModelId,
+} from '@/lib/image-models';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
-type BananaVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type OfficialQuality = 'auto' | 'high' | 'medium' | 'low';
 type OfficialBackground = 'auto' | 'transparent' | 'opaque';
@@ -25,7 +31,7 @@ interface ImageGeneratorPanelProps {
     resolution: Resolution,
     aspectRatio: AspectRatio,
     referenceImages?: string[],
-    modelVariant?: BananaVariant,
+    modelVariant?: ImageModelId,
     editMode?: ImageEditMode,
     promptPatch?: string,
     promptPresetId?: string,
@@ -41,6 +47,7 @@ interface ImageGeneratorPanelProps {
   isGenerating: boolean;
   style?: React.CSSProperties;
   canvasElements: CanvasElement[];
+  onConfigChange?: (elementId: string, updates: Partial<CanvasElement>) => void;
 }
 
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
@@ -80,13 +87,6 @@ const MODE_META: Record<ImageEditMode, { title: string; subtitle: string; icon: 
   },
 };
 
-const MODEL_LABELS: Record<BananaVariant, string> = {
-  standard: 'Nanobanana 2',
-  pro: 'Nanobanana Pro',
-  'gpt-image-2': 'GPT Image 2',
-  'gpt-image-2-official': 'GPT Image 2 Official',
-};
-
 export function ImageGeneratorPanel({
   elementId,
   initialMode = 'generate',
@@ -95,17 +95,25 @@ export function ImageGeneratorPanel({
   isGenerating,
   style,
   canvasElements,
+  onConfigChange,
 }: ImageGeneratorPanelProps) {
+  const initialElement = canvasElements.find((item) => item.id === elementId);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState(initialPrompt || '');
   const [resolution, setResolution] = useState<Resolution>('1K');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('auto');
-  const [modelVariant, setModelVariant] = useState<BananaVariant>('pro');
+  const [modelVariant, setModelVariant] = useState<ImageModelId>(
+    isImageModelId(initialElement?.imageModelId) ? initialElement.imageModelId : 'nano-banana-pro'
+  );
+  const [outputCount, setOutputCount] = useState(
+    [1, 2, 4, 8].includes(initialElement?.imageOutputCount || 0) ? initialElement?.imageOutputCount || 1 : 1
+  );
+  const [executionMode, setExecutionMode] = useState<ImageGenerationExecutionMode>(
+    initialElement?.imageExecutionMode === 'sequential' ? 'sequential' : 'parallel'
+  );
+  const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
   const [referenceImages, setReferenceImages] = useState<string[]>([]);
   const [showCanvasReferencePicker, setShowCanvasReferencePicker] = useState(false);
-  const [templateCategory, setTemplateCategory] = useState<PromptTemplateCategory | 'all'>('all');
-  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
-  const [templateVariableValues, setTemplateVariableValues] = useState<Record<string, string>>({});
   const [editMode] = useState<ImageEditMode>(initialMode);
   const [progress, setProgress] = useState(0);
   const [generationStatus, setGenerationStatus] = useState('');
@@ -137,37 +145,33 @@ export function ImageGeneratorPanel({
     () => canvasElements.filter((item) => item.type === 'image' && typeof item.content === 'string' && item.content),
     [canvasElements]
   );
-  const filteredTemplates = useMemo(() => {
-    return PROMPT_TEMPLATES.filter((template) => {
-      if (templateCategory !== 'all' && template.category !== templateCategory) return false;
-      if (template.suggestedImageModes && !template.suggestedImageModes.includes(editMode)) return false;
-      return true;
-    });
-  }, [editMode, templateCategory]);
-  const activeTemplate = useMemo(
-    () => PROMPT_TEMPLATES.find((template) => template.id === activeTemplateId) ?? null,
-    [activeTemplateId]
-  );
-  const activeTemplateVariables = useMemo(
-    () => (activeTemplate?.variables?.length ? activeTemplate.variables : activeTemplate ? extractTemplateVariables(activeTemplate.prompt) : []),
-    [activeTemplate]
-  );
 
   const isPanorama = selectedElement?.generatorKind === 'panorama';
+  const modelDefinition = useMemo(() => getImageModelDefinition(modelVariant), [modelVariant]);
   const activeMeta = isPanorama
     ? { title: 'Panorama Generator', subtitle: '专用全景资产：默认超宽横向构图。', icon: Sparkles }
     : MODE_META[editMode];
   const availableAspectRatios = useMemo<AspectRatio[]>(() => (
     isPanorama
       ? ['21:9', '16:9']
-      : modelVariant === 'gpt-image-2'
+      : modelDefinition.transport === 'image-task'
         ? GPT_IMAGE_2_ASPECT_RATIO_OPTIONS
-        : modelVariant === 'gpt-image-2-official'
+        : modelDefinition.transport === 'official-image-task'
           ? GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS
           : ASPECT_RATIO_OPTIONS
-  ), [isPanorama, modelVariant]);
+  ), [isPanorama, modelDefinition.transport]);
   const imageCreditCost = useMemo(() => getImageCreditCost(modelVariant, resolution), [modelVariant, resolution]);
-  const isOfficialModel = modelVariant === 'gpt-image-2-official';
+  const totalCreditCost = imageCreditCost * outputCount;
+  const isOfficialModel = modelDefinition.transport === 'official-image-task';
+  const isBusy = isGenerating || isBatchSubmitting;
+
+  useEffect(() => {
+    onConfigChange?.(elementId, {
+      imageModelId: modelVariant,
+      imageOutputCount: outputCount,
+      imageExecutionMode: executionMode,
+    });
+  }, [elementId, executionMode, modelVariant, onConfigChange, outputCount]);
 
   useEffect(() => {
     if (isPanorama) {
@@ -220,58 +224,14 @@ export function ImageGeneratorPanel({
     });
   };
 
-  const handleTemplateApply = (templateId: string) => {
-    const template = PROMPT_TEMPLATES.find((item) => item.id === templateId);
-    if (!template) return;
-
-    const variables = template.variables?.length ? template.variables : extractTemplateVariables(template.prompt);
-    const nextValues = variables.reduce<Record<string, string>>((acc, variable) => {
-      acc[variable] = templateVariableValues[variable] ?? '';
-      return acc;
-    }, {});
-
-    setActiveTemplateId(template.id);
-    setTemplateVariableValues(nextValues);
-    setPrompt(template.prompt);
-
-    if (template.recommendedModelVariant) {
-      setModelVariant(template.recommendedModelVariant);
-    }
-
-    if (template.recommendedResolution) {
-      setResolution(template.recommendedResolution);
-    }
-
-    if (template.defaultAspectRatio && availableAspectRatios.includes(template.defaultAspectRatio as AspectRatio)) {
-      setAspectRatio(template.defaultAspectRatio as AspectRatio);
-      return;
-    }
-
-    const firstSuggestedRatio = template.suggestedAspectRatios?.find((ratio) => availableAspectRatios.includes(ratio as AspectRatio));
-    if (firstSuggestedRatio) {
-      setAspectRatio(firstSuggestedRatio as AspectRatio);
-    }
-  };
-
-  const handleTemplateVariableChange = (variable: string, value: string) => {
-    setTemplateVariableValues((prev) => ({
-      ...prev,
-      [variable]: value,
-    }));
-  };
-
-  const applyTemplateVariablesToPrompt = () => {
-    if (!activeTemplate) return;
-
-    const resolvedPrompt = activeTemplateVariables.reduce((result, variable) => {
-      const replacement = templateVariableValues[variable]?.trim();
-      if (!replacement) return result;
+  /* Removed with the legacy prompt-template workflow.
       const pattern = new RegExp(`【${variable.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}】`, 'g');
       return result.replace(pattern, replacement);
     }, activeTemplate.prompt);
 
     setPrompt(resolvedPrompt);
   };
+  */
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
@@ -291,9 +251,13 @@ export function ImageGeneratorPanel({
   };
 
   const handleSubmit = async () => {
-    if (!prompt.trim() || isGenerating) return;
+    if (!prompt.trim() || isBusy) return;
 
     const effectiveReferenceImages = referenceImages.filter(Boolean);
+    if (modelDefinition.requiresReference && effectiveReferenceImages.length === 0) {
+      alert(`${modelDefinition.label} 需要至少一张参考图。`);
+      return;
+    }
     if (editMode !== 'generate' && effectiveReferenceImages.length === 0) {
       alert('当前编辑模式需要至少一张参考图，请从图片工具条进入或先添加参考图。');
       return;
@@ -331,7 +295,7 @@ export function ImageGeneratorPanel({
       });
     }, 600);
 
-    try {
+    const generateOne = async () => {
       await onGenerate(
         prompt.trim(),
         resolution,
@@ -352,7 +316,27 @@ export function ImageGeneratorPanel({
             }
           : undefined,
       );
+    };
+
+    setIsBatchSubmitting(true);
+    try {
+      if (executionMode === 'sequential') {
+        for (let index = 0; index < outputCount; index += 1) {
+          setGenerationStatus(`顺序生成 ${index + 1} / ${outputCount}`);
+          await generateOne();
+          setProgress(Math.round(((index + 1) / outputCount) * 100));
+        }
+      } else {
+        let completed = 0;
+        await Promise.all(Array.from({ length: outputCount }, async () => {
+          await generateOne();
+          completed += 1;
+          setGenerationStatus(`并行完成 ${completed} / ${outputCount}`);
+          setProgress(Math.round((completed / outputCount) * 100));
+        }));
+      }
     } finally {
+      setIsBatchSubmitting(false);
       window.clearInterval(timer);
       setProgress(100);
       setGenerationStatus('生成完成');
@@ -365,7 +349,7 @@ export function ImageGeneratorPanel({
 
   return (
     <div
-      className="absolute z-50 w-[480px] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl dark:rounded-3xl dark:border-white/10 dark:bg-black/78 dark:shadow-[0_28px_80px_rgba(0,0,0,0.5)] dark:backdrop-blur-2xl"
+      className="absolute z-50 max-h-[min(760px,calc(100vh-96px))] w-[480px] overflow-y-auto rounded-2xl border border-gray-200 bg-white shadow-xl dark:rounded-3xl dark:border-white/10 dark:bg-black/78 dark:shadow-[0_28px_80px_rgba(0,0,0,0.5)] dark:backdrop-blur-2xl"
       style={style}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -407,6 +391,7 @@ export function ImageGeneratorPanel({
           </div>
         )}
 
+        {/* Legacy prompt-template library removed in favor of canvas prompt connections.
         <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/5">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
@@ -505,6 +490,7 @@ export function ImageGeneratorPanel({
             </div>
           ) : null}
         </div>
+        */}
 
         <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Prompt</div>
         <textarea
@@ -580,13 +566,66 @@ export function ImageGeneratorPanel({
           </label>
           <label className="text-xs text-gray-600">
             模型
-            <select value={modelVariant} onChange={(e) => setModelVariant(e.target.value as BananaVariant)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
-              <option value="pro">Nanobanana Pro</option>
-              <option value="standard">Nanobanana 2</option>
-              <option value="gpt-image-2">GPT Image 2</option>
-              <option value="gpt-image-2-official">GPT Image 2 Official</option>
+            <select value={modelVariant} onChange={(e) => setModelVariant(e.target.value as ImageModelId)} disabled={isBusy} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
+              {IMAGE_MODEL_CATEGORIES.map((category) => (
+                <optgroup key={category} label={category}>
+                  {IMAGE_MODEL_OPTIONS.filter((model) => model.category === category).map((model) => (
+                    <option key={model.id} value={model.id}>{model.label}</option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </label>
+        </div>
+
+        <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50/80 p-3 dark:border-white/10 dark:bg-white/5">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-gray-800 dark:text-slate-100">{modelDefinition.label}</div>
+              <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">{modelDefinition.description}</div>
+            </div>
+            <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-medium text-gray-500 shadow-sm dark:bg-white/10 dark:text-slate-300">
+              {modelDefinition.category}
+            </span>
+          </div>
+
+          <div className="mt-3 grid grid-cols-[1fr_auto] gap-4 border-t border-gray-200 pt-3 dark:border-white/10">
+            <div>
+              <div className="mb-2 text-[11px] font-medium text-gray-600 dark:text-slate-300">生成数量</div>
+              <div className="grid grid-cols-4 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-black/30">
+                {[1, 2, 4, 8].map((count) => (
+                  <button
+                    key={count}
+                    type="button"
+                    onClick={() => setOutputCount(count)}
+                    disabled={isBusy}
+                    className={`h-8 rounded-md text-xs font-medium transition-colors ${outputCount === count ? 'bg-white text-black shadow-sm dark:bg-white dark:text-black' : 'text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white'}`}
+                  >
+                    {count} 张
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="mb-2 text-[11px] font-medium text-gray-600 dark:text-slate-300">执行方式</div>
+              <div className="flex rounded-lg bg-gray-100 p-1 dark:bg-black/30">
+                {([
+                  ['parallel', '异步并行'],
+                  ['sequential', '同步顺序'],
+                ] as Array<[ImageGenerationExecutionMode, string]>).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setExecutionMode(mode)}
+                    disabled={isBusy}
+                    className={`h-8 px-3 text-xs font-medium transition-colors ${executionMode === mode ? 'rounded-md bg-white text-black shadow-sm dark:bg-white dark:text-black' : 'text-gray-500 hover:text-gray-900 dark:text-slate-400 dark:hover:text-white'}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
 
         {showCanvasReferencePicker && (
@@ -693,17 +732,11 @@ export function ImageGeneratorPanel({
         )}
 
         <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-          当前：<span className="font-medium text-gray-900 dark:text-white">{MODEL_LABELS[modelVariant]}</span>
+          当前：<span className="font-medium text-gray-900 dark:text-white">{modelDefinition.label}</span>
           <span className="mx-2">·</span>
           分辨率：<span className="font-medium text-gray-900 dark:text-white">{resolution}</span>
           <span className="mx-2">·</span>
-          消耗：<span className="font-medium text-violet-700 dark:text-violet-300">{imageCreditCost} 积分</span>
-          {activeTemplate ? (
-            <>
-              <span className="mx-2">·</span>
-              <span className="text-violet-700 dark:text-violet-300">模板：{activeTemplate.title}</span>
-            </>
-          ) : null}
+          预计消耗：<span className="font-medium text-violet-700 dark:text-violet-300">{totalCreditCost} 积分</span>
         </div>
 
         {selectedElement?.type === 'image-generator' && (
@@ -734,15 +767,15 @@ export function ImageGeneratorPanel({
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={!prompt.trim() || isGenerating}
+              disabled={!prompt.trim() || isBusy}
               className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <activeMeta.icon size={16} />}
-              {isGenerating
-                ? '生成中...'
+              {isBusy ? <Loader2 size={16} className="animate-spin" /> : <activeMeta.icon size={16} />}
+              {isBusy
+                ? `生成中 ${outputCount} 张...`
                 : editMode === 'generate'
-                  ? `开始生图 · ${imageCreditCost} 积分`
-                  : `执行${activeMeta.title} · ${imageCreditCost} 积分`}
+                  ? `生成 ${outputCount} 张 · ${totalCreditCost} 积分`
+                  : `执行${activeMeta.title} · ${totalCreditCost} 积分`}
             </button>
           </div>
         )}

@@ -8,6 +8,17 @@ import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
 import { v4 as uuidv4 } from 'uuid';
+import {
+    PORT_COLORS,
+    canConnectPorts,
+    connectionKindForPorts,
+    getNodePorts,
+    getPortAnchor,
+    inferLegacyPorts,
+    wouldCreateConnectionCycle,
+    type CanvasPortDefinition,
+} from '@/lib/canvas-connections';
+import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-models';
 
 export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'connector';
 
@@ -19,7 +30,7 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     promptPresetLabel?: string;
     promptDebug?: string;
     imageEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
-    modelVariant?: 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
+    modelVariant?: ImageModelId;
     provider?: 'official' | 'proxy';
     providerMode?: 'official' | 'proxy' | 'auto';
     providerFallbackUsed?: boolean;
@@ -98,11 +109,19 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     referenceImageId?: string;
     initialEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
     initialPrompt?: string;
+    imageModelId?: ImageModelId;
+    imageOutputCount?: number;
+    imageExecutionMode?: ImageGenerationExecutionMode;
     groupId?: string;
     linkedElements?: string[];
     connectorFrom?: string;
     connectorTo?: string;
     connectorStyle?: 'solid' | 'dashed';
+    connectorSourcePort?: string;
+    connectorTargetPort?: string;
+    connectorDataKind?: 'prompt' | 'image' | 'video' | 'any';
+    connectorKind?: 'prompt' | 'reference' | 'result' | 'control';
+    connectorOrder?: number;
 }
 
 function getReviewRailToneClass(state: 'clean' | 'watch' | 'check') {
@@ -316,6 +335,11 @@ export function CanvasArea({
     } | null>(null);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [currentPath, setCurrentPath] = useState<{ points: { x: number; y: number }[] } | null>(null);
+    const [connectionDraft, setConnectionDraft] = useState<{
+        sourceNodeId: string;
+        sourcePort: CanvasPortDefinition;
+        pointer: { x: number; y: number };
+    } | null>(null);
 
     const dragStartRef = useRef<{
         x: number;
@@ -334,6 +358,60 @@ export function CanvasArea({
     const draggedElementIdRef = useRef<string | null>(null);
     const resizeHandleRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+        const updateSize = () => {
+            const rect = container.getBoundingClientRect();
+            setViewportSize({ width: rect.width, height: rect.height });
+        };
+        updateSize();
+        const observer = new ResizeObserver(updateSize);
+        observer.observe(container);
+        return () => observer.disconnect();
+    }, []);
+
+    const elementById = useMemo(
+        () => new Map(elements.map((element) => [element.id, element])),
+        [elements],
+    );
+
+    const renderableElements = useMemo(() => {
+        const nodes = elements.filter((element) => element.type !== 'connector');
+        if (nodes.length < 100 || viewportSize.width === 0 || viewportSize.height === 0) return nodes;
+
+        const buffer = 600 / scale;
+        const left = -pan.x / scale - buffer;
+        const top = -pan.y / scale - buffer;
+        const right = (viewportSize.width - pan.x) / scale + buffer;
+        const bottom = (viewportSize.height - pan.y) / scale + buffer;
+        const selectedGroups = new Set(
+            selectedIds
+                .map((id) => elementById.get(id)?.groupId)
+                .filter((id): id is string => Boolean(id)),
+        );
+
+        return nodes.filter((element) => {
+            if (selectedIds.includes(element.id) || (element.groupId && selectedGroups.has(element.groupId))) return true;
+            const width = element.width || 120;
+            const height = element.height || 90;
+            return element.x < right && element.x + width > left && element.y < bottom && element.y + height > top;
+        });
+    }, [elementById, elements, pan.x, pan.y, scale, selectedIds, viewportSize.height, viewportSize.width]);
+
+    const renderableNodeIds = useMemo(
+        () => new Set(renderableElements.map((element) => element.id)),
+        [renderableElements],
+    );
+
+    const renderableConnectors = useMemo(
+        () => elements.filter((element) => element.type === 'connector'
+            && Boolean(element.connectorFrom && element.connectorTo)
+            && (renderableNodeIds.has(element.connectorFrom!) || renderableNodeIds.has(element.connectorTo!))),
+        [elements, renderableNodeIds],
+    );
 
     const getCanvasPoint = (clientX: number, clientY: number) => ({
         x: (clientX - pan.x) / scale,
@@ -541,6 +619,10 @@ export function CanvasArea({
     const handleMouseMove = (e: React.MouseEvent) => {
         const point = getCanvasPoint(e.clientX, e.clientY);
 
+        if (connectionDraft) {
+            setConnectionDraft((current) => current ? { ...current, pointer: point } : null);
+        }
+
         if (isDrawing && currentPath) {
             setCurrentPath((prev) => prev ? { points: [...prev.points, point] } : null);
             return;
@@ -694,6 +776,60 @@ export function CanvasArea({
         }
     };
 
+    const handleConnectionStart = (event: React.MouseEvent, element: CanvasElement, port: CanvasPortDefinition) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (port.direction !== 'output') return;
+        setConnectionDraft({
+            sourceNodeId: element.id,
+            sourcePort: port,
+            pointer: getPortAnchor(element, port.id, 'output'),
+        });
+    };
+
+    const handleConnectionFinish = (event: React.MouseEvent, target: CanvasElement, targetPort: CanvasPortDefinition) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const draft = connectionDraft;
+        setConnectionDraft(null);
+        if (!draft || draft.sourceNodeId === target.id || !canConnectPorts(draft.sourcePort, targetPort)) return;
+        if (wouldCreateConnectionCycle(elements, draft.sourceNodeId, target.id)) return;
+        const duplicate = elements.some((element) => element.type === 'connector'
+            && element.connectorFrom === draft.sourceNodeId
+            && element.connectorTo === target.id
+            && element.connectorSourcePort === draft.sourcePort.id
+            && element.connectorTargetPort === targetPort.id);
+        if (duplicate) return;
+
+        if (!targetPort.multiple) {
+            elements
+                .filter((element) => element.type === 'connector'
+                    && element.connectorTo === target.id
+                    && element.connectorTargetPort === targetPort.id)
+                .forEach((element) => onDelete(element.id));
+        }
+        const order = elements.filter((element) => element.type === 'connector'
+            && element.connectorTo === target.id
+            && element.connectorTargetPort === targetPort.id).length;
+        const connector: CanvasElement = {
+            id: uuidv4(),
+            type: 'connector',
+            x: 0,
+            y: 0,
+            connectorFrom: draft.sourceNodeId,
+            connectorTo: target.id,
+            connectorSourcePort: draft.sourcePort.id,
+            connectorTargetPort: targetPort.id,
+            connectorDataKind: draft.sourcePort.kind,
+            connectorKind: connectionKindForPorts(draft.sourcePort, targetPort),
+            connectorOrder: order,
+            connectorStyle: targetPort.multiple ? 'dashed' : 'solid',
+            color: PORT_COLORS[draft.sourcePort.kind],
+        };
+        onAddElement(connector);
+        onSelect([connector.id]);
+    };
+
     const handleMouseUp = () => {
         if (isSelecting && selectionBox) {
             const x1 = Math.min(selectionBox.startX, selectionBox.currentX);
@@ -778,11 +914,12 @@ export function CanvasArea({
             if (isDragging || isResizing || isPanning || isDrawing || isSelecting) {
                 handleMouseUp();
             }
+            if (connectionDraft) setConnectionDraft(null);
         };
         window.addEventListener('mouseup', handleGlobalMouseUp);
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
         // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMouseUp intentionally reads the current gesture state mirrored in these dependencies.
-    }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath]);
+    }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath, connectionDraft]);
 
     const selectedElement = elements.find((el) => selectedIds.includes(el.id));
 
@@ -1302,33 +1439,43 @@ export function CanvasArea({
                 />
 
                 <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
-                    {elements
-                        .filter((el) => el.type === 'connector')
+                    {renderableConnectors
                         .map((connector) => {
-                            const fromEl = elements.find((e) => e.id === connector.connectorFrom);
-                            const toEl = elements.find((e) => e.id === connector.connectorTo);
+                            const fromEl = connector.connectorFrom ? elementById.get(connector.connectorFrom) : undefined;
+                            const toEl = connector.connectorTo ? elementById.get(connector.connectorTo) : undefined;
                             if (!fromEl || !toEl) return null;
-
-                            const fromX = fromEl.x + (fromEl.width || 0) / 2;
-                            const fromY = fromEl.y + (fromEl.height || 0) / 2;
-                            const toX = toEl.x + (toEl.width || 0) / 2;
-                            const toY = toEl.y + (toEl.height || 0) / 2;
+                            const inferred = inferLegacyPorts(fromEl, toEl);
+                            const sourcePortId = connector.connectorSourcePort || inferred.sourcePort?.id;
+                            const targetPortId = connector.connectorTargetPort || inferred.targetPort?.id;
+                            const from = getPortAnchor(fromEl, sourcePortId, 'output');
+                            const to = getPortAnchor(toEl, targetPortId, 'input');
+                            const bend = Math.max(80, Math.abs(to.x - from.x) * 0.45);
+                            const curve = `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`;
+                            const selected = selectedIds.includes(connector.id);
 
                             return (
                                 <g key={connector.id}>
-                                    <line
-                                        x1={fromX}
-                                        y1={fromY}
-                                        x2={toX}
-                                        y2={toY}
+                                    <path d={curve} fill="none" stroke="transparent" strokeWidth={14} className="pointer-events-auto cursor-pointer" onMouseDown={(event) => { event.stopPropagation(); onSelect([connector.id]); }} />
+                                    <path
+                                        d={curve}
+                                        fill="none"
                                         stroke={connector.color || '#6B7280'}
-                                        strokeWidth={connector.strokeWidth || 2}
+                                        strokeWidth={selected ? 3.5 : connector.strokeWidth || 2}
                                         strokeDasharray={connector.connectorStyle === 'dashed' ? '8 4' : '0'}
                                         markerEnd="url(#arrowhead)"
+                                        className="pointer-events-none"
                                     />
                                 </g>
                             );
                         })}
+                    {connectionDraft && (() => {
+                        const source = elementById.get(connectionDraft.sourceNodeId);
+                        if (!source) return null;
+                        const from = getPortAnchor(source, connectionDraft.sourcePort.id, 'output');
+                        const to = connectionDraft.pointer;
+                        const bend = Math.max(80, Math.abs(to.x - from.x) * 0.45);
+                        return <path d={`M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`} fill="none" stroke={PORT_COLORS[connectionDraft.sourcePort.kind]} strokeWidth={2.5} strokeDasharray="6 4" />;
+                    })()}
                     <defs>
                         <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
                             <polygon points="0 0, 10 3, 0 6" fill="#6B7280" />
@@ -1337,8 +1484,7 @@ export function CanvasArea({
                 </svg>
 
                 <div className="absolute inset-0">
-                    {elements
-                        .filter((el) => el.type !== 'connector')
+                    {renderableElements
                         .map((el) => (
                             <div
                                 key={el.id}
@@ -1354,6 +1500,29 @@ export function CanvasArea({
                                 onMouseDown={(e) => handleMouseDown(e, el.id, el.x, el.y, el.width, el.height)}
                                 onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
                             >
+                                {getNodePorts(el).map((port) => {
+                                    const sidePorts = getNodePorts(el).filter((candidate) => candidate.direction === port.direction);
+                                    const index = sidePorts.findIndex((candidate) => candidate.id === port.id);
+                                    const compatible = port.direction === 'input' && connectionDraft
+                                        ? canConnectPorts(connectionDraft.sourcePort, port)
+                                        : false;
+                                    return (
+                                        <button
+                                            key={port.id}
+                                            type="button"
+                                            data-canvas-port={port.id}
+                                            onMouseDown={(event) => port.direction === 'output' && handleConnectionStart(event, el, port)}
+                                            onMouseUp={(event) => port.direction === 'input' && handleConnectionFinish(event, el, port)}
+                                            className={`absolute z-50 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-white shadow-sm transition-transform hover:scale-150 ${port.direction === 'input' ? '-left-2' : '-right-2'} ${compatible ? 'scale-150 ring-4 ring-white/60' : ''}`}
+                                            style={{
+                                                top: `${((index + 1) / (sidePorts.length + 1)) * 100}%`,
+                                                backgroundColor: PORT_COLORS[port.kind],
+                                                cursor: port.direction === 'output' ? 'crosshair' : compatible ? 'copy' : 'default',
+                                            }}
+                                            title={`${port.direction === 'input' ? '输入' : '输出'}：${port.label}`}
+                                        />
+                                    );
+                                })}
                                 {el.type === 'image-generator' && (() => {
                                     const metadata = el.generationMetadata;
                                     const outputCount = typeof metadata?.generationRunCount === 'number' ? metadata.generationRunCount : 0;

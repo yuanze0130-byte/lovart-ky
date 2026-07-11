@@ -1,0 +1,17 @@
+{
+  "appName": "tuai",
+  "version": "3.4.4",
+  "title": "恢复项目预览",
+  "view": { "zoom": 1, "centerX": 400, "centerY": 300 },
+  "nodes": [
+    { "id": "text-1", "type": "text-node", "x": 40, "y": 60, "content": "产品主视觉" },
+    { "id": "image-1", "type": "input-image", "x": 360, "y": 60, "content": "data:image/png;base64,AA==" },
+    { "id": "generate-1", "type": "gen-image", "x": 700, "y": 60, "settings": { "prompt": "透明玻璃香水瓶", "model": "gpt-image-2", "ratio": "4:5", "resolution": "2K" } }
+  ],
+  "connections": [
+    { "id": "connection-1", "from": "image-1", "to": "generate-1" }
+  ],
+  "groups": [
+    { "id": "group-1", "nodeIds": ["text-1", "image-1"] }
+  ]
+}

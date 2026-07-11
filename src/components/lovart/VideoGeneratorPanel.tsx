@@ -6,6 +6,7 @@ import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2 } from 
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 import { getStoryboardNodeDimensions, getStoryboardRenderProfile, getStoryboardVideoSizeOptions, formatStoryboardMeta, getStoryboardFrameDeltaLabel, getStoryboardFrameAdaptationLabel, getPreferredStoryboardVideoSize } from '@/hooks/useProjectAssets';
+import { resolveConnectedInputs } from '@/lib/canvas-connections';
 
 export type VideoModelMode = 'standard' | 'fast';
 export type VideoGenerationStartResult = {
@@ -168,6 +169,10 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     }, []);
 
     const currentElement = canvasElements?.find(el => el.id === elementId);
+    const connectedInputs = useMemo(
+        () => resolveConnectedInputs(elementId, canvasElements || []),
+        [canvasElements, elementId]
+    );
     const currentSizeMeta = getSizeMeta(size);
     const availableSizeOptions = useMemo(() => getStoryboardVideoSizeOptions(currentSizeMeta.aspectRatio), [currentSizeMeta.aspectRatio]);
     const shotProgressLabel = currentElement?.storyboardShotIndex && currentElement?.storyboardShotCount
@@ -210,7 +215,11 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
         initializedElementIdRef.current = currentElement.id;
 
-        if (currentElement.referenceImageId) {
+        const connectedReference = connectedInputs.firstFrame || connectedInputs.references[0];
+        if (connectedReference) {
+            setReferenceImage(connectedReference);
+            syncedReferenceImageIdRef.current = null;
+        } else if (currentElement.referenceImageId) {
             const sourceImage = canvasElements.find(el => el.id === currentElement.referenceImageId);
             if (sourceImage?.content) {
                 setReferenceImage(sourceImage.content);
@@ -224,7 +233,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             syncedReferenceImageIdRef.current = null;
         }
 
-        setPrompt(typeof currentElement.prompt === 'string' ? currentElement.prompt : '');
+        setPrompt(connectedInputs.prompt.trim() || (typeof currentElement.prompt === 'string' ? currentElement.prompt : ''));
 
         if (currentElement.storyboardVideoSize) {
             setSize(currentElement.storyboardVideoSize);
@@ -250,7 +259,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         } else {
             setVideoModelMode('standard');
         }
-    }, [canvasElements, currentElement, sizes]);
+    }, [canvasElements, connectedInputs.firstFrame, connectedInputs.prompt, connectedInputs.references, currentElement, sizes]);
 
     // Sync reference image only when the linked source image actually changes.
     useEffect(() => {
@@ -332,10 +341,13 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const handleGenerate = async () => {
         setIsGenerating(true);
         let referenceImageBase64: string | undefined = undefined;
+        const connectedReference = connectedInputs.firstFrame || connectedInputs.references[0];
+        const effectiveReference = connectedReference || referenceImage;
+        const effectivePrompt = connectedInputs.prompt.trim() || prompt;
 
-        if (referenceImage) {
-            if (typeof referenceImage === 'string') {
-                referenceImageBase64 = referenceImage;
+        if (effectiveReference) {
+            if (typeof effectiveReference === 'string') {
+                referenceImageBase64 = effectiveReference;
             } else {
                 referenceImageBase64 = await new Promise<string>((resolve, reject) => {
                     const reader = new FileReader();
@@ -348,14 +360,14 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                         }
                     };
                     reader.onerror = reject;
-                    reader.readAsDataURL(referenceImage);
+                    reader.readAsDataURL(effectiveReference);
                 });
             }
         }
 
         try {
             const data = await startVideoGeneration({
-                prompt,
+                prompt: effectivePrompt,
                 seconds,
                 size,
                 modelMode: videoModelMode,

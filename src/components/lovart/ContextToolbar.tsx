@@ -3,7 +3,6 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw, WandSparkles } from 'lucide-react';
 import { CREDIT_COSTS, getUpscaleCreditCost } from '@/lib/credits';
 import { CanvasElement } from './CanvasArea';
-import { authedFetch } from '@/lib/authed-fetch';
 
 interface ContextToolbarProps {
     element: CanvasElement;
@@ -33,6 +32,7 @@ function RemoveBackgroundIcon({ className = 'w-4 h-4' }: { className?: string })
     );
 }
 
+/* Legacy reverse-prompt icon retained only for source history.
 function ReversePromptIcon({ className = 'w-4 h-4' }: { className?: string }) {
     return (
         <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" className={className} fill="currentColor" aria-hidden="true">
@@ -42,6 +42,7 @@ function ReversePromptIcon({ className = 'w-4 h-4' }: { className?: string }) {
         </svg>
     );
 }
+*/
 
 function AnnotationEditIcon({ className = 'w-4 h-4' }: { className?: string }) {
     return (
@@ -104,26 +105,15 @@ export function ContextToolbar({
     onStartObjectAnnotation,
 }: ContextToolbarProps) {
     const [showEditPanel, setShowEditPanel] = useState(false);
-    const [showReversePromptPanel, setShowReversePromptPanel] = useState(false);
     const [showUpscalePanel, setShowUpscalePanel] = useState(false);
     const [showCropPanel, setShowCropPanel] = useState(false);
     const [selectedUpscale, setSelectedUpscale] = useState<2 | 4>(2);
     const [editPrompt, setEditPrompt] = useState('');
-    const [reversePromptResult, setReversePromptResult] = useState<null | {
-        concisePrompt: string;
-        detailedPrompt: string;
-        negativePrompt?: string;
-        styleTags?: string[];
-        lightingTags?: string[];
-        cameraTags?: string[];
-        notes?: string;
-    }>(null);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isRemovingBg, setIsRemovingBg] = useState(false);
-    const [isReversingPrompt, setIsReversingPrompt] = useState(false);
     const [isUpscaling, setIsUpscaling] = useState(false);
     const [isCropping, setIsCropping] = useState(false);
-    const [hoveredAction, setHoveredAction] = useState<null | 'remove-bg' | 'reverse-prompt' | 'annotate' | 'upscale'>(null);
+    const [hoveredAction, setHoveredAction] = useState<null | 'remove-bg' | 'annotate' | 'upscale'>(null);
     const [cropX, setCropX] = useState(0);
     const [cropY, setCropY] = useState(0);
     const [cropWidth, setCropWidth] = useState(Math.round(element.width || 300));
@@ -218,33 +208,6 @@ export function ContextToolbar({
             alert(error instanceof Error ? error.message : '去背景失败');
         } finally {
             setIsRemovingBg(false);
-        }
-    };
-
-    const handleReversePrompt = async () => {
-        if (!actionableImage?.content) return;
-
-        try {
-            setIsReversingPrompt(true);
-            setShowReversePromptPanel(true);
-            const response = await authedFetch('/api/reverse-prompt', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ imageData: actionableImage.content }),
-            });
-
-            const data = await response.json();
-            if (!response.ok) {
-                throw new Error(data.details || data.error || '反推提示词失败');
-            }
-            setReversePromptResult(data);
-        } catch (error) {
-            alert(error instanceof Error ? error.message : '反推提示词失败');
-            setShowReversePromptPanel(false);
-        } finally {
-            setIsReversingPrompt(false);
         }
     };
 
@@ -461,16 +424,6 @@ export function ContextToolbar({
                             >
                                 <RotateCcw size={18} />
                             </button>
-                            <button
-                                onClick={handleReversePrompt}
-                                onMouseEnter={() => setHoveredAction('reverse-prompt')}
-                                onMouseLeave={() => setHoveredAction((current) => (current === 'reverse-prompt' ? null : current))}
-                                className={`p-2 rounded-lg transition-colors ${isReversingPrompt ? 'bg-gray-100 text-gray-900 dark:bg-white/12 dark:text-white' : 'text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8'}`}
-                                title={`反推提示词 · ${CREDIT_COSTS.reversePrompt} 积分`}
-                                disabled={isReversingPrompt}
-                            >
-                                {isReversingPrompt ? <Loader2 size={18} className="animate-spin" /> : <ReversePromptIcon className="h-[18px] w-[18px]" />}
-                            </button>
                         </>
                     )}
 
@@ -489,7 +442,6 @@ export function ContextToolbar({
                     {hoveredAction && (
                         <div className="pointer-events-none absolute left-1/2 top-full z-30 mt-2 -translate-x-1/2 whitespace-nowrap rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[10px] font-medium text-gray-600 shadow-[0_8px_24px_rgba(15,23,42,0.12)] dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-200 dark:shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
                             {hoveredAction === 'remove-bg' && `去背景 · ${CREDIT_COSTS.removeBackground} 积分`}
-                            {hoveredAction === 'reverse-prompt' && `反推提示词 · ${CREDIT_COSTS.reversePrompt} 积分`}
                             {hoveredAction === 'annotate' && `局部编辑 · ${CREDIT_COSTS.detectObject} 积分 · 进入后可框选局部再编辑`}
                             {hoveredAction === 'upscale' && `超分 · ${getUpscaleCreditCost(selectedUpscale)} 积分起`}
                         </div>
@@ -778,6 +730,7 @@ export function ContextToolbar({
                     </div>
                 )}
 
+                {/* Legacy reverse-prompt panel removed in favor of explicit prompt nodes.
                 {showReversePromptPanel && (
                     <div className="absolute top-full left-1/2 z-50 mt-2 w-[28rem] -translate-x-1/2 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                         <div className="mb-3 flex items-center justify-between">
@@ -847,6 +800,7 @@ export function ContextToolbar({
                         )}
                     </div>
                 )}
+                */}
 
                 {showEditPanel && (
                     <div className="absolute top-full left-1/2 z-50 mt-2 w-80 -translate-x-1/2 rounded-xl border border-gray-200 bg-white p-3 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">

@@ -1,0 +1,404 @@
+import type { CanvasElement, CanvasElementType } from '@/components/lovart/CanvasArea';
+import type { Json } from '@/lib/supabase';
+
+type UnknownRecord = Record<string, unknown>;
+
+export interface QdmyProjectView {
+  zoom: number;
+  centerX: number;
+  centerY: number;
+}
+
+export interface QdmyImportResult {
+  title: string;
+  elements: CanvasElement[];
+  view: QdmyProjectView;
+  warnings: string[];
+  stats: {
+    nodes: number;
+    connections: number;
+    groups: number;
+    skipped: number;
+  };
+}
+
+export interface QdmyExportInput {
+  title: string;
+  elements: CanvasElement[];
+  view?: Partial<QdmyProjectView>;
+}
+
+export interface QdmyMergeResult {
+  elements: CanvasElement[];
+  importedIds: string[];
+}
+
+const DEFAULT_VIEW: QdmyProjectView = { zoom: 1, centerX: 0, centerY: 0 };
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function asRecord(value: unknown): UnknownRecord {
+  return isRecord(value) ? value : {};
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function asJson(value: unknown): Json {
+  return JSON.parse(JSON.stringify(value)) as Json;
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim();
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  return values.find((value): value is number => typeof value === 'number' && Number.isFinite(value));
+}
+
+function resolveRoot(input: unknown): UnknownRecord {
+  const root = asRecord(input);
+  for (const key of ['project', 'data', 'canvas', 'payload']) {
+    const nested = root[key];
+    if (isRecord(nested) && (Array.isArray(nested.nodes) || Array.isArray(nested.connections))) return nested;
+  }
+  return root;
+}
+
+function resolveNodePosition(node: UnknownRecord) {
+  const position = asRecord(node.position);
+  const style = asRecord(node.style);
+  return {
+    x: firstNumber(node.x, position.x, style.left) ?? 0,
+    y: firstNumber(node.y, position.y, style.top) ?? 0,
+    width: firstNumber(node.width, style.width),
+    height: firstNumber(node.height, style.height),
+  };
+}
+
+function mapDesktopType(type: string): CanvasElementType | null {
+  switch (type) {
+    case 'text-node': return 'text';
+    case 'input-image': return 'image';
+    case 'gen-image': return 'image-generator';
+    case 'gen-video': return 'video-generator';
+    case 'inpaint-menu': return 'image-generator';
+    case 'comfy-ui': return 'image-generator';
+    case 'preview': return 'image';
+    case 'image-compare': return 'image';
+    case 'custom-agent': return 'text';
+    case 'storyboard-menu': return 'text';
+    case 'gen-music': return 'text';
+    case 'gen-speech': return 'text';
+    case 'group': return 'shape';
+    case 'connector': return 'connector';
+    default: return null;
+  }
+}
+
+function mapOnlineType(type: CanvasElementType): string {
+  switch (type) {
+    case 'text': return 'text-node';
+    case 'image': return 'input-image';
+    case 'image-generator': return 'gen-image';
+    case 'video-generator': return 'gen-video';
+    case 'video': return 'preview';
+    case 'shape': return 'group';
+    case 'path': return 'preview';
+    case 'connector': return 'connector';
+  }
+}
+
+function normalizeRatio(value: unknown): CanvasElement['requestedAspectRatio'] {
+  const ratio = firstString(value);
+  const supported = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
+  return supported.includes(ratio || '') ? ratio as CanvasElement['requestedAspectRatio'] : undefined;
+}
+
+function normalizeResolution(value: unknown): CanvasElement['requestedResolution'] {
+  const resolution = firstString(value)?.toUpperCase();
+  return resolution === '1K' || resolution === '2K' || resolution === '4K' ? resolution : undefined;
+}
+
+function connectionEndpoints(connection: UnknownRecord) {
+  return {
+    from: firstString(connection.from, connection.source, connection.fromNode, connection.fromNodeId, connection.sourceNodeId),
+    to: firstString(connection.to, connection.target, connection.toNode, connection.toNodeId, connection.targetNodeId),
+  };
+}
+
+function groupMembership(groups: unknown[]) {
+  const memberships = new Map<string, string>();
+  for (const rawGroup of groups) {
+    const group = asRecord(rawGroup);
+    const groupId = firstString(group.id, group.groupId);
+    if (!groupId) continue;
+    for (const nodeId of asArray(group.nodeIds ?? group.nodes ?? group.children)) {
+      if (typeof nodeId === 'string') memberships.set(nodeId, groupId);
+      else if (isRecord(nodeId)) {
+        const id = firstString(nodeId.id, nodeId.nodeId);
+        if (id) memberships.set(id, groupId);
+      }
+    }
+  }
+  return memberships;
+}
+
+function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null {
+  const node = asRecord(rawNode);
+  const id = firstString(node.id, node.nodeId);
+  const desktopType = firstString(node.type, node.nodeType) || '';
+  const type = mapDesktopType(desktopType);
+  if (!id || !type || type === 'connector') return null;
+
+  const settings = asRecord(node.settings);
+  const data = asRecord(node.data);
+  const position = resolveNodePosition(node);
+  const prompt = firstString(node.prompt, settings.prompt, data.prompt, node.nodePrompt);
+  const content = firstString(node.content, node.url, node.filePath, node.path, data.content, data.url, settings.url);
+  const nodeName = firstString(node.nodeName, node.name, node.title, data.label);
+  const model = firstString(node.model, settings.model, data.model);
+  const imageModelId = firstString(node.imageModelId, settings.imageModelId, model);
+  const imageOutputCount = Number(node.imageOutputCount ?? settings.imageOutputCount);
+  const imageExecutionMode = firstString(node.imageExecutionMode, settings.imageExecutionMode);
+  const ratio = normalizeRatio(node.ratio ?? settings.ratio ?? settings.aspectRatio ?? data.ratio);
+  const resolution = normalizeResolution(node.resolution ?? settings.resolution ?? data.resolution);
+  const platformGroup = firstString(node.platformGroup, settings.platformGroup, data.platformGroup);
+
+  const element: CanvasElement = {
+    id,
+    type,
+    x: position.x,
+    y: position.y,
+    width: position.width,
+    height: position.height,
+    groupId: firstString(node.groupId, groupId),
+    prompt,
+    initialPrompt: type === 'image-generator' || type === 'video-generator' ? prompt : undefined,
+    content: type === 'text'
+      ? firstString(content, prompt, nodeName, desktopType === 'custom-agent' ? 'Agent 节点' : desktopType === 'gen-music' ? '音乐生成节点' : desktopType === 'gen-speech' ? '语音生成节点' : desktopType === 'storyboard-menu' ? '分镜表节点' : '文本')
+      : content,
+    requestedAspectRatio: ratio,
+    requestedResolution: resolution,
+    imageModelId: type === 'image-generator' && imageModelId ? imageModelId as CanvasElement['imageModelId'] : undefined,
+    imageOutputCount: type === 'image-generator' && [1, 2, 4, 8].includes(imageOutputCount) ? imageOutputCount : undefined,
+    imageExecutionMode: type === 'image-generator' && (imageExecutionMode === 'parallel' || imageExecutionMode === 'sequential')
+      ? imageExecutionMode
+      : undefined,
+    generationMetadata: model || platformGroup ? {
+      model,
+      desktopPlatformGroup: platformGroup,
+    } : undefined,
+    recoveredDesktop: asJson(node),
+  };
+
+  if (desktopType === 'group') {
+    element.shapeType = 'square';
+    element.color = firstString(node.color, settings.color) || '#E2E8F0';
+  }
+  if (desktopType === 'custom-agent') {
+    element.fontSize = 16;
+    element.color = '#4F46E5';
+  }
+  if (desktopType === 'gen-music' || desktopType === 'gen-speech') {
+    element.fontSize = 15;
+    element.color = '#0F766E';
+  }
+  return element;
+}
+
+export function importQdmyProject(input: unknown): QdmyImportResult {
+  const root = resolveRoot(input);
+  const nodes = asArray(root.nodes);
+  const connections = asArray(root.connections);
+  const groups = asArray(root.groups);
+  const memberships = groupMembership(groups);
+  const warnings: string[] = [];
+  const elements: CanvasElement[] = [];
+  let skipped = 0;
+
+  for (const node of nodes) {
+    const record = asRecord(node);
+    const id = firstString(record.id, record.nodeId);
+    const element = nodeToElement(node, id ? memberships.get(id) : undefined);
+    if (element) elements.push(element);
+    else {
+      skipped += 1;
+      const type = firstString(record.type, record.nodeType) || 'unknown';
+      warnings.push(`未显示节点类型 ${type}，原始数据仍保留在导入文件中。`);
+    }
+  }
+
+  const knownIds = new Set(elements.map((element) => element.id));
+  for (const rawConnection of connections) {
+    const connection = asRecord(rawConnection);
+    const { from, to } = connectionEndpoints(connection);
+    if (!from || !to || !knownIds.has(from) || !knownIds.has(to)) {
+      warnings.push('有一条连线引用了缺失节点，已跳过。');
+      continue;
+    }
+    elements.push({
+      id: firstString(connection.id, connection.connectionId) || `connection-${from}-${to}`,
+      type: 'connector',
+      x: 0,
+      y: 0,
+      connectorFrom: from,
+      connectorTo: to,
+      connectorSourcePort: firstString(connection.sourcePort, connection.sourcePortId),
+      connectorTargetPort: firstString(connection.targetPort, connection.targetPortId),
+      connectorDataKind: firstString(connection.dataKind) as CanvasElement['connectorDataKind'],
+      connectorKind: firstString(connection.kind) as CanvasElement['connectorKind'],
+      connectorOrder: firstNumber(connection.order),
+      connectorStyle: connection.style === 'dashed' ? 'dashed' : 'solid',
+      recoveredDesktop: asJson(connection),
+    });
+  }
+
+  const view = asRecord(root.view);
+  return {
+    title: firstString(root.title, root.name, asRecord(root.meta).title, '桥豆麻衣酱项目') || '桥豆麻衣酱项目',
+    elements,
+    view: {
+      zoom: firstNumber(view.zoom, root.zoom) ?? DEFAULT_VIEW.zoom,
+      centerX: firstNumber(view.centerX, view.x, root.centerX) ?? DEFAULT_VIEW.centerX,
+      centerY: firstNumber(view.centerY, view.y, root.centerY) ?? DEFAULT_VIEW.centerY,
+    },
+    warnings: [...new Set(warnings)],
+    stats: { nodes: nodes.length, connections: connections.length, groups: groups.length, skipped },
+  };
+}
+
+export function exportQdmyProject(input: QdmyExportInput) {
+  const connectors = input.elements.filter((element) => element.type === 'connector');
+  const nodes = input.elements.filter((element) => element.type !== 'connector').map((element) => {
+    const recovered = asRecord(element.recoveredDesktop);
+    const settings = asRecord(recovered.settings);
+    return {
+      ...recovered,
+      id: element.id,
+      type: firstString(recovered.type, recovered.nodeType, mapOnlineType(element.type)),
+      nodeName: firstString(recovered.nodeName, element.storyboardTitle, element.annotationLabel),
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      content: element.content,
+      prompt: firstString(element.prompt, element.initialPrompt),
+      groupId: element.groupId,
+      settings: {
+        ...settings,
+        prompt: firstString(element.prompt, element.initialPrompt),
+        model: firstString(element.imageModelId, element.generationMetadata?.model, settings.model),
+        imageModelId: element.imageModelId,
+        imageOutputCount: element.imageOutputCount,
+        imageExecutionMode: element.imageExecutionMode,
+        platformGroup: firstString(element.generationMetadata?.desktopPlatformGroup, settings.platformGroup),
+        ratio: element.requestedAspectRatio,
+        resolution: element.requestedResolution,
+      },
+    };
+  });
+
+  const connections = connectors.flatMap((element) => {
+    if (!element.connectorFrom || !element.connectorTo) return [];
+    return [{
+      ...asRecord(element.recoveredDesktop),
+      id: element.id,
+      from: element.connectorFrom,
+      to: element.connectorTo,
+      fromNodeId: element.connectorFrom,
+      toNodeId: element.connectorTo,
+      sourcePortId: element.connectorSourcePort,
+      targetPortId: element.connectorTargetPort,
+      dataKind: element.connectorDataKind,
+      kind: element.connectorKind,
+      order: element.connectorOrder,
+      style: element.connectorStyle || 'solid',
+    }];
+  });
+
+  const grouped = new Map<string, string[]>();
+  for (const element of input.elements) {
+    if (!element.groupId || element.type === 'connector') continue;
+    grouped.set(element.groupId, [...(grouped.get(element.groupId) || []), element.id]);
+  }
+
+  return {
+    version: '3.4.4-compatible',
+    appName: 'tuai',
+    title: input.title,
+    view: { ...DEFAULT_VIEW, ...input.view },
+    nodes,
+    connections,
+    groups: [...grouped].map(([id, nodeIds]) => ({ id, nodeIds })),
+    selectedNodeId: null,
+    selectedNodeIds: [],
+    visibleModels: Array.from(new Set(input.elements
+      .map((element) => element.imageModelId)
+      .filter((model): model is NonNullable<CanvasElement['imageModelId']> => Boolean(model)))),
+    availableWorkflows: [],
+    exportedBy: 'lovart-ky',
+    exportedAt: new Date().toISOString(),
+  };
+}
+
+export function mergeQdmyElements(
+  existing: CanvasElement[],
+  incoming: CanvasElement[],
+  offset = { x: 80, y: 80 },
+): QdmyMergeResult {
+  const usedIds = new Set(existing.map((element) => element.id));
+  const idMap = new Map<string, string>();
+  const groupMap = new Map<string, string>();
+
+  const allocateId = (requested: string) => {
+    if (!usedIds.has(requested)) {
+      usedIds.add(requested);
+      return requested;
+    }
+    let suffix = 2;
+    let candidate = `${requested}-imported-${suffix}`;
+    while (usedIds.has(candidate)) candidate = `${requested}-imported-${++suffix}`;
+    usedIds.add(candidate);
+    return candidate;
+  };
+
+  for (const element of incoming) idMap.set(element.id, allocateId(element.id));
+  for (const element of incoming) {
+    if (element.groupId && !groupMap.has(element.groupId)) {
+      groupMap.set(element.groupId, allocateId(`group-${element.groupId}`));
+    }
+  }
+
+  const imported = incoming.map((element) => ({
+    ...element,
+    id: idMap.get(element.id)!,
+    x: element.type === 'connector' ? element.x : element.x + offset.x,
+    y: element.type === 'connector' ? element.y : element.y + offset.y,
+    groupId: element.groupId ? groupMap.get(element.groupId) : undefined,
+    referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) || element.referenceImageId : undefined,
+    connectorFrom: element.connectorFrom ? idMap.get(element.connectorFrom) || element.connectorFrom : undefined,
+    connectorTo: element.connectorTo ? idMap.get(element.connectorTo) || element.connectorTo : undefined,
+    linkedElements: element.linkedElements?.map((id) => idMap.get(id) || id),
+  }));
+
+  return {
+    elements: [...existing, ...imported],
+    importedIds: imported.filter((element) => element.type !== 'connector').map((element) => element.id),
+  };
+}
+
+export function downloadQdmyProject(input: QdmyExportInput) {
+  const project = exportQdmyProject(input);
+  const blob = new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  const safeTitle = (input.title || 'project').replace(/[\\/:*?"<>|]+/g, '_');
+  anchor.href = url;
+  anchor.download = `${safeTitle}.qdmy.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}

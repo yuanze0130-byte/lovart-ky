@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
-import { Plus, Minus, ChevronDown, Sparkles, Cloud, CloudOff, Map as MapIcon } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Cloud, CloudOff, Download, Map as MapIcon, Upload } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { useSearchParams } from 'next/navigation';
@@ -9,10 +9,10 @@ import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
 import { CanvasArea, type CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
-import { AiDesignerPanel } from '@/components/lovart/AiDesignerPanel';
 import { RelightStudioPanel, type RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
 import { AssetsPanel } from '@/components/lovart/AssetsPanel';
+import { ProjectImportPreviewDialog } from '@/components/lovart/ProjectImportPreviewDialog';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
@@ -30,6 +30,9 @@ import { useStoryboardManager } from '@/hooks/useStoryboardManager';
 import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult, AgentImageLayout } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 import { authedFetch } from '@/lib/authed-fetch';
+import { downloadQdmyProject, importQdmyProject, mergeQdmyElements, type QdmyImportResult } from '@/lib/qdmy-project';
+import { normalizeCanvasConnections } from '@/lib/canvas-connections';
+import type { ImageModelId } from '@/lib/image-models';
 
 function LovartCanvasContent() {
     const buildAgentActionMeta = useCallback((result: AgentActionResult): Array<{ label: string; value: string }> => {
@@ -100,9 +103,7 @@ function LovartCanvasContent() {
     const [angleTargetId, setAngleTargetId] = useState<string | null>(null);
     const [angleBatchProgress, setAngleBatchProgress] = useState<{ current: number; total: number } | undefined>(undefined);
     const [isDraggingElement, setIsDraggingElement] = useState(false);
-    const promptFromUrl = useMemo(() => searchParams.get('prompt') || undefined, [searchParams]);
-    const agentModeFromUrl = useMemo(() => (searchParams.get('mode') as AgentMode | null) || 'design', [searchParams]);
-    const [showChat, setShowChat] = useState(Boolean(promptFromUrl));
+    const showChat = false;
     const [assetsCollapsed, setAssetsCollapsed] = useState(false);
     const [showMiniMap, setShowMiniMap] = useState(false);
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
@@ -115,7 +116,10 @@ function LovartCanvasContent() {
     const [annotationSubject, setAnnotationSubject] = useState('');
     const [objectEditPrompt, setObjectEditPrompt] = useState('');
     const miniMapRef = useRef<HTMLDivElement | null>(null);
+    const projectImportRef = useRef<HTMLInputElement | null>(null);
     const lastFocusedRelightTargetRef = useRef<string | null>(null);
+    const [projectTransferStatus, setProjectTransferStatus] = useState<string | null>(null);
+    const [pendingProjectImport, setPendingProjectImport] = useState<QdmyImportResult | null>(null);
 
     const {
         saveStatus,
@@ -128,7 +132,7 @@ function LovartCanvasContent() {
         title,
         onProjectLoaded: ({ title: loadedTitle, elements: loadedElements }) => {
             setTitle(loadedTitle);
-            setElements(loadedElements);
+            setElements(normalizeCanvasConnections(loadedElements));
         },
     });
 
@@ -173,6 +177,56 @@ function LovartCanvasContent() {
         setElements,
         setSelectedIds,
     });
+
+    const handleImportQdmyProject = useCallback(async (file: File) => {
+        try {
+            const parsed = JSON.parse(await file.text()) as unknown;
+            const imported = importQdmyProject(parsed);
+            imported.elements = normalizeCanvasConnections(imported.elements);
+            setPendingProjectImport(imported);
+        } catch (error) {
+            setProjectTransferStatus(`导入失败：${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            window.setTimeout(() => setProjectTransferStatus(null), 5000);
+        }
+    }, []);
+
+    const handleReplaceWithImportedProject = useCallback(() => {
+        if (!pendingProjectImport) return;
+        setTitle(pendingProjectImport.title);
+        setElements(pendingProjectImport.elements);
+        setSelectedIds([]);
+        zoomTo(pendingProjectImport.view.zoom, { x: viewportSize.width / 2, y: viewportSize.height / 2 });
+        setPan({
+            x: viewportSize.width / 2 - pendingProjectImport.view.centerX * pendingProjectImport.view.zoom,
+            y: viewportSize.height / 2 - pendingProjectImport.view.centerY * pendingProjectImport.view.zoom,
+        });
+        setProjectTransferStatus(`已替换为 ${pendingProjectImport.stats.nodes} 个节点的项目`);
+        setPendingProjectImport(null);
+        window.setTimeout(() => setProjectTransferStatus(null), 4000);
+    }, [pendingProjectImport, setPan, viewportSize.height, viewportSize.width, zoomTo]);
+
+    const handleMergeImportedProject = useCallback(() => {
+        if (!pendingProjectImport) return;
+        const merged = mergeQdmyElements(elements, pendingProjectImport.elements);
+        setElements(merged.elements);
+        setSelectedIds(merged.importedIds);
+        setProjectTransferStatus(`已合并 ${pendingProjectImport.stats.nodes} 个节点`);
+        setPendingProjectImport(null);
+        window.setTimeout(() => setProjectTransferStatus(null), 4000);
+    }, [elements, pendingProjectImport]);
+
+    const handleExportQdmyProject = useCallback(() => {
+        const centerX = (viewportSize.width / 2 - pan.x) / scale;
+        const centerY = (viewportSize.height / 2 - pan.y) / scale;
+        downloadQdmyProject({
+            title,
+            elements,
+            view: { zoom: scale, centerX, centerY },
+        });
+        setProjectTransferStatus(`已导出 ${elements.filter((element) => element.type !== 'connector').length} 个节点`);
+        window.setTimeout(() => setProjectTransferStatus(null), 3000);
+    }, [elements, pan.x, pan.y, scale, title, viewportSize.height, viewportSize.width]);
 
     const {
         activeImageId: annotationImageId,
@@ -1692,7 +1746,7 @@ function LovartCanvasContent() {
         generationMetadata: Record<string, unknown> | undefined;
         requestedResolution: Resolution;
         requestedAspectRatio: AspectRatio;
-        returnedModelVariant?: 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
+        returnedModelVariant?: ImageModelId;
         returnedProvider?: GenerationMetadata['provider'];
         returnedProviderMode?: GenerationMetadata['providerMode'];
         providerFallbackUsed?: boolean;
@@ -1779,7 +1833,7 @@ function LovartCanvasContent() {
         prompt: string;
         aspectRatio: AspectRatio;
         resolution: Resolution;
-        modelVariant: 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
+        modelVariant: ImageModelId;
     }) => {
         const targetStoryboardItem = storyboard.find((item) => item.id === input.storyboardItemId);
         const aspectMeta = getStoryboardAspectMeta(input.aspectRatio as StoryboardAspectRatio);
@@ -2232,27 +2286,70 @@ function LovartCanvasContent() {
                                 <span className="text-emerald-300">已保存</span>
                             </>
                         )}
+                        {saveStatus === 'local' && !user && (
+                            <>
+                                <Cloud size={14} className="text-sky-500" />
+                                <span className="text-sky-600 dark:text-sky-300">已保存到本机</span>
+                            </>
+                        )}
                         {saveStatus === 'offline' && (
                             <>
                                 <CloudOff size={14} className="text-red-500" />
                                 <span className="text-red-600">离线</span>
                             </>
                         )}
-                        {!user && <span className="text-amber-600">未登录</span>}
+                        {!user && saveStatus !== 'local' && <span className="text-amber-600">未登录</span>}
                     </div>
                 </div>
 
                 <div className="flex items-center gap-2 pointer-events-auto">
-                    <ThemeToggle />
+                    <input
+                        ref={projectImportRef}
+                        type="file"
+                        accept=".json,.qdmy"
+                        className="hidden"
+                        onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) void handleImportQdmyProject(file);
+                            event.currentTarget.value = '';
+                        }}
+                    />
                     <button
-                        onClick={() => setShowChat((prev) => !prev)}
-                        className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors ${showChat ? 'bg-gray-100' : 'hover:bg-gray-100'}`}
-                        title="Agent"
+                        type="button"
+                        onClick={() => projectImportRef.current?.click()}
+                        className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+                        title="导入桥豆麻衣酱项目"
                     >
-                        <Sparkles size={18} className="text-black" />
+                        <Upload size={15} />
+                        <span>导入</span>
                     </button>
+                    <button
+                        type="button"
+                        onClick={handleExportQdmyProject}
+                        className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
+                        title="导出桥豆麻衣酱兼容项目"
+                    >
+                        <Download size={15} />
+                        <span>导出</span>
+                    </button>
+                    <ThemeToggle />
                 </div>
             </header>
+
+            {projectTransferStatus && (
+                <div className="absolute right-4 top-16 z-[70] max-w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white/96 px-3 py-2 text-sm text-gray-700 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-200">
+                    {projectTransferStatus}
+                </div>
+            )}
+
+            {pendingProjectImport && (
+                <ProjectImportPreviewDialog
+                    project={pendingProjectImport}
+                    onCancel={() => setPendingProjectImport(null)}
+                    onMerge={handleMergeImportedProject}
+                    onReplace={handleReplaceWithImportedProject}
+                />
+            )}
 
             {agentStage !== 'idle' && (
                 <div className="absolute top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-sky-200 bg-white/92 px-4 py-2 text-sm font-medium text-sky-700 shadow-[0_14px_34px_rgba(14,165,233,0.14)] backdrop-blur-xl dark:border-sky-400/20 dark:bg-slate-950/86 dark:text-sky-200">
@@ -2260,17 +2357,6 @@ function LovartCanvasContent() {
                 </div>
             )}
 
-            {showChat && (
-                <div className="absolute top-20 bottom-4 right-4 w-[400px] z-40 animate-in slide-in-from-right-4 duration-300">
-                    <AiDesignerPanel
-                        onGenerate={handleUnifiedAgentSubmit}
-                        isGenerating={isGenerating || isAgentRunning}
-                        onClose={() => setShowChat(false)}
-                        initialPrompt={promptFromUrl}
-                        initialMode={agentModeFromUrl}
-                    />
-                </div>
-            )}
 
             {isRelightWorkspaceOpen && relightFloatingStyle && (
                 <div
@@ -2482,8 +2568,13 @@ function LovartCanvasContent() {
                 {selectedIds.length === 1 && !isDraggingElement && (() => {
                     const selectedEl = elements.find(el => el.id === selectedIds[0]);
                     if (selectedEl?.type === 'image-generator') {
-                        const left = (selectedEl.x * scale) + pan.x;
-                        const top = ((selectedEl.y + (selectedEl.height || 400)) * scale) + pan.y + 20;
+                        const panelWidth = 480;
+                        const panelHeight = Math.min(760, Math.max(420, viewportSize.height - 96));
+                        const reservedRight = shouldShowAssetsPanel && !assetsCollapsed ? 372 : 16;
+                        const desiredLeft = ((selectedEl.x + (selectedEl.width || 400)) * scale) + pan.x + 20;
+                        const desiredTop = (selectedEl.y * scale) + pan.y;
+                        const left = Math.max(16, Math.min(desiredLeft, viewportSize.width - reservedRight - panelWidth));
+                        const top = Math.max(64, Math.min(desiredTop, viewportSize.height - panelHeight - 16));
 
                         return (
                             <ImageGeneratorPanel
@@ -2491,6 +2582,7 @@ function LovartCanvasContent() {
                                 initialMode={selectedEl.initialEditMode}
                                 initialPrompt={selectedEl.initialPrompt}
                                 onGenerate={handleGenerateImage}
+                                onConfigChange={handleElementChange}
                                 isGenerating={isGenerating}
                                 canvasElements={elements}
                                 style={{

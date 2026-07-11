@@ -11,6 +11,8 @@ import type {
 import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { useSupabase } from '@/hooks/useSupabase';
+import { loadLocalCanvasDraft, saveLocalCanvasDraft } from '@/lib/local-canvas-store';
+import { normalizeCanvasConnections } from '@/lib/canvas-connections';
 
 interface UseProjectPersistenceParams {
   user: User | null | undefined;
@@ -30,7 +32,7 @@ export function useProjectPersistence({
   const supabase = useSupabase();
   const router = useRouter();
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(initialProjectId);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'offline'>('saved');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'local' | 'offline'>('saved');
   const [isLoading, setIsLoading] = useState(true);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -40,8 +42,16 @@ export function useProjectPersistence({
   const needsSaveRef = useRef(false);
 
   const performSave = useCallback(async () => {
+    if (user === undefined) return;
     if (!user) {
-      setSaveStatus('offline');
+      try {
+        setSaveStatus('saving');
+        await saveLocalCanvasDraft({ title, elements });
+        setSaveStatus('local');
+      } catch (error) {
+        console.error('Failed to save local project:', error);
+        setSaveStatus('offline');
+      }
       return;
     }
 
@@ -186,7 +196,7 @@ export function useProjectPersistence({
 
         onProjectLoaded({
           title: project?.title || 'Untitled',
-          elements: uniqueElements,
+          elements: normalizeCanvasConnections(uniqueElements),
         });
       } catch (error) {
         console.error('Failed to load project:', error);
@@ -201,11 +211,28 @@ export function useProjectPersistence({
     if (initialProjectId && user && supabase && !hasLoadedRef.current) {
       hasLoadedRef.current = true;
       void loadProject(initialProjectId);
-    } else if (!initialProjectId) {
-      setIsLoading(false);
-      isInitializedRef.current = true;
+    } else if (!initialProjectId && user !== undefined && !hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      if (user === null) {
+        void loadLocalCanvasDraft()
+          .then((draft) => {
+            if (draft) onProjectLoaded({ title: draft.title, elements: normalizeCanvasConnections(draft.elements) });
+            setSaveStatus(draft ? 'local' : 'saved');
+          })
+          .catch((error) => {
+            console.error('Failed to load local project:', error);
+            setSaveStatus('offline');
+          })
+          .finally(() => {
+            setIsLoading(false);
+            isInitializedRef.current = true;
+          });
+      } else {
+        setIsLoading(false);
+        isInitializedRef.current = true;
+      }
     }
-  }, [initialProjectId, loadProject, supabase, user]);
+  }, [initialProjectId, loadProject, onProjectLoaded, supabase, user]);
 
   useEffect(() => {
     if (!isLoading && !isInitializedRef.current && hasLoadedRef.current) {
@@ -214,7 +241,7 @@ export function useProjectPersistence({
   }, [isLoading]);
 
   useEffect(() => {
-    if (!user || isLoading || !isInitializedRef.current) {
+    if (user === undefined || isLoading || !isInitializedRef.current) {
       return;
     }
 

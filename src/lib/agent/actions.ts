@@ -181,7 +181,7 @@ export type AgentActionResult =
       prompt: string;
       aspectRatio: StoryboardAspectRatio;
       resolution: '1K' | '2K' | '4K';
-      modelVariant: 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
+      modelVariant: import('@/lib/image-models').ImageModelId;
       message: string;
     }
   | {

@@ -1,16 +1,16 @@
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import type { UserCreditsRow } from '@/lib/supabase';
+import type { ImageModelId } from '@/lib/image-models';
 
 export const DEFAULT_SIGNUP_CREDITS = 30;
 
-export type ImageModelVariant = 'standard' | 'pro' | 'gpt-image-2' | 'gpt-image-2-official';
+export type ImageModelVariant = ImageModelId;
 export type ImageResolution = '1K' | '2K' | '4K';
 export type VideoModelMode = 'standard' | 'fast';
 export type UpscaleScale = 2 | 4 | 6;
 
 export const CREDIT_COSTS = {
   detectObject: 3,
-  reversePrompt: 3,
   removeBackground: 3,
   generateImage: {
     standard: {
@@ -33,6 +33,15 @@ export const CREDIT_COSTS = {
       '2K': 5,
       '4K': 6,
     },
+    'nano-banana': { '1K': 2, '2K': 3, '4K': 4 },
+    'nano-banana-2': { '1K': 3, '2K': 4, '4K': 5 },
+    'nano-banana-pro': { '1K': 4, '2K': 5, '4K': 6 },
+    'gemini-3.1-flash-image-preview': { '1K': 3, '2K': 4, '4K': 5 },
+    'gpt-image-1': { '1K': 3, '2K': 4, '4K': 5 },
+    'gpt-image-1.5': { '1K': 4, '2K': 5, '4K': 6 },
+    'seedream-4.0': { '1K': 3, '2K': 4, '4K': 5 },
+    'seedream-4.5': { '1K': 4, '2K': 5, '4K': 6 },
+    'qwen-image-edit': { '1K': 3, '2K': 4, '4K': 5 },
   },
   generateVideo: {
     fast: 18,

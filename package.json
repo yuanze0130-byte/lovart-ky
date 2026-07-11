@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:qdmy": "node scripts/test-qdmy-project.mjs",
+    "test:connections": "node scripts/test-canvas-connections.mjs",
+    "test:image-models": "node scripts/test-image-models.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
