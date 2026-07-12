@@ -1,5 +1,6 @@
-import type { CanvasElement, CanvasElementType } from '@/components/lovart/CanvasArea';
+import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { Json } from '@/lib/supabase';
+import { getNodeTypeForQdmyImport, getQdmyExportType } from '@/lib/node-definitions';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -79,41 +80,6 @@ function resolveNodePosition(node: UnknownRecord) {
   };
 }
 
-function mapDesktopType(type: string): CanvasElementType | null {
-  switch (type) {
-    case 'text-node': return 'text';
-    case 'input-image': return 'image';
-    case 'gen-image': return 'image-generator';
-    case 'gen-video': return 'video-generator';
-    case 'inpaint-menu': return 'inpaint';
-    case 'comfy-ui': return 'image-generator';
-    case 'preview': return 'image';
-    case 'image-compare': return 'image-compare';
-    case 'custom-agent': return 'text';
-    case 'storyboard-menu': return 'text';
-    case 'gen-music': return 'text';
-    case 'gen-speech': return 'text';
-    case 'group': return 'shape';
-    case 'connector': return 'connector';
-    default: return null;
-  }
-}
-
-function mapOnlineType(type: CanvasElementType): string {
-  switch (type) {
-    case 'text': return 'text-node';
-    case 'image': return 'input-image';
-    case 'image-generator': return 'gen-image';
-    case 'video-generator': return 'gen-video';
-    case 'video': return 'preview';
-    case 'image-compare': return 'image-compare';
-    case 'inpaint': return 'inpaint-menu';
-    case 'shape': return 'group';
-    case 'path': return 'preview';
-    case 'connector': return 'connector';
-  }
-}
-
 function normalizeRatio(value: unknown): CanvasElement['requestedAspectRatio'] {
   const ratio = firstString(value);
   const supported = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
@@ -153,7 +119,7 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
   const node = asRecord(rawNode);
   const id = firstString(node.id, node.nodeId);
   const desktopType = firstString(node.type, node.nodeType) || '';
-  const type = mapDesktopType(desktopType);
+  const type = getNodeTypeForQdmyImport(desktopType);
   if (!id || !type || type === 'connector') return null;
 
   const settings = asRecord(node.settings);
@@ -291,7 +257,7 @@ export function exportQdmyProject(input: QdmyExportInput) {
     return {
       ...recovered,
       id: element.id,
-      type: firstString(recovered.type, recovered.nodeType, mapOnlineType(element.type)),
+      type: firstString(recovered.type, recovered.nodeType, getQdmyExportType(element.type)),
       nodeName: firstString(recovered.nodeName, element.storyboardTitle, element.annotationLabel),
       x: element.x,
       y: element.y,

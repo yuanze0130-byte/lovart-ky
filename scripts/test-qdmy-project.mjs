@@ -7,7 +7,10 @@ import { pathToFileURL } from 'node:url';
 const root = path.resolve(import.meta.dirname, '..');
 const sourcePath = path.join(root, 'src', 'lib', 'qdmy-project.ts');
 const outputPath = path.join(root, 'tmp', 'qdmy-project.test.mjs');
+const definitionsSourcePath = path.join(root, 'src', 'lib', 'node-definitions.ts');
+const definitionsOutputPath = path.join(root, 'tmp', 'node-definitions.test.mjs');
 const source = fs.readFileSync(sourcePath, 'utf8');
+const definitionsSource = fs.readFileSync(definitionsSourcePath, 'utf8');
 const compiled = ts.transpileModule(source, {
   compilerOptions: {
     module: ts.ModuleKind.ESNext,
@@ -15,8 +18,16 @@ const compiled = ts.transpileModule(source, {
   },
   fileName: sourcePath,
 });
+const definitionsCompiled = ts.transpileModule(definitionsSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ESNext,
+    target: ts.ScriptTarget.ES2022,
+  },
+  fileName: definitionsSourcePath,
+});
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-fs.writeFileSync(outputPath, compiled.outputText);
+fs.writeFileSync(definitionsOutputPath, definitionsCompiled.outputText);
+fs.writeFileSync(outputPath, compiled.outputText.replace(/from ['"]@\/lib\/node-definitions['"]/, "from './node-definitions.test.mjs'"));
 
 try {
   const { exportQdmyProject, importQdmyProject, mergeQdmyElements } = await import(`${pathToFileURL(outputPath).href}?t=${Date.now()}`);
@@ -118,4 +129,5 @@ try {
   console.log('QDMY project compatibility: 6 nodes, 2 connections, and 1 group passed round-trip verification.');
 } finally {
   fs.rmSync(outputPath, { force: true });
+  fs.rmSync(definitionsOutputPath, { force: true });
 }

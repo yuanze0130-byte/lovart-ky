@@ -7,6 +7,14 @@ import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 import { getStoryboardNodeDimensions, getStoryboardRenderProfile, getStoryboardVideoSizeOptions, formatStoryboardMeta, getStoryboardFrameDeltaLabel, getStoryboardFrameAdaptationLabel, getPreferredStoryboardVideoSize } from '@/hooks/useProjectAssets';
 import { resolveConnectedInputs } from '@/lib/canvas-connections';
+import {
+  isGenerationJobReady,
+  normalizeGenerationJobStatus,
+  normalizeProviderStatus,
+  normalizeVideoGenerationJob,
+  type GenerationJobFailureKind,
+  type GenerationJobStatus,
+} from '@/lib/generation-jobs';
 
 export type VideoModelMode = 'standard' | 'fast';
 export type VideoGenerationStartResult = {
@@ -15,6 +23,7 @@ export type VideoGenerationStartResult = {
   model?: string;
   modelMode?: VideoModelMode;
   ratio?: string;
+  jobStatus?: GenerationJobStatus;
 };
 
 export type VideoGenerationStatusResult = {
@@ -26,27 +35,30 @@ export type VideoGenerationStatusResult = {
   createdAt?: string | number;
   size?: string;
   seconds?: number;
+  jobStatus?: GenerationJobStatus;
+  failureKind?: GenerationJobFailureKind;
 };
 
-const VIDEO_SUCCESS_STATUSES = new Set(['succeeded', 'completed', 'success']);
-const VIDEO_FAILURE_STATUSES = new Set(['failed', 'error', 'cancelled', 'canceled', 'timeout', 'expired']);
-
 export function normalizeVideoGenerationStatus(status?: string | null) {
-  return (status || '').trim().toLowerCase();
+  return normalizeProviderStatus(status);
 }
 
 export function isVideoGenerationSuccessful(status?: string | null) {
-  return VIDEO_SUCCESS_STATUSES.has(normalizeVideoGenerationStatus(status));
+  return normalizeGenerationJobStatus(status) === 'succeeded';
 }
 
 export function isVideoGenerationFailed(status?: string | null) {
-  return VIDEO_FAILURE_STATUSES.has(normalizeVideoGenerationStatus(status));
+  const normalized = normalizeGenerationJobStatus(status);
+  return normalized === 'failed' || normalized === 'cancelled';
 }
 
 export function isVideoGenerationReady(result: Pick<VideoGenerationStatusResult, 'status' | 'progress' | 'videoUrl'>) {
-  if (!result.videoUrl) return false;
-  if (typeof result.progress === 'number' && result.progress >= 100) return true;
-  return isVideoGenerationSuccessful(result.status);
+  return isGenerationJobReady(normalizeVideoGenerationJob({
+    id: 'video-status',
+    status: result.status,
+    progress: result.progress,
+    outputUrl: result.videoUrl,
+  }));
 }
 
 export async function startVideoGeneration(input: {
@@ -294,27 +306,40 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             pollingIntervalRef.current = setInterval(async () => {
                 try {
                     const data = await getVideoGenerationStatus(taskId);
+                    const job = normalizeVideoGenerationJob({
+                        id: taskId,
+                        nodeId: elementId,
+                        status: data.jobStatus || data.status,
+                        progress: data.progress,
+                        outputUrl: data.videoUrl,
+                        model: data.model,
+                        rawPayload: data,
+                    });
 
                     console.log('Video status:', data);
-                    setProgress(data.progress || 0);
+                    setProgress(job.progress);
 
-                    if (isVideoGenerationReady(data) && data.videoUrl) {
+                    if (isGenerationJobReady(job) && job.outputUrl) {
                         if (pollingIntervalRef.current) {
                             clearInterval(pollingIntervalRef.current);
                         }
-                        console.log('Video ready! URL:', data.videoUrl);
-                        await onGenerate(data.videoUrl);
+                        console.log('Video ready! URL:', job.outputUrl);
+                        await onGenerate(job.outputUrl);
                         setIsGenerating(false);
                         setTaskId(null);
                         setProgress(0);
-                    } else if (isVideoGenerationFailed(data.status)) {
+                    } else if (job.status === 'failed' || job.status === 'cancelled') {
                         if (pollingIntervalRef.current) {
                             clearInterval(pollingIntervalRef.current);
                         }
                         setIsGenerating(false);
                         setTaskId(null);
                         setProgress(0);
-                        alert('视频生成失败，请重试');
+                        alert(job.failureKind === 'cancelled'
+                            ? '视频生成已取消'
+                            : job.failureKind === 'timeout' || job.failureKind === 'expired'
+                                ? '视频生成等待超时，请重试'
+                                : '视频生成失败，请重试');
                     }
                 } catch (error) {
                     console.error('Error polling video status:', error);
@@ -327,7 +352,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                 }
             };
         }
-    }, [taskId, isGenerating, onGenerate]);
+    }, [elementId, taskId, isGenerating, onGenerate]);
 
     const handleKeyDown = async (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {

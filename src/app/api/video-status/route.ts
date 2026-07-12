@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
+import {
+  getGenerationJobFailureKind,
+  normalizeGenerationJobStatus,
+  normalizeGenerationProgress,
+  normalizeProviderStatus,
+} from '@/lib/generation-jobs';
 
 function stringifyErrorPayload(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -82,7 +88,8 @@ export async function GET(request: NextRequest) {
     }
 
     const nestedStatus = data.data?.status;
-    const normalizedStatus = (nestedStatus || data.status || '').toLowerCase();
+    const normalizedStatus = normalizeProviderStatus(nestedStatus || data.status);
+    const jobStatus = normalizeGenerationJobStatus(normalizedStatus || 'running');
 
     const resolvedVideoUrl =
       data.video_url ||
@@ -97,25 +104,20 @@ export async function GET(request: NextRequest) {
       data.data?.content?.url ||
       data.data?.content?.urls?.[0];
 
-    const resolvedProgress = typeof data.progress === 'number'
-      ? data.progress
-      : typeof data.progress === 'string' && data.progress.endsWith('%')
-        ? Number.parseInt(data.progress, 10)
-        : normalizedStatus === 'succeeded' || normalizedStatus === 'completed' || normalizedStatus === 'success'
-          ? 100
-          : normalizedStatus === 'failed'
-            ? 0
-            : 50;
+    const resolvedProgress = normalizeGenerationProgress(data.progress, jobStatus);
 
     return NextResponse.json({
       id: data.id || data.task_id,
       status: normalizedStatus || data.status,
+      jobStatus,
+      failureKind: getGenerationJobFailureKind(normalizedStatus),
       progress: resolvedProgress,
       videoUrl: resolvedVideoUrl,
       model: data.model,
       createdAt: data.created_at,
       size: data.size,
       seconds: data.seconds,
+      error: data.data?.fail_reason,
     });
   } catch (error: unknown) {
     if (isNotAuthenticatedError(error)) {

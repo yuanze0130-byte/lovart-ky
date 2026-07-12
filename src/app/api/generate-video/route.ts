@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, getVideoCreditCost, refundCredits } from '@/lib/credits';
+import { normalizeGenerationJobStatus } from '@/lib/generation-jobs';
 
 type VideoModelMode = 'standard' | 'fast';
 type SupportedVideoRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3' | '4:5';
@@ -171,6 +172,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       taskId,
       status: data.status,
+      jobStatus: normalizeGenerationJobStatus(data.status || 'queued'),
       model: effectiveModel,
       modelMode: selectedMode,
       ratio,

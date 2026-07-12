@@ -33,13 +33,30 @@ try {
     resolveConnectedInputs,
     wouldCreateConnectionCycle,
   } = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
-  const { getCreateMenuNodeDefinitions, listNodeDefinitions } = await import(`${pathToFileURL(definitionsOutputPath).href}?v=${Date.now()}`);
+  const {
+    getCreateMenuNodeDefinitions,
+    getNodeDefaultState,
+    getNodeTypeForQdmyImport,
+    getQdmyExportType,
+    listNodeDefinitions,
+  } = await import(`${pathToFileURL(definitionsOutputPath).href}?v=${Date.now()}`);
 
   const definitions = listNodeDefinitions();
-  assert.ok(definitions.length >= 10, 'all current canvas node types should be registered');
+  assert.deepEqual(definitions.map((definition) => definition.type).sort(), [
+    'connector', 'image', 'image-compare', 'image-generator', 'inpaint',
+    'path', 'shape', 'text', 'video', 'video-generator',
+  ]);
   assert.deepEqual(getCreateMenuNodeDefinitions().map((definition) => definition.type), [
     'image-generator', 'video-generator', 'image-compare', 'inpaint',
   ]);
+  assert.equal(getNodeDefaultState('image-compare').imageCompareSplit, 50);
+  assert.equal(getNodeDefaultState('inpaint').inpaintFeather, 4);
+  assert.equal(getNodeTypeForQdmyImport('custom-agent'), 'text');
+  assert.equal(getNodeTypeForQdmyImport('comfy-ui'), 'image-generator');
+  assert.equal(getNodeTypeForQdmyImport('gen-music'), 'text');
+  assert.equal(getNodeTypeForQdmyImport('gen-speech'), 'text');
+  assert.equal(getQdmyExportType('image-compare'), 'image-compare');
+  assert.equal(getQdmyExportType('inpaint'), 'inpaint-menu');
 
   const textNode = { id: 'prompt', type: 'text', x: 0, y: 0, content: 'cinematic portrait' };
   const imageNode = { id: 'reference', type: 'image', x: 0, y: 100, content: 'data:image/png;base64,abc' };
