@@ -3,6 +3,8 @@
 /* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
 import React, { useState, useRef } from 'react';
 import { X, Loader2, Sparkles, Image as ImageIcon, ChevronDown, Zap } from 'lucide-react';
+import { authedFetch } from '@/lib/authed-fetch';
+import { uploadReferenceImages } from '@/lib/reference-image-upload';
 
 interface ImageGeneratorDialogProps {
     isOpen: boolean;
@@ -120,7 +122,11 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
                 ? await downscaleReferenceImage(referenceImage)
                 : null;
 
-            const response = await fetch('/api/generate-image', {
+            const referenceImages = referenceDataBase64
+                ? await uploadReferenceImages([referenceDataBase64])
+                : [];
+
+            const response = await authedFetch('/api/generate-image', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -129,8 +135,7 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
                     prompt,
                     resolution,
                     aspectRatio,
-                    referenceImage: referenceDataBase64,
-                    mimeType: referenceImage?.type
+                    referenceImages,
                 }),
             });
 

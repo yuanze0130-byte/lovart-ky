@@ -7,6 +7,7 @@ import { authedFetch } from '@/lib/authed-fetch';
 import { resolveConnectedInputs } from '@/lib/canvas-connections';
 import { isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { addGenerationHistoryItem } from '@/lib/generation-history';
+import { uploadReferenceImages } from '@/lib/reference-image-upload';
 
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type OfficialImageOptions = {
@@ -172,7 +173,7 @@ export async function requestImageGeneration(input: {
     aspectRatio,
     officialOptions,
   });
-  const primaryReference = referenceImages[0];
+  const uploadedReferenceImages = await uploadReferenceImages(referenceImages);
 
   const response = await authedFetch('/api/generate-image', {
     method: 'POST',
@@ -183,11 +184,9 @@ export async function requestImageGeneration(input: {
       prompt: finalPrompt,
       resolution,
       aspectRatio,
-      referenceImage: primaryReference,
-      referenceImages,
+      referenceImages: uploadedReferenceImages,
       modelVariant,
       editMode,
-      mimeType: primaryReference ? 'image/jpeg' : undefined,
       officialOptions,
       relight,
     }),
