@@ -35,6 +35,25 @@ export function canConnectPorts(source: CanvasPortDefinition, target: CanvasPort
     && (source.kind === target.kind || source.kind === 'any' || target.kind === 'any');
 }
 
+export function getPreferredCompatibleInputPort(element: CanvasElement, sourcePort: CanvasPortDefinition) {
+  const compatibleInputs = getNodePorts(element).filter(
+    (port) => port.direction === 'input' && canConnectPorts(sourcePort, port),
+  );
+  if (compatibleInputs.length === 0) return undefined;
+
+  const preferredPortIds = sourcePort.kind === 'image'
+    ? ['reference-in', 'first-frame-in', 'image-in', 'compare-a-in', 'compare-b-in', 'last-frame-in']
+    : sourcePort.kind === 'prompt'
+      ? ['prompt-in']
+      : sourcePort.kind === 'video'
+        ? ['video-in']
+        : [];
+
+  return preferredPortIds
+    .map((portId) => compatibleInputs.find((port) => port.id === portId))
+    .find(Boolean) || compatibleInputs[0];
+}
+
 export function wouldCreateConnectionCycle(elements: CanvasElement[], sourceId: string, targetId: string) {
   if (sourceId === targetId) return true;
   const outgoing = new Map<string, string[]>();

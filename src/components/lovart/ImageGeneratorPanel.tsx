@@ -14,6 +14,7 @@ import {
   type ImageModelId,
 } from '@/lib/image-models';
 import { DEFAULT_IMAGE_MODEL_PREFERENCES, loadImageModelPreferences, saveImageModelPreferences, type ImageModelPreferences } from '@/lib/image-model-preferences';
+import { resolveConnectedInputs } from '@/lib/canvas-connections';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
@@ -129,6 +130,18 @@ export function ImageGeneratorPanel({
   const selectedElement = useMemo(
     () => canvasElements.find((item) => item.id === elementId),
     [canvasElements, elementId]
+  );
+  const connectedInputs = useMemo(
+    () => resolveConnectedInputs(elementId, canvasElements),
+    [canvasElements, elementId]
+  );
+  const connectedReferenceImages = useMemo(
+    () => Array.from(new Set(connectedInputs.references.filter(Boolean))),
+    [connectedInputs.references]
+  );
+  const displayedReferenceImages = useMemo(
+    () => Array.from(new Set([...connectedReferenceImages, ...referenceImages].filter(Boolean))),
+    [connectedReferenceImages, referenceImages]
   );
 
   const boundReferenceElement = useMemo(() => {
@@ -278,9 +291,10 @@ export function ImageGeneratorPanel({
   };
 
   const handleSubmit = async () => {
-    if (!prompt.trim() || isBusy) return;
+    const effectivePrompt = connectedInputs.prompt.trim() || prompt.trim();
+    if (!effectivePrompt || isBusy) return;
 
-    const effectiveReferenceImages = referenceImages.filter(Boolean);
+    const effectiveReferenceImages = displayedReferenceImages;
     if (modelDefinition.requiresReference && effectiveReferenceImages.length === 0) {
       alert(`${modelDefinition.label} 需要至少一张参考图。`);
       return;
@@ -307,7 +321,7 @@ export function ImageGeneratorPanel({
 
     const generateOne = async () => {
       await onGenerate(
-        prompt.trim(),
+        effectivePrompt,
         resolution,
         aspectRatio,
         effectiveReferenceImages,
@@ -503,7 +517,12 @@ export function ImageGeneratorPanel({
         </div>
         */}
 
-        <div className="mb-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">Prompt</div>
+        <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
+          <span>Prompt</span>
+          {connectedInputs.prompt && (
+            <span className="rounded-full bg-amber-50 px-2 py-1 normal-case tracking-normal text-amber-700 dark:bg-amber-500/12 dark:text-amber-200">已连接提示词</span>
+          )}
+        </div>
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
@@ -512,42 +531,43 @@ export function ImageGeneratorPanel({
           disabled={isGenerating}
         />
 
-        {!!referenceImages.length && (
+        {!!displayedReferenceImages.length && (
           <div className="mb-4">
             {selectedElement?.type === 'image-generator' && (
               <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
-                <span className={`inline-flex items-center rounded-full px-2 py-1 font-medium ${boundReferenceElement ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-200' : 'bg-gray-100 text-gray-500 dark:bg-white/8 dark:text-slate-400'}`}>
-                  {boundReferenceElement ? '已绑定参考图' : '未绑定参考图'}
+                <span className={`inline-flex items-center rounded-full px-2 py-1 font-medium ${connectedReferenceImages.length > 0 || boundReferenceElement ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-200' : 'bg-gray-100 text-gray-500 dark:bg-white/8 dark:text-slate-400'}`}>
+                  {connectedReferenceImages.length > 0 ? `已连线 ${connectedReferenceImages.length} 张参考图` : boundReferenceElement ? '已绑定参考图' : '本地参考图'}
                 </span>
-                {boundReferenceElement && (
+                {(connectedReferenceImages.length > 0 || boundReferenceElement) && (
                   <span className="truncate">
-                    当前动作将基于这张绑定图片执行。
+                    生成时会自动使用这些图片，无需重复上传。
                   </span>
                 )}
               </div>
             )}
 
             <div className="flex flex-wrap gap-2">
-              {referenceImages.map((image, index) => {
+              {displayedReferenceImages.map((image, index) => {
                 const isBoundReference = Boolean(boundReferenceImage && image === boundReferenceImage);
+                const isConnectedReference = connectedReferenceImages.includes(image);
 
                 return (
                   <div
                     key={`${image}-${index}`}
-                    className={`relative h-16 w-16 overflow-hidden rounded-xl border ${isBoundReference ? 'border-emerald-400 ring-2 ring-emerald-200 dark:border-emerald-300 dark:ring-emerald-500/30' : 'border-gray-200'}`}
+                    className={`relative h-16 w-16 overflow-hidden rounded-xl border ${isBoundReference || isConnectedReference ? 'border-emerald-400 ring-2 ring-emerald-200 dark:border-emerald-300 dark:ring-emerald-500/30' : 'border-gray-200'}`}
                   >
                     <img src={image} alt={`reference-${index}`} className="h-full w-full object-cover" />
-                    {isBoundReference && (
+                    {(isBoundReference || isConnectedReference) && (
                       <div className="absolute left-1 top-1 rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm">
-                        绑定
+                        {isConnectedReference ? '连线' : '绑定'}
                       </div>
                     )}
                     <button
                       type="button"
-                      onClick={() => setReferenceImages((prev) => prev.filter((_, idx) => idx !== index))}
+                      onClick={() => setReferenceImages((prev) => prev.filter((item) => item !== image))}
                       className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"
-                      disabled={isGenerating || isBoundReference}
-                      title={isBoundReference ? '当前绑定参考图不可在这里移除，请先更换绑定目标。' : '移除参考图'}
+                      disabled={isGenerating || isBoundReference || isConnectedReference}
+                      title={isConnectedReference ? '请在画布上删除这条参考图连线。' : isBoundReference ? '当前绑定参考图不可在这里移除，请先更换绑定目标。' : '移除参考图'}
                     >
                       <X size={10} />
                     </button>

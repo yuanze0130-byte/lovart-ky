@@ -15,6 +15,7 @@ import {
     canConnectPorts,
     connectionKindForPorts,
     getNodePorts,
+    getPreferredCompatibleInputPort,
     getPortAnchor,
     inferLegacyPorts,
     resolveConnectedNodeContents,
@@ -24,6 +25,13 @@ import {
 import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-models';
 
 export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'inpaint' | 'connector';
+
+const SMART_CONNECTION_TARGET_TYPES = new Set<CanvasElementType>([
+    'image-generator',
+    'video-generator',
+    'image-compare',
+    'inpaint',
+]);
 
 export interface GenerationMetadata extends Record<string, Json | undefined> {
     sourcePrompt?: string;
@@ -851,7 +859,7 @@ export function CanvasArea({
             color: PORT_COLORS[draft.sourcePort.kind],
         };
         onAddElement(connector);
-        onSelect([connector.id]);
+        onSelect([target.id]);
     };
 
     const handleMouseUp = () => {
@@ -954,6 +962,14 @@ export function CanvasArea({
     const selectedElement = elements.find((el) => selectedIds.includes(el.id));
     const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
     const elementById = useMemo(() => new Map(elements.map((element) => [element.id, element])), [elements]);
+    const referenceConnectionCountByTarget = useMemo(() => {
+        const counts = new Map<string, number>();
+        elements.forEach((element) => {
+            if (element.type !== 'connector' || !element.connectorTo || element.connectorTargetPort !== 'reference-in') return;
+            counts.set(element.connectorTo, (counts.get(element.connectorTo) || 0) + 1);
+        });
+        return counts;
+    }, [elements]);
     const viewportBounds = useMemo(() => {
         if (viewportWidth <= 0 || viewportHeight <= 0) return null;
         const overscan = 500 / Math.max(scale, 0.2);
@@ -1579,7 +1595,13 @@ export function CanvasArea({
                         const from = getPortAnchor(source, connectionDraft.sourcePort.id, 'output');
                         const to = connectionDraft.pointer;
                         const bend = Math.max(80, Math.abs(to.x - from.x) * 0.45);
-                        return <path d={`M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`} fill="none" stroke={PORT_COLORS[connectionDraft.sourcePort.kind]} strokeWidth={2.5} strokeDasharray="6 4" />;
+                        const curve = `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`;
+                        return (
+                            <g>
+                                <path d={curve} fill="none" stroke="white" strokeOpacity={0.72} strokeWidth={7} />
+                                <path d={curve} fill="none" stroke={PORT_COLORS[connectionDraft.sourcePort.kind]} strokeWidth={3} />
+                            </g>
+                        );
                     })()}
                     <defs>
                         <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
@@ -1594,7 +1616,12 @@ export function CanvasArea({
                             <div
                                 key={el.id}
                                 data-canvas-element="true"
-                                className={`absolute group ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''}`}
+                                className={`absolute group rounded-xl transition-[box-shadow] ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''} ${connectionDraft
+                                    && connectionDraft.sourceNodeId !== el.id
+                                    && SMART_CONNECTION_TARGET_TYPES.has(el.type)
+                                    && getPreferredCompatibleInputPort(el, connectionDraft.sourcePort)
+                                    ? 'ring-2 ring-sky-400/70 ring-offset-4 ring-offset-transparent hover:ring-4 hover:ring-emerald-400/80'
+                                    : ''}`}
                                 style={{
                                     left: el.x,
                                     top: el.y,
@@ -1603,6 +1630,11 @@ export function CanvasArea({
                                     pointerEvents: activeTool === 'draw' ? 'none' : 'auto',
                                 }}
                                 onMouseDown={(e) => handleMouseDown(e, el.id, el.x, el.y, el.width, el.height)}
+                                onMouseUp={(event) => {
+                                    if (!connectionDraft || connectionDraft.sourceNodeId === el.id || !SMART_CONNECTION_TARGET_TYPES.has(el.type)) return;
+                                    const targetPort = getPreferredCompatibleInputPort(el, connectionDraft.sourcePort);
+                                    if (targetPort) handleConnectionFinish(event, el, targetPort);
+                                }}
                                 onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
                             >
                                 {getNodePorts(el).map((port) => {
@@ -1618,20 +1650,28 @@ export function CanvasArea({
                                             data-canvas-port={port.id}
                                             onMouseDown={(event) => port.direction === 'output' && handleConnectionStart(event, el, port)}
                                             onMouseUp={(event) => port.direction === 'input' && handleConnectionFinish(event, el, port)}
-                                            className={`absolute z-50 h-3.5 w-3.5 -translate-y-1/2 rounded-full border-2 border-white shadow-sm transition-transform hover:scale-150 ${port.direction === 'input' ? '-left-2' : '-right-2'} ${compatible ? 'scale-150 ring-4 ring-white/60' : ''}`}
+                                            aria-label={`${port.direction === 'input' ? '输入' : '输出'}：${port.label}`}
+                                            className={`absolute z-50 h-5 w-5 touch-none -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_3px_12px_rgba(15,23,42,0.3)] transition-transform hover:scale-125 ${port.direction === 'input' ? '-left-2.5' : '-right-2.5'} ${compatible ? 'scale-125 ring-4 ring-white/60' : ''}`}
                                             style={{
                                                 top: `${((index + 1) / (sidePorts.length + 1)) * 100}%`,
                                                 backgroundColor: PORT_COLORS[port.kind],
                                                 cursor: port.direction === 'output' ? 'crosshair' : compatible ? 'copy' : 'default',
                                             }}
                                             title={`${port.direction === 'input' ? '输入' : '输出'}：${port.label}`}
-                                        />
+                                        >
+                                            <span
+                                                className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-white/10 bg-slate-950/90 px-2 py-1 text-[10px] font-medium text-white shadow-lg backdrop-blur-sm transition-opacity ${port.direction === 'input' ? 'left-6' : 'right-6'} ${selectedIds.includes(el.id) || compatible || connectionDraft?.sourceNodeId === el.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                            >
+                                                {el.type === 'image' && port.id === 'image-out' ? '拖出作为参考图' : port.label}
+                                            </span>
+                                        </button>
                                     );
                                 })}
                                 {el.type === 'image-generator' && (() => {
                                     const metadata = el.generationMetadata;
                                     const outputCount = typeof metadata?.generationRunCount === 'number' ? metadata.generationRunCount : 0;
-                                    const hasReference = typeof el.referenceImageId === 'string' && el.referenceImageId.length > 0;
+                                    const connectedReferenceCount = referenceConnectionCountByTarget.get(el.id) || 0;
+                                    const hasReference = connectedReferenceCount > 0 || (typeof el.referenceImageId === 'string' && el.referenceImageId.length > 0);
                                     const lastModel = typeof metadata?.lastGeneratedModelVariant === 'string'
                                         ? metadata.lastGeneratedModelVariant
                                         : typeof metadata?.lastGeneratedProvider === 'string'
@@ -1654,7 +1694,7 @@ export function CanvasArea({
                                                 </div>
                                                 <div className="flex flex-wrap justify-end gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
                                                     <span className="rounded-full border border-sky-300/20 bg-sky-400/12 px-2.5 py-1 text-sky-50">{outputCount > 0 ? `已输出 ${outputCount}` : '待生成'}</span>
-                                                    {hasReference && <span className="rounded-full border border-emerald-300/20 bg-emerald-400/12 px-2.5 py-1 text-emerald-50">参考图</span>}
+                                                    {hasReference && <span className="rounded-full border border-emerald-300/20 bg-emerald-400/12 px-2.5 py-1 text-emerald-50">参考图{connectedReferenceCount > 0 ? ` ${connectedReferenceCount}` : ''}</span>}
                                                 </div>
                                             </div>
                                             <div className="relative">
