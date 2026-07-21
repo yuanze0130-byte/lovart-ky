@@ -44,6 +44,7 @@ interface ImageGeneratorPanelProps {
       outputFormat?: OfficialOutputFormat;
       moderation?: OfficialModeration;
     },
+    targetElementId?: string,
   ) => Promise<void>;
   isGenerating: boolean;
   style?: React.CSSProperties;
@@ -289,23 +290,6 @@ export function ImageGeneratorPanel({
       return;
     }
 
-    let promptPatch = '';
-    if (editMode === 'relight') {
-      promptPatch = '保留主体、构图和关键形态，重点调整光线方向、受光面、阴影层次和整体氛围，让画面像重新布光后的版本。';
-    }
-    if (editMode === 'restyle') {
-      promptPatch = '保留主体、构图和主要视觉锚点，重点调整风格、材质质感、色彩语言和整体艺术方向。';
-    }
-    if (editMode === 'background') {
-      promptPatch = '尽量保持主体形象、姿态和构图稳定，重点替换或重构背景环境、景深关系与空间氛围。';
-    }
-    if (editMode === 'enhance') {
-      promptPatch = '增强图片细节、材质、边缘清晰度和整体完成度，保持主体和构图稳定。';
-    }
-    if (editMode === 'angle') {
-      promptPatch = '尽量保留主体身份、款式、材质和关键构图锚点，重点调整相机视角、朝向、透视关系与可见结构。';
-    }
-
     setProgress(8);
     setGenerationStatus('正在提交到中转站…');
     const steps = [18, 36, 54, 72, 88];
@@ -329,10 +313,10 @@ export function ImageGeneratorPanel({
         effectiveReferenceImages,
         modelVariant,
         editMode,
-        promptPatch,
+        undefined,
         editMode === 'generate' ? undefined : editMode,
         editMode === 'generate' ? undefined : activeMeta.title,
-        editMode === 'generate' ? undefined : promptPatch,
+        undefined,
         isOfficialModel
           ? {
               quality: officialQuality,
@@ -341,6 +325,7 @@ export function ImageGeneratorPanel({
               moderation: officialModeration,
             }
           : undefined,
+        elementId,
       );
     };
 

@@ -94,7 +94,7 @@ BEGIN
     CREATE POLICY "Users can view their own projects"
       ON projects
       FOR SELECT
-      USING (auth.jwt()->>'sub' = user_id);
+      USING (((select auth.jwt())->>'sub') = user_id);
   END IF;
 
   IF NOT EXISTS (
@@ -104,7 +104,7 @@ BEGIN
     CREATE POLICY "Users can insert their own projects"
       ON projects
       FOR INSERT
-      WITH CHECK (auth.jwt()->>'sub' = user_id);
+      WITH CHECK (((select auth.jwt())->>'sub') = user_id);
   END IF;
 
   IF NOT EXISTS (
@@ -114,8 +114,8 @@ BEGIN
     CREATE POLICY "Users can update their own projects"
       ON projects
       FOR UPDATE
-      USING (auth.jwt()->>'sub' = user_id)
-      WITH CHECK (auth.jwt()->>'sub' = user_id);
+      USING (((select auth.jwt())->>'sub') = user_id)
+      WITH CHECK (((select auth.jwt())->>'sub') = user_id);
   END IF;
 
   IF NOT EXISTS (
@@ -125,7 +125,7 @@ BEGIN
     CREATE POLICY "Users can delete their own projects"
       ON projects
       FOR DELETE
-      USING (auth.jwt()->>'sub' = user_id);
+      USING (((select auth.jwt())->>'sub') = user_id);
   END IF;
 END $$;
 
@@ -145,7 +145,7 @@ BEGIN
         EXISTS (
           SELECT 1 FROM projects
           WHERE projects.id = canvas_elements.project_id
-          AND projects.user_id = auth.jwt()->>'sub'
+          AND projects.user_id = ((select auth.jwt())->>'sub')
         )
       );
   END IF;
@@ -161,7 +161,7 @@ BEGIN
         EXISTS (
           SELECT 1 FROM projects
           WHERE projects.id = canvas_elements.project_id
-          AND projects.user_id = auth.jwt()->>'sub'
+          AND projects.user_id = ((select auth.jwt())->>'sub')
         )
       );
   END IF;
@@ -177,14 +177,14 @@ BEGIN
         EXISTS (
           SELECT 1 FROM projects
           WHERE projects.id = canvas_elements.project_id
-          AND projects.user_id = auth.jwt()->>'sub'
+          AND projects.user_id = ((select auth.jwt())->>'sub')
         )
       )
       WITH CHECK (
         EXISTS (
           SELECT 1 FROM projects
           WHERE projects.id = canvas_elements.project_id
-          AND projects.user_id = auth.jwt()->>'sub'
+          AND projects.user_id = ((select auth.jwt())->>'sub')
         )
       );
   END IF;
@@ -200,7 +200,7 @@ BEGIN
         EXISTS (
           SELECT 1 FROM projects
           WHERE projects.id = canvas_elements.project_id
-          AND projects.user_id = auth.jwt()->>'sub'
+          AND projects.user_id = ((select auth.jwt())->>'sub')
         )
       );
   END IF;
@@ -211,9 +211,17 @@ ALTER TABLE credit_transactions
   ADD COLUMN IF NOT EXISTS balance_after INTEGER;
 
 -- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
-CREATE INDEX IF NOT EXISTS idx_projects_updated_at ON projects(updated_at DESC);
-CREATE INDEX IF NOT EXISTS idx_canvas_elements_project_id ON canvas_elements(project_id);
+DROP INDEX IF EXISTS idx_projects_user_id;
+DROP INDEX IF EXISTS idx_projects_updated_at;
+CREATE INDEX IF NOT EXISTS idx_projects_user_updated
+  ON projects(user_id, updated_at DESC, id ASC);
+DROP INDEX IF EXISTS idx_canvas_elements_project_id;
+CREATE INDEX IF NOT EXISTS idx_canvas_elements_project_updated
+  ON canvas_elements(project_id, updated_at DESC, created_at DESC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_canvas_elements_project_thumbnail
+  ON canvas_elements(project_id, updated_at DESC, created_at DESC, id ASC)
+  WHERE (element_data->>'type') = 'image'
+    AND NULLIF(element_data->>'content', '') IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_id ON credit_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_reference_type ON credit_transactions(reference_type);
 CREATE INDEX IF NOT EXISTS idx_redeem_code_batches_status ON redeem_code_batches(status);
@@ -221,6 +229,36 @@ CREATE INDEX IF NOT EXISTS idx_redeem_code_batches_expires_at ON redeem_code_bat
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_batch_id ON redeem_codes(batch_id);
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_status ON redeem_codes(status);
 CREATE INDEX IF NOT EXISTS idx_redeem_codes_redeemed_by ON redeem_codes(redeemed_by);
+
+-- Return only the latest image per project while preserving canvas_elements RLS.
+CREATE OR REPLACE FUNCTION public.get_project_thumbnail_candidates(p_project_ids UUID[])
+RETURNS TABLE (
+  project_id UUID,
+  content TEXT,
+  updated_at TIMESTAMPTZ
+)
+LANGUAGE SQL
+STABLE
+SECURITY INVOKER
+SET search_path = ''
+AS $$
+  SELECT DISTINCT ON (canvas_elements.project_id)
+    canvas_elements.project_id,
+    canvas_elements.element_data->>'content' AS content,
+    canvas_elements.updated_at
+  FROM public.canvas_elements
+  WHERE canvas_elements.project_id = ANY(p_project_ids)
+    AND (canvas_elements.element_data->>'type') = 'image'
+    AND NULLIF(canvas_elements.element_data->>'content', '') IS NOT NULL
+  ORDER BY
+    canvas_elements.project_id,
+    canvas_elements.updated_at DESC,
+    canvas_elements.created_at DESC,
+    canvas_elements.id ASC;
+$$;
+
+REVOKE ALL ON FUNCTION public.get_project_thumbnail_candidates(UUID[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_project_thumbnail_candidates(UUID[]) TO authenticated;
 CREATE INDEX IF NOT EXISTS idx_redeem_code_redemptions_user_id ON redeem_code_redemptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_redeem_code_redemptions_code_id ON redeem_code_redemptions(code_id);
 

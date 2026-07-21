@@ -9,15 +9,15 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useUserCredits } from '@/hooks/useUserCredits';
 import type { ProjectRow } from '@/lib/supabase';
+import { persistProjectThumbnail } from '@/lib/project-thumbnail';
 import Link from 'next/link';
 
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
 
 type CanvasElementThumbnailRow = {
     project_id: string;
-    type: string;
-    content: string | null;
-    updated_at?: string | null;
+    content: string;
+    updated_at: string;
 };
 
 export default function ProjectsPage() {
@@ -29,59 +29,84 @@ export default function ProjectsPage() {
     const [showLoginModal, setShowLoginModal] = useState(false);
 
     useEffect(() => {
+        let cancelled = false;
+
+        async function backfillThumbnails(rows: CanvasElementThumbnailRow[]) {
+            if (!supabase) return;
+
+            for (const row of rows) {
+                if (cancelled) return;
+
+                try {
+                    const thumbnail = await persistProjectThumbnail(supabase, row.project_id, row.content);
+                    if (!cancelled && thumbnail) {
+                        setProjects((current) => current.map((project) =>
+                            project.id === row.project_id ? { ...project, thumbnail } : project
+                        ));
+                    }
+                } catch (error) {
+                    console.warn('Failed to backfill project thumbnail:', error);
+                }
+            }
+        }
+
         async function loadData() {
             if (!user || !supabase) {
                 setIsLoading(false);
                 return;
             }
 
+            setIsLoading(true);
             try {
-                const [projectsResult] = await Promise.all([
-                    supabase.from('projects').select('*').eq('user_id', user.id).order('updated_at', { ascending: false }),
-                ]);
+                const projectsResult = await supabase
+                    .from('projects')
+                    .select('id,title,thumbnail,updated_at')
+                    .eq('user_id', user.id)
+                    .order('updated_at', { ascending: false });
 
                 if (projectsResult.error) throw projectsResult.error;
-                const projectRows = (projectsResult.data || []) as ProjectRow[];
+                const projectRows = (projectsResult.data || []) as Project[];
+                if (cancelled) return;
+
+                setProjects(projectRows);
+                setIsLoading(false);
 
                 const missingThumbnailProjectIds = projectRows
                     .filter((project) => !project.thumbnail)
                     .map((project) => project.id);
 
-                const derivedThumbnailMap = new Map<string, string>();
-
                 if (missingThumbnailProjectIds.length > 0) {
                     const { data: canvasRows, error: canvasError } = await supabase
-                        .from('canvas_elements')
-                        .select('project_id,type,content,updated_at')
-                        .in('project_id', missingThumbnailProjectIds)
-                        .in('type', ['image', 'video'])
-                        .not('content', 'is', null)
-                        .order('updated_at', { ascending: false });
+                        .rpc('get_project_thumbnail_candidates', {
+                            p_project_ids: missingThumbnailProjectIds,
+                        });
 
-                    if (!canvasError) {
-                        for (const row of ((canvasRows || []) as unknown as CanvasElementThumbnailRow[])) {
-                            if (!row.project_id || !row.content || derivedThumbnailMap.has(row.project_id)) continue;
-                            derivedThumbnailMap.set(row.project_id, row.content);
-                        }
+                    if (canvasError) {
+                        console.warn('Failed to load project thumbnail candidates:', canvasError);
+                        return;
                     }
-                }
 
-                setProjects(
-                    projectRows.map((project) => ({
-                        id: project.id,
-                        title: project.title,
+                    const rows = (canvasRows || []) as CanvasElementThumbnailRow[];
+                    if (cancelled) return;
+
+                    const derivedThumbnailMap = new Map(rows.map((row) => [row.project_id, row.content]));
+                    setProjects((current) => current.map((project) => ({
+                        ...project,
                         thumbnail: project.thumbnail || derivedThumbnailMap.get(project.id) || null,
-                        updated_at: project.updated_at,
-                    }))
-                );
+                    })));
+                    void backfillThumbnails(rows);
+                }
             } catch (error) {
                 console.error('Failed to load data:', error);
             } finally {
-                setIsLoading(false);
+                if (!cancelled) setIsLoading(false);
             }
         }
 
         void loadData();
+        return () => {
+            cancelled = true;
+        };
     }, [user, supabase]);
 
     const formatDate = (dateString: string) => {

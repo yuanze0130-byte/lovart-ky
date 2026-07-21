@@ -26,12 +26,21 @@ interface UseCanvasHistoryParams {
   saveProject: () => Promise<void>;
 }
 
+const HISTORY_COMMIT_DELAY_MS = 300;
+const MAX_HISTORY_ENTRIES = 50;
+
 function cloneElements(elements: CanvasElement[]) {
-  return JSON.parse(JSON.stringify(elements)) as CanvasElement[];
+  return elements.map((element) => ({
+    ...element,
+    points: element.points?.map((point) => ({ ...point })),
+    annotationPolygon: element.annotationPolygon?.map((point) => ({ ...point })),
+    linkedElements: element.linkedElements ? [...element.linkedElements] : undefined,
+    generationMetadata: element.generationMetadata ? { ...element.generationMetadata } : undefined,
+  }));
 }
 
 function cloneStoryboard(storyboard: StoryboardItem[]) {
-  return JSON.parse(JSON.stringify(storyboard)) as StoryboardItem[];
+  return storyboard.map((item) => ({ ...item }));
 }
 
 function createSnapshot(input: Pick<UseCanvasHistoryParams, 'elements' | 'storyboard' | 'storyboardLayout' | 'selectedStoryboardItemId'>): HistorySnapshot {
@@ -156,32 +165,73 @@ export function useCanvasHistory({
   const futureRef = useRef<HistorySnapshot[]>([]);
   const clipboardRef = useRef<CanvasElement[]>([]);
   const suppressHistoryRef = useRef(false);
+  const historyCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSnapshotRef = useRef<Pick<
+    UseCanvasHistoryParams,
+    'elements' | 'storyboard' | 'storyboardLayout' | 'selectedStoryboardItemId'
+  > | null>(null);
+
+  const commitPendingSnapshot = useCallback(() => {
+    if (historyCommitTimeoutRef.current) {
+      clearTimeout(historyCommitTimeoutRef.current);
+      historyCommitTimeoutRef.current = null;
+    }
+
+    const pendingSnapshot = pendingSnapshotRef.current;
+    pendingSnapshotRef.current = null;
+    if (!pendingSnapshot || suppressHistoryRef.current) return;
+
+    historyRef.current.push(createSnapshot(pendingSnapshot));
+    if (historyRef.current.length > MAX_HISTORY_ENTRIES) {
+      historyRef.current.shift();
+    }
+    futureRef.current = [];
+  }, []);
 
   useEffect(() => {
-    if (isLoading || suppressHistoryRef.current) return;
+    if (isLoading || suppressHistoryRef.current) {
+      if (suppressHistoryRef.current) {
+        suppressHistoryRef.current = false;
+      }
+      pendingSnapshotRef.current = null;
+      if (historyCommitTimeoutRef.current) {
+        clearTimeout(historyCommitTimeoutRef.current);
+        historyCommitTimeoutRef.current = null;
+      }
+      return;
+    }
 
-    const nextSnapshot = createSnapshot({
+    pendingSnapshotRef.current = {
       elements,
       storyboard,
       storyboardLayout,
       selectedStoryboardItemId,
-    });
-    const previousSnapshot = historyRef.current[historyRef.current.length - 1];
-    const serializedNext = JSON.stringify(nextSnapshot);
-    const serializedPrevious = previousSnapshot ? JSON.stringify(previousSnapshot) : null;
+    };
 
-    if (serializedNext === serializedPrevious) {
+    if (historyRef.current.length === 0) {
+      commitPendingSnapshot();
       return;
     }
 
-    historyRef.current.push(nextSnapshot);
-    if (historyRef.current.length > 100) {
-      historyRef.current.shift();
+    if (historyCommitTimeoutRef.current) {
+      clearTimeout(historyCommitTimeoutRef.current);
     }
-    futureRef.current = [];
-  }, [elements, isLoading, selectedStoryboardItemId, storyboard, storyboardLayout]);
+    historyCommitTimeoutRef.current = setTimeout(commitPendingSnapshot, HISTORY_COMMIT_DELAY_MS);
+
+    return () => {
+      if (historyCommitTimeoutRef.current) {
+        clearTimeout(historyCommitTimeoutRef.current);
+        historyCommitTimeoutRef.current = null;
+      }
+    };
+  }, [commitPendingSnapshot, elements, isLoading, selectedStoryboardItemId, storyboard, storyboardLayout]);
 
   const restoreSnapshot = useCallback((snapshot: HistorySnapshot) => {
+    pendingSnapshotRef.current = null;
+    if (historyCommitTimeoutRef.current) {
+      clearTimeout(historyCommitTimeoutRef.current);
+      historyCommitTimeoutRef.current = null;
+    }
     suppressHistoryRef.current = true;
     const normalizedSnapshot = normalizeHistoryState(snapshot);
 
@@ -189,9 +239,6 @@ export function useCanvasHistory({
     setStoryboard(normalizedSnapshot.storyboard);
     setStoryboardLayout(normalizedSnapshot.storyboardLayout);
     setSelectedStoryboardItemId(normalizedSnapshot.selectedStoryboardItemId);
-    window.setTimeout(() => {
-      suppressHistoryRef.current = false;
-    }, 0);
   }, [setElements, setSelectedStoryboardItemId, setStoryboard, setStoryboardLayout]);
 
   useEffect(() => {
@@ -235,6 +282,7 @@ export function useCanvasHistory({
 
       if (isUndo) {
         e.preventDefault();
+        commitPendingSnapshot();
         if (historyRef.current.length > 1) {
           const current = historyRef.current.pop();
           if (current) futureRef.current.unshift(current);
@@ -249,6 +297,7 @@ export function useCanvasHistory({
 
       if (isRedo) {
         e.preventDefault();
+        commitPendingSnapshot();
         const next = futureRef.current.shift();
         if (next) {
           historyRef.current.push(createSnapshot(next));
@@ -260,7 +309,7 @@ export function useCanvasHistory({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [deleteElements, elements, restoreSnapshot, saveProject, selectedIds, setElements, setSelectedIds]);
+  }, [commitPendingSnapshot, deleteElements, elements, restoreSnapshot, saveProject, selectedIds, setElements, setSelectedIds]);
 
   return {
     restoreSnapshot,

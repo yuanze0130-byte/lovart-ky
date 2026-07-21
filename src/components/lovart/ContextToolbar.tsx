@@ -13,6 +13,7 @@ interface ContextToolbarProps {
     onOpenImageEditMode?: (element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => void;
     onConnectFlow?: (element: CanvasElement) => void;
     onGeneratePanorama?: (element: CanvasElement) => void;
+    onCreateHotspot?: (element: CanvasElement) => void;
     onDuplicate?: (element: CanvasElement) => void;
     onRemoveBackground?: (element: CanvasElement) => Promise<void>;
     onUpscale?: (element: CanvasElement, scale?: number) => Promise<void>;
@@ -98,6 +99,7 @@ export function ContextToolbar({
     onOpenImageEditMode,
     onConnectFlow,
     onGeneratePanorama,
+    onCreateHotspot,
     onDuplicate,
     onRemoveBackground,
     onUpscale,
@@ -411,14 +413,14 @@ export function ContextToolbar({
                     {onOpenImageEditMode && actionableImage && (
                         <>
                             <button
-                                onClick={() => onOpenImageEditMode(actionableImage, 'relight', actionableImage.prompt || element.prompt || '保留主体，仅重打光，增强光影氛围与层次。')}
+                                onClick={() => onOpenImageEditMode(actionableImage, 'relight', actionableImage.prompt || element.prompt || '')}
                                 className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
                                 title="重打光"
                             >
                                 <Lightbulb size={18} />
                             </button>
                             <button
-                                onClick={() => onOpenImageEditMode(actionableImage, 'angle', actionableImage.prompt || element.prompt || '保留主体身份与材质，仅调整视角与透视关系。')}
+                                onClick={() => onOpenImageEditMode(actionableImage, 'angle', actionableImage.prompt || element.prompt || '')}
                                 className="p-2 rounded-lg text-gray-700 transition-colors hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8"
                                 title="调整角度"
                             >
@@ -498,6 +500,16 @@ export function ContextToolbar({
                     )}
 
                     <div className="w-px h-6 bg-gray-200" />
+
+                    {onCreateHotspot && (
+                        <button
+                            onClick={() => onCreateHotspot(element)}
+                            className="p-2 hover:bg-sky-50 rounded-lg text-sky-600 transition-colors dark:text-sky-200 dark:hover:bg-sky-400/12"
+                            title="添加热区"
+                        >
+                            <span className="text-[12px] font-semibold">热</span>
+                        </button>
+                    )}
 
                     {onDuplicate && (
                         <button

@@ -482,6 +482,16 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      get_project_thumbnail_candidates: {
+        Args: {
+          p_project_ids: string[];
+        };
+        Returns: {
+          project_id: string;
+          content: string;
+          updated_at: string;
+        }[];
+      };
       redeem_credit_code: {
         Args: {
           p_user_id: string;

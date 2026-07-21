@@ -122,7 +122,7 @@ const FAST_MODEL_DEFAULT_SIZE_BY_ASPECT: Partial<Record<StoryboardAspectRatio, V
 
 interface VideoGeneratorPanelProps {
     elementId: string;
-    onGenerate: (videoUrl: string) => Promise<void>;
+    onGenerate: (videoUrl: string, targetElementId?: string) => Promise<void>;
     onConfigChange?: (elementId: string, updates: Partial<CanvasElement>) => void;
     style?: React.CSSProperties;
     canvasElements?: CanvasElement[];
@@ -324,7 +324,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
                             clearInterval(pollingIntervalRef.current);
                         }
                         console.log('Video ready! URL:', job.outputUrl);
-                        await onGenerate(job.outputUrl);
+                        await onGenerate(job.outputUrl, elementId);
                         setIsGenerating(false);
                         setTaskId(null);
                         setProgress(0);

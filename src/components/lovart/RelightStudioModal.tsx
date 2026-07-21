@@ -21,7 +21,7 @@ interface RelightStudioPanelProps {
   imageUrl?: string;
   isSubmitting?: boolean;
   onClose: () => void;
-  onApply: (config: RelightConfig, promptPatch: string) => void | Promise<void>;
+  onApply: (config: RelightConfig) => void | Promise<void>;
   showCloseButton?: boolean;
   containerClassName?: string;
 }
@@ -92,22 +92,6 @@ function directionLabel(azimuth: number, elevation: number) {
   if (abs < 135) return "右侧";
   if (abs < 225) return "后方";
   return "左侧";
-}
-
-export function buildRelightPromptFromConfig(config: RelightConfig): string {
-  const main = config.mainLight;
-  const intensity = Math.max(0, Math.min(1, main.intensity / 100)).toFixed(2);
-  return [
-    "[可视化重打光]",
-    `视图模式：${config.viewMode === "perspective" ? "透视" : "正面"}`,
-    `主光方向：${directionLabel(main.azimuth, main.elevation)}`,
-    `水平环绕 ${main.azimuth}°`,
-    `高度 ${main.elevation}°`,
-    `强度 ${main.intensity}%`,
-    `灯光颜色 ${main.color}`,
-    `后端参数建议：azimuth=${main.azimuth}, elevation=${main.elevation}, intensity=${intensity}, color=${main.color}`,
-    "要求：保持主体和构图稳定，仅重设画面光线方向、明暗层次、受光面、阴影与氛围，输出高级、自然、写实的重新布光结果。",
-  ].join("；");
 }
 
 interface SliderRowProps {
@@ -315,8 +299,7 @@ export function RelightStudioPanel({
 
   const handleApply = useCallback(async () => {
     const config: RelightConfig = { viewMode, mainLight, fillLight };
-    const promptPatch = buildRelightPromptFromConfig(config);
-    await onApply(config, promptPatch);
+    await onApply(config);
     onClose();
   }, [fillLight, mainLight, onApply, onClose, viewMode]);
 
@@ -440,11 +423,7 @@ export function RelightStudioPanel({
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between gap-2 rounded-[16px] border border-white/8 bg-[#1F2024] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
-                <div>
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">Prompt</div>
-                  <div className="mt-1 line-clamp-3 text-[11px] leading-4 text-zinc-400">{buildRelightPromptFromConfig({ viewMode, mainLight, fillLight })}</div>
-                </div>
+              <div className="flex flex-col justify-end gap-2 rounded-[16px] border border-white/8 bg-[#1F2024] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.025)]">
                 <button
                   type="button"
                   onClick={() => void handleApply()}

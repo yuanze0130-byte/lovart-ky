@@ -100,29 +100,34 @@ function getProvider(): GeminiProvider {
   return 'proxy';
 }
 
-function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRatio: SupportedAspectRatio, relight?: GenerateImagePayload['relight']) {
+function buildRelightPrompt(prompt: string, relight?: GenerateImagePayload['relight']) {
+  if (!relight) return prompt;
+
+  const intensity = Math.max(0, Math.min(1, relight.intensity ?? 0.3));
+  const color = (relight.color || '#FFFFFF').toUpperCase();
+
+  return [
+    prompt,
+    '',
+    '[Relighting controls]',
+    `View: ${relight.viewMode || 'perspective'}.`,
+    `Primary light direction: ${relight.presetDirection || 'front'}; azimuth ${relight.azimuth ?? 0} degrees; elevation ${relight.elevation ?? 0} degrees.`,
+    `Primary light intensity: ${intensity.toFixed(2)}; color: ${color}.`,
+    'Preserve the subject identity, geometry, framing, materials, and composition. Change only lighting direction, illumination color, highlight and shadow balance, and atmosphere.',
+  ].join('\n');
+}
+
+function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRatio: SupportedAspectRatio) {
   const aspectRatioInstruction = aspectRatio === 'auto'
     ? 'Choose the most suitable aspect ratio automatically based on the prompt and composition.'
     : `Generate the image in ${aspectRatio} aspect ratio.`;
-  const resolutionInstruction =
-    resolution === '4K'
-      ? 'Target a high-detail 4K-style composition.'
-      : resolution === '2K'
-        ? 'Target a high-detail 2K-style composition.'
-        : 'Target a clear 1K-style composition.';
+  const resolutionInstruction = resolution === '4K'
+    ? 'Target a high-detail 4K-style composition.'
+    : resolution === '2K'
+      ? 'Target a high-detail 2K-style composition.'
+      : 'Target a clear 1K-style composition.';
 
-  const relightInstruction = relight
-    ? [
-        'Relight the referenced image using the supplied lighting controls while preserving the subject, layout, identity, and key geometry.',
-        `View mode: ${relight.viewMode || 'perspective'}.`,
-        `Primary light preset: ${relight.presetDirection || 'front'}.`,
-        `Primary light azimuth: ${typeof relight.azimuth === 'number' ? relight.azimuth : 0}°; elevation: ${typeof relight.elevation === 'number' ? relight.elevation : 0}°; intensity: ${typeof relight.intensity === 'number' ? relight.intensity : 0.3}.`,
-        `Primary light color: ${(relight.color || '#FFFFFF').toUpperCase()}.`,
-        'Only change lighting direction, light color, highlight/shadow balance, and atmosphere. Do not change subject identity, camera framing, or scene composition.',
-      ].join(' ')
-    : '';
-
-  return `${prompt}\n\n${aspectRatioInstruction}\n${resolutionInstruction}${relightInstruction ? `\n${relightInstruction}` : ''}`;
+  return `${prompt}\n\n${aspectRatioInstruction}\n${resolutionInstruction}`;
 }
 
 function normalizeReferenceImage(referenceImage?: string): NormalizedReferenceImage | undefined {
@@ -677,13 +682,15 @@ async function generateViaProxy(payload: GenerateImagePayload) {
   const translatedPrompt = await maybeTranslatePromptWithProxy(payload.prompt);
   const normalizedAspectRatio = normalizeAspectRatioForGptImage2(payload.aspectRatio);
   const modelDefinition = getImageModelDefinition(payload.modelVariant || 'pro');
+  const promptWithEditControls = payload.editMode === 'relight'
+    ? buildRelightPrompt(translatedPrompt, payload.relight)
+    : translatedPrompt;
   const finalPrompt = modelDefinition.transport === 'image-task'
-    ? `${translatedPrompt}\n 纵横比：${normalizedAspectRatio}`
+    ? `${promptWithEditControls}\n纵横比：${normalizedAspectRatio}`
     : buildPrompt(
-        translatedPrompt,
+        promptWithEditControls,
         payload.resolution || '1K',
         normalizedAspectRatio,
-        payload.editMode === 'relight' ? payload.relight : undefined,
       );
 
   const content: Array<
@@ -986,12 +993,9 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
     apiKey,
     ...(geminiBaseUrl ? { httpOptions: { baseUrl: geminiBaseUrl, ...(geminiApiVersion !== undefined ? { apiVersion: geminiApiVersion } : {}) } } : {}),
   });
-  const finalPrompt = buildPrompt(
-    payload.prompt,
-    payload.resolution || '1K',
-    payload.aspectRatio || '1:1',
-    payload.editMode === 'relight' ? payload.relight : undefined,
-  );
+  const finalPrompt = payload.editMode === 'relight'
+    ? buildRelightPrompt(payload.prompt, payload.relight)
+    : payload.prompt;
 
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
   const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];

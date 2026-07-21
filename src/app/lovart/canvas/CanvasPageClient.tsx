@@ -1,17 +1,18 @@
 "use client";
 
 import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
-import { Plus, Minus, ChevronDown, Cloud, CloudOff, Download, Map as MapIcon, Upload, History as HistoryIcon, Bot } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Cloud, CloudOff, Download, LoaderCircle, Map as MapIcon, Upload, History as HistoryIcon, Bot } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { useSupabase } from '@/hooks/useSupabase';
 import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
 import { CanvasArea, type CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
-import { RelightStudioPanel, type RelightConfig } from '@/components/lovart/RelightStudioModal';
+import type { RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
-import { AssetsPanel } from '@/components/lovart/AssetsPanel';
 import { ProjectImportPreviewDialog } from '@/components/lovart/ProjectImportPreviewDialog';
 import { GenerationHistoryPanel } from '@/components/lovart/GenerationHistoryPanel';
 import { AgentPanel } from '@/components/lovart/AgentPanel';
@@ -38,6 +39,41 @@ import { normalizeCanvasConnections } from '@/lib/canvas-connections';
 import type { ImageModelId } from '@/lib/image-models';
 import { addGenerationHistoryItem, type GenerationHistoryItem } from '@/lib/generation-history';
 import { isFeatureEnabled } from '@/lib/feature-flags';
+import { persistProjectThumbnail } from '@/lib/project-thumbnail';
+
+const RelightStudioPanel = dynamic(
+    () => import('@/components/lovart/RelightStudioModal').then((module) => module.RelightStudioPanel),
+    { ssr: false }
+);
+
+const AssetsPanel = dynamic(
+    () => import('@/components/lovart/AssetsPanel').then((module) => module.AssetsPanel),
+    { ssr: false }
+);
+
+function buildCanvasElementBase(input: {
+    id: string;
+    type: CanvasElement['type'];
+    x: number;
+    y: number;
+    width?: number;
+    height?: number;
+    content?: string;
+    prompt?: string;
+}): CanvasElement {
+    return {
+        id: input.id,
+        type: input.type,
+        x: input.x,
+        y: input.y,
+        width: input.width,
+        height: input.height,
+        originalWidth: input.width,
+        originalHeight: input.height,
+        content: input.content,
+        prompt: input.prompt,
+    };
+}
 
 function LovartCanvasContent() {
     const agentPanelEnabled = isFeatureEnabled('agentPanel');
@@ -94,8 +130,18 @@ function LovartCanvasContent() {
         }
     }, []);
     const { user } = useAuth();
+    const supabase = useSupabase();
     const searchParams = useSearchParams();
     const projectId = searchParams.get('id');
+    const updateProjectThumbnail = useCallback(async (thumbnail: string) => {
+        if (!supabase || !projectId || !thumbnail) return;
+
+        try {
+            await persistProjectThumbnail(supabase, projectId, thumbnail);
+        } catch (error) {
+            console.warn('Failed to update project thumbnail:', error);
+        }
+    }, [projectId, supabase]);
 
     const { scale, pan, setPan, zoomIn, zoomOut, zoomTo } = useCanvasViewport();
     const [elements, setElements] = useState<CanvasElement[]>([]);
@@ -126,20 +172,29 @@ function LovartCanvasContent() {
     const [projectTransferStatus, setProjectTransferStatus] = useState<string | null>(null);
     const [pendingProjectImport, setPendingProjectImport] = useState<QdmyImportResult | null>(null);
     const [showGenerationHistory, setShowGenerationHistory] = useState(false);
+    const handleProjectLoaded = useCallback(({ title: loadedTitle, elements: loadedElements, append }: {
+        title: string;
+        elements: CanvasElement[];
+        append?: boolean;
+    }) => {
+        setTitle(loadedTitle);
+        setElements((currentElements) => normalizeCanvasConnections(append
+            ? [...currentElements, ...loadedElements]
+            : loadedElements));
+    }, []);
 
     const {
         saveStatus,
         isLoading,
+        isHydrating,
         saveProject,
     } = useProjectPersistence({
         user,
         initialProjectId: projectId,
         elements,
         title,
-        onProjectLoaded: ({ title: loadedTitle, elements: loadedElements }) => {
-            setTitle(loadedTitle);
-            setElements(normalizeCanvasConnections(loadedElements));
-        },
+        isInteractionActive: isDraggingElement,
+        onProjectLoaded: handleProjectLoaded,
     });
 
     const {
@@ -179,6 +234,7 @@ function LovartCanvasContent() {
         setSelectedIds,
         setActiveTool,
         setIsGenerating,
+        onThumbnailGenerated: updateProjectThumbnail,
     });
 
     const { handleRemoveBackground, handleUpscale, handleCrop } = useCanvasImageActions({
@@ -807,8 +863,12 @@ function LovartCanvasContent() {
         } as const;
     }, [pan.x, pan.y, relightTargetElement, scale, showChat, viewportSize.height, viewportSize.width]);
 
-    const handleApplyRelight = useCallback(async (config: RelightConfig, promptPatch: string) => {
+    const handleApplyRelight = useCallback(async (config: RelightConfig) => {
         if (!relightTargetElement?.content) return;
+
+        const sourcePrompt = (typeof relightTargetElement.prompt === 'string'
+            ? relightTargetElement.prompt.trim()
+            : '') || 'Preserve the source image subject and composition while applying the requested relighting controls.';
 
         setIsRelightSubmitting(true);
         setIsGenerating(true);
@@ -830,13 +890,12 @@ function LovartCanvasContent() {
             };
 
             const result = await requestImageGeneration({
-                prompt: relightTargetElement.prompt || '保留主体与构图，仅重新设置光照方向、强度、颜色与空间氛围，得到更高级自然的打光结果。',
+                prompt: sourcePrompt,
                 resolution: '2K',
                 aspectRatio: (relightTargetElement.requestedAspectRatio as AspectRatio) || 'auto',
                 referenceImages: [relightTargetElement.content],
                 modelVariant: 'pro',
                 editMode: 'relight',
-                promptPatch,
                 promptPresetId: 'relight-studio',
                 promptPresetLabel: '重打光',
                 promptDebug: JSON.stringify({
@@ -904,6 +963,7 @@ function LovartCanvasContent() {
 
             setElements((prev) => [...prev, newElement]);
             setSelectedIds([newElement.id]);
+            void updateProjectThumbnail(result.imageData);
             closeRelightWorkspace({ restoreSelection: false });
         } catch (error) {
             const message = error instanceof Error ? error.message : '重打光失败';
@@ -913,7 +973,7 @@ function LovartCanvasContent() {
             setIsGenerating(false);
             setIsRelightSubmitting(false);
         }
-    }, [closeRelightWorkspace, relightTargetElement, setElements, setSelectedIds]);
+    }, [closeRelightWorkspace, relightTargetElement, setElements, setSelectedIds, updateProjectThumbnail]);
 
     // ── Angle Adjust Panel state & handlers ──────────────────────────────────
     const angleTargetElement = useMemo(
@@ -1087,28 +1147,6 @@ function LovartCanvasContent() {
     });
     const { runAgent, isRunning: isAgentRunning, cancelAgent } = useAgentRunner();
 
-    const buildCanvasElementBase = useCallback((input: {
-        id: string;
-        type: CanvasElement['type'];
-        x: number;
-        y: number;
-        width?: number;
-        height?: number;
-        content?: string;
-        prompt?: string;
-    }): CanvasElement => ({
-        id: input.id,
-        type: input.type,
-        x: input.x,
-        y: input.y,
-        width: input.width,
-        height: input.height,
-        originalWidth: input.width,
-        originalHeight: input.height,
-        content: input.content,
-        prompt: input.prompt,
-    }), []);
-
     const handleInsertAsset = useCallback((asset: ProjectAsset) => {
         const resolvedAspectRatio = asset.aspectRatio ?? inferStoryboardAspectRatio(asset.width, asset.height);
         const aspectMeta = getStoryboardAspectMeta(resolvedAspectRatio);
@@ -1127,7 +1165,7 @@ function LovartCanvasContent() {
             content: asset.url,
             prompt: asset.prompt,
         }));
-    }, [appendElement, buildCanvasElementBase, pan.x, pan.y, scale]);
+    }, [appendElement, pan.x, pan.y, scale]);
 
     const centerPanForElement = useCallback((element: { x: number; y: number; width?: number; height?: number }, options?: { chromeOffset?: number; viewportWidth?: number; viewportHeight?: number }) => ({
         x: (options?.viewportWidth ?? window.innerWidth) / 2 - ((element.x + (element.width || 300) / 2) * scale),
@@ -1213,9 +1251,27 @@ function LovartCanvasContent() {
 
     const handleUseAsVideoReference = useCallback((asset: ProjectAsset) => {
         const activeGenerator = elements.find((element) => selectedIds.length === 1 && element.id === selectedIds[0] && element.type === 'video-generator');
-        if (!activeGenerator) return;
-        handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
-    }, [elements, handleElementChange, selectedIds]);
+        if (activeGenerator) {
+            handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
+            setSelectedIds([activeGenerator.id]);
+            return;
+        }
+
+        const sourceElement = elements.find((element) => element.id === asset.elementId);
+        if (!sourceElement) return;
+
+        const baseGenerator = createVideoGeneratorElement();
+        const generatorElement: CanvasElement = {
+            ...baseGenerator,
+            x: sourceElement.x + (sourceElement.width || 400) + 120,
+            y: sourceElement.y,
+            referenceImageId: sourceElement.id,
+        };
+
+        setElements((prev) => [...prev, generatorElement]);
+        setSelectedIds([generatorElement.id]);
+        setActiveTool('select');
+    }, [createVideoGeneratorElement, elements, handleElementChange, selectedIds, setActiveTool, setElements, setSelectedIds]);
 
     const handleMiniMapNavigate = useCallback((clientX: number, clientY: number, rect: DOMRect) => {
         const { bounds, viewport } = miniMapData;
@@ -1354,7 +1410,6 @@ function LovartCanvasContent() {
             };
         }
 
-        const groupId = uuidv4();
         const connectorId = uuidv4();
         const generatorId = uuidv4();
 
@@ -1370,7 +1425,6 @@ function LovartCanvasContent() {
             referenceImageId: source.type === 'image' ? source.id : undefined,
             prompt: draftPrompt,
             content: resolvedOutputSize,
-            groupId,
             linkedElements: [source.id, connectorId],
             storyboardItemId: item.id,
             storyboardShotLabel: shotLabel,
@@ -1402,7 +1456,6 @@ function LovartCanvasContent() {
             connectorStyle: 'dashed',
             color: '#6B7280',
             strokeWidth: 2,
-            groupId,
         };
 
         return {
@@ -1411,7 +1464,6 @@ function LovartCanvasContent() {
             elementsToAdd: [connectorElement, generatorElement],
             selectedId: generatorId,
             updateSource: true,
-            groupId,
             connectorId,
             meta: {
                 aspectRatio: item.aspectRatio ?? '9:16',
@@ -1429,7 +1481,7 @@ function LovartCanvasContent() {
         const flow = buildStoryboardVideoFlow(item, { shotIndex: item.order, sequenceState: 'single', layoutMode: storyboardLayout });
 
         setElements((prev) => {
-            if (!flow.updateSource || !flow.sourceId || !flow.connectorId || !flow.groupId) {
+            if (!flow.updateSource || !flow.sourceId || !flow.connectorId) {
                 return [...prev, ...flow.elementsToAdd];
             }
 
@@ -1437,8 +1489,7 @@ function LovartCanvasContent() {
                 if (el.id === flow.sourceId) {
                     return {
                         ...el,
-                        groupId: flow.groupId,
-                        linkedElements: [...(el.linkedElements || []), flow.connectorId, flow.generatorId],
+                        linkedElements: Array.from(new Set([...(el.linkedElements || []), flow.connectorId, flow.generatorId])),
                     };
                 }
                 return el;
@@ -1633,18 +1684,12 @@ function LovartCanvasContent() {
         handleElementChange(elementId, updates);
     }, [handleElementChange]);
 
-    const handleUseAsImageReference = useCallback((asset: ProjectAsset) => {
-        const activeGenerator = elements.find((element) => selectedIds.length === 1 && element.id === selectedIds[0] && element.type === 'image-generator');
-        if (!activeGenerator) return;
-        handleElementChange(activeGenerator.id, { referenceImageId: asset.elementId });
-    }, [elements, handleElementChange, selectedIds]);
-
     useCanvasHistory({
         elements,
         storyboard,
         storyboardLayout,
         selectedStoryboardItemId,
-        isLoading,
+        isLoading: isHydrating,
         selectedIds,
         setElements,
         setStoryboard,
@@ -1678,7 +1723,7 @@ function LovartCanvasContent() {
                     : undefined,
             })),
         ]);
-    }, [buildCanvasElementBase, setElements]);
+    }, [setElements]);
 
     const buildAgentImageDrafts = useCallback((
         images: Array<{ imageData: string; prompt: string }>,
@@ -1726,17 +1771,6 @@ function LovartCanvasContent() {
             title: `Agent Image ${index + 1}`,
         }));
     }, []);
-
-    const updateProjectThumbnail = useCallback((thumbnail: string) => {
-        if (!projectId || !thumbnail) return;
-        void authedFetch('/api/projects/thumbnail', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ projectId, thumbnail }),
-        }).catch((error) => {
-            console.warn('Failed to update project thumbnail', error);
-        });
-    }, [projectId]);
 
     const buildEditedImageDraft = useCallback((imageData: string, prompt: string): DraftCanvasElement => ({
         id: `agent-edited-draft-${Date.now()}`,
@@ -2308,7 +2342,7 @@ function LovartCanvasContent() {
             applyAgentCanvasDrafts(buildAgentImageDrafts(nextResult.images, nextResult.layout));
             const lastImage = nextResult.images.at(-1)?.imageData;
             if (lastImage) {
-                updateProjectThumbnail(lastImage);
+                void updateProjectThumbnail(lastImage);
             }
         }
 
@@ -2353,7 +2387,6 @@ function LovartCanvasContent() {
             followUps: buildAgentFollowUps(nextResult),
         };
     }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, buildAgentFollowUps, buildAgentImageDrafts, buildEditedImageDraft, buildStoryboardItemsFromAgentResult, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent, setStoryboard, setStoryboardLayout, updateProjectThumbnail]);
-
     const { agentStage, submit: handleUnifiedAgentSubmit } = useAgentPanelController(handleAgentRun);
     if (isLoading) {
         return (
@@ -2384,25 +2417,31 @@ function LovartCanvasContent() {
                         disabled={isLoading}
                     />
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                        {saveStatus === 'saving' && (
+                        {isHydrating && (
+                            <>
+                                <LoaderCircle size={14} className="animate-spin text-sky-400" />
+                                <span className="text-sky-300">正在载入画布...</span>
+                            </>
+                        )}
+                        {!isHydrating && saveStatus === 'saving' && (
                             <>
                                 <Cloud size={14} className="animate-pulse" />
                                 <span>保存中...</span>
                             </>
                         )}
-                        {saveStatus === 'saved' && user && (
+                        {!isHydrating && saveStatus === 'saved' && user && (
                             <>
                                 <Cloud size={14} className="text-emerald-400" />
                                 <span className="text-emerald-300">已保存</span>
                             </>
                         )}
-                        {saveStatus === 'local' && !user && (
+                        {!isHydrating && saveStatus === 'local' && !user && (
                             <>
                                 <Cloud size={14} className="text-sky-500" />
                                 <span className="text-sky-600 dark:text-sky-300">已保存到本机</span>
                             </>
                         )}
-                        {saveStatus === 'offline' && (
+                        {!isHydrating && saveStatus === 'offline' && (
                             <>
                                 <CloudOff size={14} className="text-red-500" />
                                 <span className="text-red-600">离线</span>
@@ -2549,6 +2588,8 @@ function LovartCanvasContent() {
                 <CanvasArea
                     scale={scale}
                     pan={pan}
+                    viewportWidth={viewportSize.width}
+                    viewportHeight={viewportSize.height}
                     onPanChange={setPan}
                     onZoomIn={zoomIn}
                     onZoomOut={zoomOut}
@@ -2780,7 +2821,6 @@ function LovartCanvasContent() {
                         onToggleCollapse={() => setAssetsCollapsed((prev) => !prev)}
                         onInsertAsset={handleInsertAsset}
                         onLocateAsset={handleLocateAsset}
-                        onUseAsImageReference={handleUseAsImageReference}
                         onUseAsVideoReference={handleUseAsVideoReference}
                         onAddToStoryboard={handleAddToStoryboard}
                         onSelectStoryboardItem={setSelectedStoryboardItemId}

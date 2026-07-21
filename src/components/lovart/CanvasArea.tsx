@@ -1,5 +1,5 @@
-﻿/* eslint-disable @next/next/no-img-element -- The canvas renders user-provided/generated image data directly. */
-import React, { useMemo, useState, useRef, useEffect } from 'react';
+/* eslint-disable @next/next/no-img-element -- The canvas renders user-provided/generated image data directly. */
+import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
@@ -104,7 +104,9 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     annotationPolygon?: { x: number; y: number }[];
     annotationMaskUrl?: string;
     color?: string;
-    shapeType?: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right';
+    shapeType?: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right' | 'hotspot';
+    hotspotTargetId?: string;
+    hotspotLabel?: string;
     fontSize?: number;
     fontFamily?: string;
     points?: { x: number; y: number }[];
@@ -250,6 +252,8 @@ function getTaskDebugSummary(metadata?: GenerationMetadata) {
 interface CanvasAreaProps {
     scale: number;
     pan: { x: number; y: number };
+    viewportWidth?: number;
+    viewportHeight?: number;
     boardColor?: string;
     onPanChange: (pan: { x: number; y: number }) => void;
     onZoomIn?: (center?: { x: number; y: number }) => void;
@@ -294,6 +298,8 @@ interface CanvasAreaProps {
 export function CanvasArea({
     scale,
     pan,
+    viewportWidth = 0,
+    viewportHeight = 0,
     boardColor = '#f5f7fb',
     onPanChange,
     onZoomIn,
@@ -368,60 +374,63 @@ export function CanvasArea({
     const draggedElementIdRef = useRef<string | null>(null);
     const resizeHandleRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
-    const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 });
+    const panFrameRef = useRef<number | null>(null);
+    const pendingPanRef = useRef<{ x: number; y: number } | null>(null);
+    const elementUpdateFrameRef = useRef<number | null>(null);
+    const pendingElementUpdatesRef = useRef<Array<{ id: string; updates: Partial<CanvasElement> }> | null>(null);
 
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-        const updateSize = () => {
-            const rect = container.getBoundingClientRect();
-            setViewportSize({ width: rect.width, height: rect.height });
-        };
-        updateSize();
-        const observer = new ResizeObserver(updateSize);
-        observer.observe(container);
-        return () => observer.disconnect();
-    }, []);
+    const applyQueuedElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
+        if (onElementsChange) {
+            onElementsChange(updates.map(({ id, updates: nextUpdates }) => ({ id, newAttrs: nextUpdates })));
+            return;
+        }
 
-    const elementById = useMemo(
-        () => new Map(elements.map((element) => [element.id, element])),
-        [elements],
-    );
+        updates.forEach(({ id, updates: nextUpdates }) => onElementChange(id, nextUpdates));
+    };
 
-    const renderableElements = useMemo(() => {
-        const nodes = elements.filter((element) => element.type !== 'connector');
-        if (nodes.length < 100 || viewportSize.width === 0 || viewportSize.height === 0) return nodes;
+    const queueElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
+        pendingElementUpdatesRef.current = updates;
+        if (elementUpdateFrameRef.current !== null) return;
 
-        const buffer = 600 / scale;
-        const left = -pan.x / scale - buffer;
-        const top = -pan.y / scale - buffer;
-        const right = (viewportSize.width - pan.x) / scale + buffer;
-        const bottom = (viewportSize.height - pan.y) / scale + buffer;
-        const selectedGroups = new Set(
-            selectedIds
-                .map((id) => elementById.get(id)?.groupId)
-                .filter((id): id is string => Boolean(id)),
-        );
-
-        return nodes.filter((element) => {
-            if (selectedIds.includes(element.id) || (element.groupId && selectedGroups.has(element.groupId))) return true;
-            const width = element.width || 120;
-            const height = element.height || 90;
-            return element.x < right && element.x + width > left && element.y < bottom && element.y + height > top;
+        elementUpdateFrameRef.current = window.requestAnimationFrame(() => {
+            elementUpdateFrameRef.current = null;
+            const pendingUpdates = pendingElementUpdatesRef.current;
+            pendingElementUpdatesRef.current = null;
+            if (pendingUpdates) applyQueuedElementUpdates(pendingUpdates);
         });
-    }, [elementById, elements, pan.x, pan.y, scale, selectedIds, viewportSize.height, viewportSize.width]);
+    };
 
-    const renderableNodeIds = useMemo(
-        () => new Set(renderableElements.map((element) => element.id)),
-        [renderableElements],
-    );
+    const queuePanChange = (nextPan: { x: number; y: number }) => {
+        pendingPanRef.current = nextPan;
+        if (panFrameRef.current !== null) return;
 
-    const renderableConnectors = useMemo(
-        () => elements.filter((element) => element.type === 'connector'
-            && Boolean(element.connectorFrom && element.connectorTo)
-            && (renderableNodeIds.has(element.connectorFrom!) || renderableNodeIds.has(element.connectorTo!))),
-        [elements, renderableNodeIds],
-    );
+        panFrameRef.current = window.requestAnimationFrame(() => {
+            panFrameRef.current = null;
+            const pendingPan = pendingPanRef.current;
+            pendingPanRef.current = null;
+            if (pendingPan) onPanChange(pendingPan);
+        });
+    };
+
+    const flushQueuedInteractionUpdates = () => {
+        if (panFrameRef.current !== null) {
+            window.cancelAnimationFrame(panFrameRef.current);
+            panFrameRef.current = null;
+        }
+        if (pendingPanRef.current) {
+            onPanChange(pendingPanRef.current);
+            pendingPanRef.current = null;
+        }
+
+        if (elementUpdateFrameRef.current !== null) {
+            window.cancelAnimationFrame(elementUpdateFrameRef.current);
+            elementUpdateFrameRef.current = null;
+        }
+        if (pendingElementUpdatesRef.current) {
+            applyQueuedElementUpdates(pendingElementUpdatesRef.current);
+            pendingElementUpdatesRef.current = null;
+        }
+    };
 
     const getCanvasPoint = (clientX: number, clientY: number) => ({
         x: (clientX - pan.x) / scale,
@@ -590,6 +599,7 @@ export function CanvasArea({
     ) => {
         e.stopPropagation();
         setIsResizing(true);
+        onDragStart?.();
         draggedElementIdRef.current = elementId;
         resizeHandleRef.current = handle;
         dragStartRef.current = {
@@ -609,6 +619,7 @@ export function CanvasArea({
         if (!selectionBounds || actionableSelection.length < 2) return;
         e.stopPropagation();
         setIsResizing(true);
+        onDragStart?.();
         draggedElementIdRef.current = '__selection__';
         resizeHandleRef.current = handle;
         dragStartRef.current = {
@@ -648,7 +659,7 @@ export function CanvasArea({
         if (isPanning) {
             const dx = e.clientX - dragStartRef.current.x;
             const dy = e.clientY - dragStartRef.current.y;
-            onPanChange({
+            queuePanChange({
                 x: dragStartRef.current.panX + dx,
                 y: dragStartRef.current.panY + dy,
             });
@@ -661,7 +672,7 @@ export function CanvasArea({
         const dy = (e.clientY - dragStartRef.current.y) / scale;
 
         if (isDragging && dragStartRef.current.initialPositions) {
-            applyElementUpdates(dragStartRef.current.initialPositions.map((pos) => ({
+            queueElementUpdates(dragStartRef.current.initialPositions.map((pos) => ({
                 id: pos.id,
                 updates: { x: pos.x + dx, y: pos.y + dy },
             })));
@@ -715,7 +726,7 @@ export function CanvasArea({
                     }
                 }
 
-                applyElementUpdates(dragStartRef.current.initialPositions.map((pos) => {
+                queueElementUpdates(dragStartRef.current.initialPositions.map((pos) => {
                     const relX = (pos.x - bounds.left) / baseWidth;
                     const relY = (pos.y - bounds.top) / baseHeight;
                     const relRight = ((pos.x + (pos.width || 0)) - bounds.left) / baseWidth;
@@ -777,12 +788,15 @@ export function CanvasArea({
                 }
             }
 
-            onElementChange(draggedElementIdRef.current, {
-                x: newX,
-                y: newY,
-                width: Math.max(10, newWidth),
-                height: Math.max(10, newHeight),
-            });
+            queueElementUpdates([{
+                id: draggedElementIdRef.current,
+                updates: {
+                    x: newX,
+                    y: newY,
+                    width: Math.max(10, newWidth),
+                    height: Math.max(10, newHeight),
+                },
+            }]);
         }
     };
 
@@ -841,6 +855,7 @@ export function CanvasArea({
     };
 
     const handleMouseUp = () => {
+        flushQueuedInteractionUpdates();
         if (isSelecting && selectionBox) {
             const x1 = Math.min(selectionBox.startX, selectionBox.currentX);
             const y1 = Math.min(selectionBox.startY, selectionBox.currentY);
@@ -931,7 +946,47 @@ export function CanvasArea({
         // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMouseUp intentionally reads the current gesture state mirrored in these dependencies.
     }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath, connectionDraft]);
 
+    useEffect(() => () => {
+        if (panFrameRef.current !== null) window.cancelAnimationFrame(panFrameRef.current);
+        if (elementUpdateFrameRef.current !== null) window.cancelAnimationFrame(elementUpdateFrameRef.current);
+    }, []);
+
     const selectedElement = elements.find((el) => selectedIds.includes(el.id));
+    const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+    const elementById = useMemo(() => new Map(elements.map((element) => [element.id, element])), [elements]);
+    const viewportBounds = useMemo(() => {
+        if (viewportWidth <= 0 || viewportHeight <= 0) return null;
+        const overscan = 500 / Math.max(scale, 0.2);
+        return {
+            left: (-pan.x / scale) - overscan,
+            top: (-pan.y / scale) - overscan,
+            right: ((viewportWidth - pan.x) / scale) + overscan,
+            bottom: ((viewportHeight - pan.y) / scale) + overscan,
+        };
+    }, [pan.x, pan.y, scale, viewportHeight, viewportWidth]);
+    const isElementInViewport = useCallback((element: CanvasElement) => {
+        if (!viewportBounds) return true;
+        if (selectedIdSet.has(element.id) || element.id === annotationImageId || element.id === relightTargetId) return true;
+        const width = element.width || (element.type === 'text' ? 240 : 120);
+        const height = element.height || (element.type === 'text' ? 100 : 120);
+        return element.x < viewportBounds.right
+            && element.x + width > viewportBounds.left
+            && element.y < viewportBounds.bottom
+            && element.y + height > viewportBounds.top;
+    }, [annotationImageId, relightTargetId, selectedIdSet, viewportBounds]);
+    const visibleElements = useMemo(
+        () => elements.filter((element) => element.type !== 'connector' && isElementInViewport(element)),
+        [elements, isElementInViewport]
+    );
+    const visibleConnectors = useMemo(
+        () => elements.filter((element) => {
+            if (element.type !== 'connector') return false;
+            const fromElement = element.connectorFrom ? elementById.get(element.connectorFrom) : undefined;
+            const toElement = element.connectorTo ? elementById.get(element.connectorTo) : undefined;
+            return Boolean((fromElement && isElementInViewport(fromElement)) || (toElement && isElementInViewport(toElement)));
+        }),
+        [elementById, elements, isElementInViewport]
+    );
 
     const renderPath = (points: { x: number; y: number }[]) => {
         if (!points || points.length === 0) return '';
@@ -972,6 +1027,30 @@ export function CanvasArea({
             x: el.x + 20,
             y: el.y + 20,
         }));
+    };
+
+    const createHotspotElement = (bounds: { left: number; top: number; right: number; bottom: number }, targetId?: string): CanvasElement => ({
+        id: uuidv4(),
+        type: 'shape',
+        shapeType: 'hotspot',
+        x: bounds.left,
+        y: bounds.top,
+        width: Math.max(40, bounds.right - bounds.left),
+        height: Math.max(40, bounds.bottom - bounds.top),
+        color: 'rgba(14, 165, 233, 0.14)',
+        hotspotTargetId: targetId,
+        hotspotLabel: '热区',
+    });
+
+    const handleCreateHotspot = (el: CanvasElement) => {
+        const hotspot = createHotspotElement({
+            left: el.x,
+            top: el.y,
+            right: el.x + (el.width || 160),
+            bottom: el.y + (el.height || 120),
+        }, el.id);
+        onAddElement(hotspot);
+        onSelect([hotspot.id]);
     };
 
     const applyElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
@@ -1017,6 +1096,13 @@ export function CanvasArea({
 
         duplicatedElements.forEach((el) => onAddElement(el));
         onSelect(duplicatedElements.map((el) => el.id));
+    };
+
+    const handleCreateHotspotForSelection = () => {
+        if (!selectionBounds) return;
+        const hotspot = createHotspotElement(selectionBounds);
+        onAddElement(hotspot);
+        onSelect([hotspot.id]);
     };
 
     const handleAlignSelection = (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
@@ -1222,6 +1308,7 @@ export function CanvasArea({
                         onOpenImageEditMode={onOpenImageEditMode}
                         onConnectFlow={onConnectFlow}
                         onGeneratePanorama={onGeneratePanorama}
+                        onCreateHotspot={handleCreateHotspot}
                         onDuplicate={handleDuplicate}
                         onRemoveBackground={onRemoveBackground}
                         onUpscale={onUpscale}
@@ -1245,6 +1332,14 @@ export function CanvasArea({
                         已选中 {selectedIds.length} 项{multiSelectionGroupIds.length > 0 ? ` · ${multiSelectionGroupIds.length} 组 / ${selectedGroupMemberCount} 个组内元素` : ''}{selectedSingleGroupId ? ' · 当前为单组选择' : ''}
                     </span>
                     <div className="h-6 w-px bg-gray-200 dark:bg-white/10" />
+
+                    <button
+                        onClick={handleCreateHotspotForSelection}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl text-sky-600 transition-colors hover:bg-sky-50 hover:text-sky-700 dark:text-sky-200 dark:hover:bg-sky-400/12 dark:hover:text-sky-100"
+                        title="添加热区"
+                    >
+                        <span className="text-[13px] font-semibold">热</span>
+                    </button>
 
                     <button
                         onClick={handleDuplicateSelection}
@@ -1435,7 +1530,7 @@ export function CanvasArea({
 
             <div
                 ref={containerRef}
-                className="w-full h-full origin-top-left transition-transform duration-200 ease-out"
+                className={`w-full h-full origin-top-left ${isPanning ? '' : 'transition-transform duration-200 ease-out'}`}
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
             >
                 <div
@@ -1449,7 +1544,7 @@ export function CanvasArea({
                 />
 
                 <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
-                    {renderableConnectors
+                    {visibleConnectors
                         .map((connector) => {
                             const fromEl = connector.connectorFrom ? elementById.get(connector.connectorFrom) : undefined;
                             const toEl = connector.connectorTo ? elementById.get(connector.connectorTo) : undefined;
@@ -1494,7 +1589,7 @@ export function CanvasArea({
                 </svg>
 
                 <div className="absolute inset-0">
-                    {renderableElements
+                    {visibleElements
                         .map((el) => (
                             <div
                                 key={el.id}
@@ -1933,7 +2028,7 @@ export function CanvasArea({
 
                                     return (
                                         <div className="relative w-full h-full overflow-hidden rounded-lg bg-slate-950">
-                                            <img src={el.content} alt="Upload" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />
+                                            <img src={el.content} alt="Upload" loading="lazy" decoding="async" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />
                                             {layoutLabel && (
                                                 <div className="pointer-events-none absolute left-2.5 top-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-white/18 bg-slate-950/68 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md">
                                                     {layoutRole && <span className="text-white/55">{layoutRole}</span>}
@@ -1979,7 +2074,7 @@ export function CanvasArea({
                                     if (!hasStoryboardMeta) {
                                         return (
                                             <div className="relative w-full h-full rounded-lg overflow-hidden">
-                                                <video src={el.content} className="w-full h-full object-cover select-none" controls loop playsInline onClick={(e) => e.stopPropagation()} />
+                                                <video src={el.content} className="w-full h-full object-cover select-none" controls loop playsInline preload="metadata" onClick={(e) => e.stopPropagation()} />
                                             </div>
                                         );
                                     }
@@ -2108,7 +2203,7 @@ export function CanvasArea({
                                                     </div>
                                                 </div>
                                                 <div className="relative flex-1 overflow-hidden rounded-2xl border border-blue-200/80 bg-black/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:border-white/10">
-                                                    <video src={el.content} className="h-full w-full object-cover select-none" controls loop playsInline onClick={(e) => e.stopPropagation()} />
+                                                    <video src={el.content} className="h-full w-full object-cover select-none" controls loop playsInline preload="metadata" onClick={(e) => e.stopPropagation()} />
                                                     <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/68 via-black/18 to-transparent p-2.5 text-white">
                                                         <div className="mb-1 flex items-center justify-between gap-1.5">
                                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
@@ -2260,7 +2355,13 @@ export function CanvasArea({
                                 ))}
 
                                 {el.type === 'shape' && (
-                                    el.storyboardElementRole === 'board-surface' ? (
+                                    el.shapeType === 'hotspot' ? (
+                                        <div className="relative h-full w-full rounded-2xl border-2 border-dashed border-sky-400/85 bg-sky-400/12 shadow-[0_0_0_1px_rgba(14,165,233,0.12),inset_0_0_22px_rgba(14,165,233,0.08)] dark:border-sky-300/75 dark:bg-sky-300/10">
+                                            <div className="absolute left-2 top-2 rounded-full bg-sky-500 px-2 py-0.5 text-[10px] font-semibold tracking-[0.14em] text-white shadow-sm">
+                                                {el.hotspotLabel || '热区'}
+                                            </div>
+                                        </div>
+                                    ) : el.storyboardElementRole === 'board-surface' ? (
                                         <div className="h-full w-full rounded-[32px] border border-slate-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(248,250,252,0.9))] shadow-[0_40px_100px_rgba(15,23,42,0.08)] dark:border-white/8 dark:bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.08),rgba(15,23,42,0.72)_78%)]">
                                             <div className="absolute inset-5 rounded-[28px] border border-dashed border-slate-200/80 dark:border-white/10" />
                                             <div className="absolute inset-x-0 top-0 h-24 rounded-t-[32px] bg-gradient-to-r from-sky-500/10 via-blue-500/6 to-transparent dark:from-sky-400/12 dark:via-blue-400/8 dark:to-transparent" />

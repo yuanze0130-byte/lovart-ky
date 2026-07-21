@@ -38,18 +38,6 @@ function isAspectRatio(value: unknown): value is AspectRatio {
   return value === 'auto' || value === '4:3' || value === '8:1' || value === '1:1' || value === '3:2' || value === '1:8' || value === '9:16' || value === '2:3' || value === '4:1' || value === '16:9' || value === '4:5' || value === '1:4' || value === '3:4' || value === '5:4' || value === '21:9';
 }
 
-function updateProjectThumbnail(projectId: string | undefined, thumbnail: string) {
-  if (!projectId || !thumbnail) return;
-
-  void authedFetch('/api/projects/thumbnail', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ projectId, thumbnail }),
-  }).catch((error) => {
-    console.warn('Failed to update project thumbnail', error);
-  });
-}
-
 interface UseCanvasGenerationParams {
   pan: CanvasPan;
   elements: CanvasElement[];
@@ -58,6 +46,7 @@ interface UseCanvasGenerationParams {
   setSelectedIds: Dispatch<SetStateAction<string[]>>;
   setActiveTool: Dispatch<SetStateAction<string>>;
   setIsGenerating: Dispatch<SetStateAction<boolean>>;
+  onThumbnailGenerated?: (thumbnail: string) => void | Promise<void>;
 }
 
 function buildGenerationMetadata({
@@ -158,7 +147,7 @@ export async function requestImageGeneration(input: {
     relight,
   } = input;
 
-  const finalPrompt = promptPatch ? `${prompt}\n\n[编辑意图]\n${promptPatch}` : prompt;
+  const finalPrompt = prompt;
   const generationMetadata = buildGenerationMetadata({
     prompt,
     finalPrompt,
@@ -440,10 +429,14 @@ export function useCanvasGeneration({
   setSelectedIds,
   setActiveTool,
   setIsGenerating,
+  onThumbnailGenerated,
 }: UseCanvasGenerationParams) {
   const handleGenerateVideo = useCallback(
-    async (videoUrl: string) => {
-      const generatorElement = selectedIds
+    async (videoUrl: string, targetElementId?: string) => {
+      const targetedGenerator = targetElementId
+        ? elements.find((el) => el.id === targetElementId && el.type === 'video-generator')
+        : undefined;
+      const generatorElement = targetedGenerator || selectedIds
         .map((id) => elements.find((el) => el.id === id))
         .find((el) => el?.type === 'video-generator');
 
@@ -462,14 +455,6 @@ export function useCanvasGeneration({
         setElements((prev) =>
           prev.map((el) => {
             if (el.id === generatorElement.id) {
-              updateProjectThumbnail(
-                typeof el.projectId === 'string'
-                  ? el.projectId
-                  : typeof generatorElement.projectId === 'string'
-                    ? generatorElement.projectId
-                    : undefined,
-                videoUrl
-              );
               return {
                 ...el,
                 type: 'video',
@@ -508,7 +493,7 @@ export function useCanvasGeneration({
             return el;
           })
         );
-      } else {
+      } else if (!targetElementId) {
         const resultId = uuidv4();
         const newElement: CanvasElement = {
           id: resultId,
@@ -539,7 +524,6 @@ export function useCanvasGeneration({
       if (!sourceElement.content) return;
 
       const spacing = 120;
-      const groupId = uuidv4();
       const connectorId = uuidv4();
       const generatorId = uuidv4();
 
@@ -551,7 +535,6 @@ export function useCanvasGeneration({
         width: sourceElement.width || 400,
         height: sourceElement.height || 400,
         referenceImageId: sourceElement.id,
-        groupId,
         linkedElements: [sourceElement.id, connectorId],
       };
 
@@ -570,7 +553,6 @@ export function useCanvasGeneration({
         connectorStyle: 'dashed',
         color: '#6B7280',
         strokeWidth: 2,
-        groupId,
       };
 
       setElements((prev) => {
@@ -578,8 +560,7 @@ export function useCanvasGeneration({
           if (el.id === sourceElement.id) {
             return {
               ...el,
-              groupId,
-              linkedElements: [connectorId, generatorId],
+              linkedElements: Array.from(new Set([...(el.linkedElements || []), connectorId, generatorId])),
             };
           }
           return el;
@@ -612,13 +593,14 @@ export function useCanvasGeneration({
       promptPresetId?: string,
       promptPresetLabel?: string,
       promptDebug?: string,
-      officialOptions?: OfficialImageOptions
+      officialOptions?: OfficialImageOptions,
+      targetElementId?: string,
     ) => {
       setIsGenerating(true);
       try {
-        const generatorElementId = selectedIds.find(
-          (id) => elements.find((el) => el.id === id)?.type === 'image-generator'
-        );
+        const generatorElementId = targetElementId && elements.some((el) => el.id === targetElementId && el.type === 'image-generator')
+          ? targetElementId
+          : selectedIds.find((id) => elements.find((el) => el.id === id)?.type === 'image-generator');
         const connectedInputs = generatorElementId
           ? resolveConnectedInputs(generatorElementId, elements)
           : null;
@@ -669,6 +651,7 @@ export function useCanvasGeneration({
         if (imageData) {
           const dimensions = await getImageDimensions(imageData);
           const displaySize = getSmartDisplaySize(dimensions);
+          void onThumbnailGenerated?.(imageData);
 
           console.log('[generate-image] result', {
             requestedAspectRatio,
@@ -712,8 +695,6 @@ export function useCanvasGeneration({
               metadata: resultElement.generationMetadata,
             });
 
-            updateProjectThumbnail(typeof generatorElement.projectId === 'string' ? generatorElement.projectId : undefined, imageData);
-
             setElements((prev) => {
               const outputIndex = prev.filter((element) => element.type === 'connector'
                 && element.connectorFrom === generatorElementId
@@ -743,7 +724,7 @@ export function useCanvasGeneration({
                 : prev;
             });
             setSelectedIds([resultId]);
-          } else {
+          } else if (!targetElementId) {
             const newElement: CanvasElement = {
               id: uuidv4(),
               type: 'image',
@@ -811,7 +792,7 @@ export function useCanvasGeneration({
         setIsGenerating(false);
       }
     },
-    [elements, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
+    [elements, onThumbnailGenerated, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
   );
 
   const handleGenerateSelectedImages = useCallback(
@@ -921,7 +902,7 @@ export function useCanvasGeneration({
               const connectorElement = createGeneratedImageConnector(el, item.resultId, item.connectorId);
 
               elementsToAdd.push(connectorElement, resultElement);
-              updateProjectThumbnail(typeof el.projectId === 'string' ? el.projectId : undefined, item.result.imageData);
+              void onThumbnailGenerated?.(item.result.imageData);
 
               return updateGeneratorAfterImageRun(el, item.result, item.resultId, item.connectorId);
             });
@@ -945,7 +926,7 @@ export function useCanvasGeneration({
         setIsGenerating(false);
       }
     },
-    [elements, selectedIds, setElements, setIsGenerating, setSelectedIds]
+    [elements, onThumbnailGenerated, selectedIds, setElements, setIsGenerating, setSelectedIds]
   );
 
   return {

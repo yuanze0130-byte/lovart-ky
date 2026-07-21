@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- Canvas thumbnails use user-provided data URLs and object-fit behavior. */
 import React, { useMemo, useState } from 'react';
-import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Wand2, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2 } from 'lucide-react';
+import { Image as ImageIcon, Video, LocateFixed, PlusSquare, PanelRightClose, PanelRightOpen, Clapperboard, ArrowUp, ArrowDown, X, Sparkles, RectangleHorizontal, RectangleVertical, Square, GripVertical, ArrowRight, Maximize2 } from 'lucide-react';
 import { PanoramaViewer } from './PanoramaViewer';
 import { getStoryboardAspectMeta, getStoryboardVideoSizeOptions, getStoryboardRenderProfile, getStoryboardRenderProfileLabel, getRecommendedStoryboardLayout, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, getStoryboardFrameRoutingLabel, getStoryboardCoverageLabel, getStoryboardNodeDimensions, getStoryboardOrientationLabel, getStoryboardFrameAdaptationLabel, getStoryboardFrameAdaptationTone, summarizeStoryboardBatchHealth, summarizeStoryboardNodeSizing, summarizeProductionBoard, type ProjectAsset, type StoryboardItem, type StoryboardLayoutMode, type StoryboardAspectRatio, type StoryboardVideoSize, type StoryboardRenderProfile } from '@/hooks/useProjectAssets';
 
@@ -14,7 +14,6 @@ interface AssetsPanelProps {
   onToggleCollapse: () => void;
   onInsertAsset: (asset: ProjectAsset) => void;
   onLocateAsset: (asset: ProjectAsset) => void;
-  onUseAsImageReference: (asset: ProjectAsset) => void;
   onUseAsVideoReference: (asset: ProjectAsset) => void;
   onAddToStoryboard: (asset: ProjectAsset) => void;
   onSelectStoryboardItem?: (itemId: string | null) => void;
@@ -48,7 +47,6 @@ export function AssetsPanel({
   onToggleCollapse,
   onInsertAsset,
   onLocateAsset,
-  onUseAsImageReference,
   onUseAsVideoReference,
   onAddToStoryboard,
   onSelectStoryboardItem,
@@ -304,7 +302,6 @@ export function AssetsPanel({
                     asset={asset}
                     onInsert={onInsertAsset}
                     onLocate={onLocateAsset}
-                    onUseAsImageReference={onUseAsImageReference}
                     onUseAsVideoReference={onUseAsVideoReference}
                     onAddToStoryboard={onAddToStoryboard}
                   />
@@ -324,7 +321,6 @@ export function AssetsPanel({
                     asset={asset}
                     onInsert={onInsertAsset}
                     onLocate={onLocateAsset}
-                    onUseAsImageReference={onUseAsImageReference}
                     onUseAsVideoReference={onUseAsVideoReference}
                     onAddToStoryboard={onAddToStoryboard}
                   />
@@ -815,9 +811,9 @@ export function AssetsPanel({
                           {item.aspectRatio ?? '9:16'}
                         </div>
                         {item.type === 'image' ? (
-                          <img src={item.thumbnailUrl} alt={item.title} className="h-full w-full object-cover" />
+                          <img src={item.thumbnailUrl} alt={item.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
                         ) : (
-                          <video src={item.thumbnailUrl} className="h-full w-full object-cover" muted playsInline />
+                          <video src={item.thumbnailUrl} className="h-full w-full object-cover" muted playsInline preload="none" />
                         )}
                       </div>
                       <div className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -1129,14 +1125,12 @@ function AssetCard({
   asset,
   onInsert,
   onLocate,
-  onUseAsImageReference,
   onUseAsVideoReference,
   onAddToStoryboard,
 }: {
   asset: ProjectAsset;
   onInsert: (asset: ProjectAsset) => void;
   onLocate: (asset: ProjectAsset) => void;
-  onUseAsImageReference: (asset: ProjectAsset) => void;
   onUseAsVideoReference: (asset: ProjectAsset) => void;
   onAddToStoryboard: (asset: ProjectAsset) => void;
 }) {
@@ -1151,9 +1145,9 @@ function AssetCard({
       ) : (
         <div className="aspect-[16/10] overflow-hidden bg-gray-100 dark:bg-black">
           {asset.type === 'image' ? (
-            <img src={asset.url} alt={asset.title} className="h-full w-full object-cover" />
+            <img src={asset.url} alt={asset.title} loading="lazy" decoding="async" className="h-full w-full object-cover" />
           ) : (
-            <video src={asset.url} className="h-full w-full object-cover" muted playsInline />
+            <video src={asset.url} className="h-full w-full object-cover" muted playsInline preload="none" />
           )}
         </div>
       )}
@@ -1196,15 +1190,6 @@ function AssetCard({
             <LocateFixed size={14} />
             定位
           </button>
-          {asset.type === 'image' && (
-            <button
-              onClick={() => onUseAsImageReference(asset)}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-600 transition-colors hover:bg-gray-100 dark:border-white/10 dark:text-gray-300 dark:hover:bg-white/8"
-            >
-              <Wand2 size={14} />
-              图像参考
-            </button>
-          )}
           {asset.type === 'image' && (
             <button
               onClick={() => onUseAsVideoReference(asset)}
