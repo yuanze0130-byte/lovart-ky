@@ -11,8 +11,9 @@ type SupportedImage = {
 
 function getAssetRoot() {
   return path.resolve(
+    /* turbopackIgnore: true */
     process.env.CANVAS_ASSET_DIR
-      || path.join(/*turbopackIgnore: true*/ process.cwd(), '.local-data', 'canvas-assets')
+      || path.join(/* turbopackIgnore: true */ process.cwd(), '.local-data', 'canvas-assets')
   );
 }
 
@@ -59,7 +60,7 @@ export function getCanvasAssetFile(userId: string, fileName: string) {
   if (!/^[0-9a-f]{64}\.(?:png|jpg|webp|gif|avif)$/i.test(fileName)) return null;
 
   const root = getAssetRoot();
-  const filePath = path.resolve(root, userId, fileName);
+  const filePath = path.resolve(/* turbopackIgnore: true */ root, userId, fileName);
   if (!filePath.startsWith(`${root}${path.sep}`)) return null;
 
   return filePath;

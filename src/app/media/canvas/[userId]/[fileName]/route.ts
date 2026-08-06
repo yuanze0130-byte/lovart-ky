@@ -11,7 +11,7 @@ export async function GET(
   if (!filePath) return new NextResponse('Not found', { status: 404 });
 
   try {
-    const bytes = await readFile(/*turbopackIgnore: true*/ filePath);
+    const bytes = await readFile(/* turbopackIgnore: true */ filePath);
     return new NextResponse(bytes, {
       headers: {
         'Cache-Control': 'public, max-age=31536000, immutable',
