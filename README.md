@@ -9,6 +9,7 @@
 - 视频生成（外部视频 API）
 - Supabase OTP 登录
 - Supabase 项目、素材与积分存储
+- 画布图片保存到自托管服务器，Supabase 仅保存图片 URL
 
 ## 技术栈
 - Next.js 16
@@ -43,6 +44,7 @@ cp .env.example .env.local
 NEXT_PUBLIC_SUPABASE_URL=...
 NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
+CANVAS_ASSET_DIR=.local-data/canvas-assets
 ```
 
 如果要完整启用 AI 能力，再补充：
@@ -84,6 +86,8 @@ npm run start
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_EMAILS`
 - `NEXT_PUBLIC_ADMIN_EMAILS`
+- `CANVAS_ASSET_DIR`：画布图片持久化目录，生产环境应位于代码目录之外
+- `CANVAS_ASSET_MAX_BYTES`：单张图片上传上限，默认 20 MB
 - `GEMINI_PROVIDER`
 - `GEMINI_API_KEY`
 - `GEMINI_BASE_URL`
@@ -95,6 +99,21 @@ npm run start
 - `VIDEO_API_BASE_URL`
 
 完整列表见 `.env.example`。
+
+生产环境使用 `deploy/nginx/lovart-ky.conf` 将 `/media/canvas/` 映射到独立持久化目录。部署前创建目录并确保运行 Next.js 的用户可写：
+
+```bash
+install -d -o deploy -g deploy -m 755 /www/storage/doodleverse/canvas
+```
+
+历史 Base64 图片先预检、再迁移：
+
+```bash
+npm run migrate:canvas-assets
+npm run migrate:canvas-assets -- --apply
+```
+
+应用模式会先把每条原始数据库记录压缩备份到非公开的 `migration-backups` 目录，再逐条更新 Supabase。
 
 ## 项目结构
 - `src/app`：页面与 API 路由

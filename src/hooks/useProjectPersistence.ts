@@ -13,6 +13,7 @@ import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { useSupabase } from '@/hooks/useSupabase';
 import { loadLocalCanvasDraft, saveLocalCanvasDraft } from '@/lib/local-canvas-store';
 import { normalizeCanvasConnections } from '@/lib/canvas-connections';
+import { persistCanvasElementAssets } from '@/lib/canvas-asset-upload';
 interface UseProjectPersistenceParams {
   user: User | null | undefined;
   initialProjectId: string | null;
@@ -20,6 +21,7 @@ interface UseProjectPersistenceParams {
   title: string;
   isInteractionActive?: boolean;
   onProjectLoaded: (payload: { title: string; elements: CanvasElement[]; append?: boolean }) => void;
+  onAssetsPersisted: (elements: CanvasElement[]) => void;
 }
 
 const ELEMENT_PAGE_SIZE = 100;
@@ -57,6 +59,7 @@ export function useProjectPersistence({
   title,
   isInteractionActive = false,
   onProjectLoaded,
+  onAssetsPersisted,
 }: UseProjectPersistenceParams) {
   const supabase = useSupabase();
   const router = useRouter();
@@ -106,10 +109,16 @@ export function useProjectPersistence({
       setSaveStatus('saving');
 
       const uniqueElements = getUniqueElements(elements);
+      const persistedElements = await persistCanvasElementAssets(uniqueElements);
+      const assetsChanged = persistedElements.some((element, index) => element !== uniqueElements[index]);
+
+      if (assetsChanged) {
+        onAssetsPersisted(persistedElements);
+      }
 
       if (currentProjectId) {
-        const currentElementById = new Map(uniqueElements.map((element) => [element.id, element]));
-        const dirtyElements = uniqueElements.filter(
+        const currentElementById = new Map(persistedElements.map((element) => [element.id, element]));
+        const dirtyElements = persistedElements.filter(
           (element) => persistedElementRefsRef.current.get(element.id) !== element
         );
         const deletedElementIds = Array.from(persistedElementRefsRef.current.keys()).filter(
@@ -117,7 +126,7 @@ export function useProjectPersistence({
         );
         const canonicalRowIdByElementId = new Map<string, string>();
 
-        uniqueElements.forEach((element) => {
+        persistedElements.forEach((element) => {
           canonicalRowIdByElementId.set(
             element.id,
             rowIdsByElementIdRef.current.get(element.id)?.[0] || uuidv4()
@@ -128,7 +137,7 @@ export function useProjectPersistence({
         deletedElementIds.forEach((elementId) => {
           rowIdsByElementIdRef.current.get(elementId)?.forEach((rowId) => rowIdsToDelete.add(rowId));
         });
-        uniqueElements.forEach((element) => {
+        persistedElements.forEach((element) => {
           rowIdsByElementIdRef.current.get(element.id)?.slice(1).forEach((rowId) => rowIdsToDelete.add(rowId));
         });
 
@@ -177,7 +186,7 @@ export function useProjectPersistence({
 
         if (projectError) throw projectError;
 
-        persistedElementRefsRef.current = new Map(uniqueElements.map((element) => [element.id, element]));
+        persistedElementRefsRef.current = new Map(persistedElements.map((element) => [element.id, element]));
         rowIdsByElementIdRef.current = new Map(
           uniqueElements.map((element) => [element.id, [canonicalRowIdByElementId.get(element.id)!]])
         );
@@ -200,8 +209,8 @@ export function useProjectPersistence({
 
         const rowIdsByElementId = new Map<string, string[]>();
 
-        if (uniqueElements.length > 0) {
-          const canvasRows: CanvasElementInsert[] = uniqueElements.map((element) => {
+        if (persistedElements.length > 0) {
+          const canvasRows: CanvasElementInsert[] = persistedElements.map((element) => {
             const rowId = uuidv4();
             rowIdsByElementId.set(element.id, [rowId]);
             return {
@@ -221,7 +230,7 @@ export function useProjectPersistence({
           }
         }
 
-        persistedElementRefsRef.current = new Map(uniqueElements.map((element) => [element.id, element]));
+        persistedElementRefsRef.current = new Map(persistedElements.map((element) => [element.id, element]));
         rowIdsByElementIdRef.current = rowIdsByElementId;
         staleRowIdsRef.current = [];
         persistedTitleRef.current = title;
@@ -234,7 +243,7 @@ export function useProjectPersistence({
     } finally {
       isSavingRef.current = false;
     }
-  }, [currentProjectId, elements, router, supabase, title, user]);
+  }, [currentProjectId, elements, onAssetsPersisted, router, supabase, title, user]);
 
   const scheduleSave = useCallback(
     (delayMs = 2000) => {

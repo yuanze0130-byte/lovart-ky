@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/lib/supabase';
+import { uploadInlineCanvasImage } from '@/lib/canvas-asset-upload';
 
 const THUMBNAIL_WIDTH = 480;
 const THUMBNAIL_HEIGHT = 360;
@@ -86,8 +87,9 @@ export async function persistProjectThumbnail(
   projectId: string,
   source: string
 ): Promise<string | null> {
-  const thumbnail = await createProjectThumbnail(source);
-  if (!thumbnail) return null;
+  const inlineThumbnail = await createProjectThumbnail(source);
+  if (!inlineThumbnail) return null;
+  const thumbnail = await uploadInlineCanvasImage(inlineThumbnail);
 
   const { error } = await supabase
     .from('projects')

@@ -10,7 +10,8 @@
     "test:qdmy": "node scripts/test-qdmy-project.mjs",
     "test:connections": "node scripts/test-canvas-connections.mjs",
     "test:image-models": "node scripts/test-image-models.mjs",
-    "test:generation-jobs": "node scripts/test-generation-jobs.mjs"
+    "test:generation-jobs": "node scripts/test-generation-jobs.mjs",
+    "migrate:canvas-assets": "node scripts/migrate-canvas-assets.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",

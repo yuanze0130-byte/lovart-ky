@@ -182,6 +182,12 @@ function LovartCanvasContent() {
             ? [...currentElements, ...loadedElements]
             : loadedElements));
     }, []);
+    const handleAssetsPersisted = useCallback((persistedElements: CanvasElement[]) => {
+        const persistedById = new Map(persistedElements.map((element) => [element.id, element]));
+        setElements((currentElements) => currentElements.map(
+            (element) => persistedById.get(element.id) || element
+        ));
+    }, []);
 
     const {
         saveStatus,
@@ -195,6 +201,7 @@ function LovartCanvasContent() {
         title,
         isInteractionActive: isDraggingElement,
         onProjectLoaded: handleProjectLoaded,
+        onAssetsPersisted: handleAssetsPersisted,
     });
 
     const {
