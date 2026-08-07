@@ -1,8 +1,8 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Sparkles, Upload, X, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Images, Settings2, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Sparkles, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Settings2, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageCreditCost } from '@/lib/credits';
 import {
@@ -101,7 +101,6 @@ export function ImageGeneratorPanel({
   onConfigChange,
 }: ImageGeneratorPanelProps) {
   const initialElement = canvasElements.find((item) => item.id === elementId);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [prompt, setPrompt] = useState(initialPrompt || '');
   const [resolution, setResolution] = useState<Resolution>('1K');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('auto');
@@ -117,8 +116,6 @@ export function ImageGeneratorPanel({
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
   const [showModelManager, setShowModelManager] = useState(false);
   const [modelPreferences, setModelPreferences] = useState<ImageModelPreferences>(DEFAULT_IMAGE_MODEL_PREFERENCES);
-  const [referenceImages, setReferenceImages] = useState<string[]>([]);
-  const [showCanvasReferencePicker, setShowCanvasReferencePicker] = useState(false);
   const [editMode] = useState<ImageEditMode>(initialMode);
   const [progress, setProgress] = useState(0);
   const [generationStatus, setGenerationStatus] = useState('');
@@ -139,11 +136,6 @@ export function ImageGeneratorPanel({
     () => Array.from(new Set(connectedInputs.references.filter(Boolean))),
     [connectedInputs.references]
   );
-  const displayedReferenceImages = useMemo(
-    () => Array.from(new Set([...connectedReferenceImages, ...referenceImages].filter(Boolean))),
-    [connectedReferenceImages, referenceImages]
-  );
-
   const boundReferenceElement = useMemo(() => {
     const referenceId = selectedElement?.referenceImageId;
     if (!referenceId) return undefined;
@@ -157,10 +149,9 @@ export function ImageGeneratorPanel({
   }, [canvasElements, selectedElement?.referenceImageId]);
 
   const boundReferenceImage = boundReferenceElement?.content;
-
-  const canvasImageElements = useMemo(
-    () => canvasElements.filter((item) => item.type === 'image' && typeof item.content === 'string' && item.content),
-    [canvasElements]
+  const displayedReferenceImages = useMemo(
+    () => Array.from(new Set([...connectedReferenceImages, boundReferenceImage].filter((image): image is string => Boolean(image)))),
+    [boundReferenceImage, connectedReferenceImages]
   );
 
   const isPanorama = selectedElement?.generatorKind === 'panorama';
@@ -242,28 +233,6 @@ export function ImageGeneratorPanel({
     }
   }, [editMode, isOfficialModel]);
 
-  useEffect(() => {
-    if (!boundReferenceImage) return;
-
-    setReferenceImages((prev) => {
-      if (prev.includes(boundReferenceImage)) return prev;
-      return [boundReferenceImage, ...prev].slice(0, 4);
-    });
-  }, [boundReferenceImage]);
-
-  const handleCanvasReferenceToggle = (image: string) => {
-    if (!image || isGenerating) return;
-
-    setReferenceImages((prev) => {
-      if (prev.includes(image)) {
-        if (boundReferenceImage === image) return prev;
-        return prev.filter((item) => item !== image);
-      }
-
-      return [image, ...prev].slice(0, 4);
-    });
-  };
-
   /* Removed with the legacy prompt-template workflow.
       const pattern = new RegExp(`【${variable.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}】`, 'g');
       return result.replace(pattern, replacement);
@@ -272,23 +241,6 @@ export function ImageGeneratorPanel({
     setPrompt(resolvedPrompt);
   };
   */
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(event.target.files || []);
-    const next = await Promise.all(
-      files.map(
-        (file) =>
-          new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ''));
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          })
-      )
-    );
-    setReferenceImages((prev) => [...prev, ...next].slice(0, 4));
-    event.target.value = '';
-  };
 
   const handleSubmit = async () => {
     const effectivePrompt = connectedInputs.prompt.trim() || prompt.trim();
@@ -300,7 +252,7 @@ export function ImageGeneratorPanel({
       return;
     }
     if (editMode !== 'generate' && effectiveReferenceImages.length === 0) {
-      alert('当前编辑模式需要至少一张参考图，请从图片工具条进入或先添加参考图。');
+      alert('当前编辑模式需要至少一张参考图，请先把图片连线到当前生成器。');
       return;
     }
 
@@ -378,15 +330,6 @@ export function ImageGeneratorPanel({
       style={style}
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <input
-        type="file"
-        ref={fileInputRef}
-        className="hidden"
-        accept="image/*"
-        multiple
-        onChange={handleFileSelect}
-      />
-
       <div className="border-b border-gray-100 px-4 py-3 dark:border-white/10">
         <div className="text-[10px] font-medium uppercase tracking-[0.16em] text-gray-500 dark:text-gray-400">
           {activeMeta.title}
@@ -536,7 +479,7 @@ export function ImageGeneratorPanel({
             {selectedElement?.type === 'image-generator' && (
               <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400">
                 <span className={`inline-flex items-center rounded-full px-2 py-1 font-medium ${connectedReferenceImages.length > 0 || boundReferenceElement ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/12 dark:text-emerald-200' : 'bg-gray-100 text-gray-500 dark:bg-white/8 dark:text-slate-400'}`}>
-                  {connectedReferenceImages.length > 0 ? `已连线 ${connectedReferenceImages.length} 张参考图` : boundReferenceElement ? '已绑定参考图' : '本地参考图'}
+                  {connectedReferenceImages.length > 0 ? `已连线 ${connectedReferenceImages.length} 张参考图` : '已绑定参考图'}
                 </span>
                 {(connectedReferenceImages.length > 0 || boundReferenceElement) && (
                   <span className="truncate">
@@ -562,15 +505,6 @@ export function ImageGeneratorPanel({
                         {isConnectedReference ? '连线' : '绑定'}
                       </div>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => setReferenceImages((prev) => prev.filter((item) => item !== image))}
-                      className="absolute right-1 top-1 rounded-full bg-black/70 p-1 text-white"
-                      disabled={isGenerating || isBoundReference || isConnectedReference}
-                      title={isConnectedReference ? '请在画布上删除这条参考图连线。' : isBoundReference ? '当前绑定参考图不可在这里移除，请先更换绑定目标。' : '移除参考图'}
-                    >
-                      <X size={10} />
-                    </button>
                   </div>
                 );
               })}
@@ -685,54 +619,6 @@ export function ImageGeneratorPanel({
           </div>
         </div>
 
-        {showCanvasReferencePicker && (
-          <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-white/10 dark:bg-white/5">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <div className="text-xs font-semibold text-gray-800 dark:text-slate-100">从画板选择参考图</div>
-                <div className="mt-0.5 text-[11px] text-gray-500 dark:text-slate-400">可选最多 4 张，直接使用画布上的已有图片。</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCanvasReferencePicker(false)}
-                className="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10"
-              >
-                收起
-              </button>
-            </div>
-            {canvasImageElements.length > 0 ? (
-              <div className="grid max-h-44 grid-cols-5 gap-2 overflow-y-auto pr-1">
-                {canvasImageElements.map((item) => {
-                  const image = item.content as string;
-                  const selected = referenceImages.includes(image);
-
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => handleCanvasReferenceToggle(image)}
-                      disabled={isGenerating}
-                      className={`relative h-16 overflow-hidden rounded-xl border text-left transition ${selected ? 'border-violet-500 ring-2 ring-violet-200 dark:ring-violet-500/30' : 'border-gray-200 hover:border-gray-300 dark:border-white/10'}`}
-                      title={typeof item.prompt === 'string' && item.prompt ? item.prompt : '画板图片'}
-                    >
-                      <img src={image} alt="canvas-reference" className="h-full w-full object-cover" />
-                      {selected && (
-                        <span className="absolute left-1 top-1 rounded-full bg-violet-600 px-1.5 py-0.5 text-[10px] font-medium text-white shadow-sm">
-                          已选
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="rounded-lg border border-dashed border-gray-200 px-3 py-4 text-center text-xs text-gray-500 dark:border-white/10 dark:text-slate-400">
-                画板上还没有图片。生成或上传图片后，就能在这里选作参考图。
-              </div>
-            )}
-          </div>
-        )}
-
         {isOfficialModel && (
           <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-gray-700 dark:border-amber-400/20 dark:bg-amber-500/10 dark:text-slate-200">
             <div className="mb-3 flex items-start justify-between gap-3">
@@ -797,30 +683,7 @@ export function ImageGeneratorPanel({
         </div>
 
         {selectedElement?.type === 'image-generator' && (
-          <div className="mt-4 flex items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isGenerating}
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Upload size={16} />
-                本地参考图
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowCanvasReferencePicker((prev) => !prev)}
-                disabled={isGenerating || canvasImageElements.length === 0}
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-                title={canvasImageElements.length === 0 ? '画板上还没有可用图片' : '从画板已有图片中选择参考图'}
-              >
-                <Images size={16} />
-                画板参考图
-              </button>
-            </div>
-
+          <div className="mt-4 flex justify-end">
             <button
               type="button"
               onClick={() => void handleSubmit()}
