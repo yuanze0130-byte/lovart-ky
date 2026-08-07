@@ -1045,30 +1045,6 @@ export function CanvasArea({
         }));
     };
 
-    const createHotspotElement = (bounds: { left: number; top: number; right: number; bottom: number }, targetId?: string): CanvasElement => ({
-        id: uuidv4(),
-        type: 'shape',
-        shapeType: 'hotspot',
-        x: bounds.left,
-        y: bounds.top,
-        width: Math.max(40, bounds.right - bounds.left),
-        height: Math.max(40, bounds.bottom - bounds.top),
-        color: 'rgba(14, 165, 233, 0.14)',
-        hotspotTargetId: targetId,
-        hotspotLabel: '热区',
-    });
-
-    const handleCreateHotspot = (el: CanvasElement) => {
-        const hotspot = createHotspotElement({
-            left: el.x,
-            top: el.y,
-            right: el.x + (el.width || 160),
-            bottom: el.y + (el.height || 120),
-        }, el.id);
-        onAddElement(hotspot);
-        onSelect([hotspot.id]);
-    };
-
     const applyElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
         if (updates.length === 0) return;
         if (onElementsChange) {
@@ -1112,13 +1088,6 @@ export function CanvasArea({
 
         duplicatedElements.forEach((el) => onAddElement(el));
         onSelect(duplicatedElements.map((el) => el.id));
-    };
-
-    const handleCreateHotspotForSelection = () => {
-        if (!selectionBounds) return;
-        const hotspot = createHotspotElement(selectionBounds);
-        onAddElement(hotspot);
-        onSelect([hotspot.id]);
     };
 
     const handleAlignSelection = (alignment: 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom') => {
@@ -1324,7 +1293,6 @@ export function CanvasArea({
                         onOpenImageEditMode={onOpenImageEditMode}
                         onConnectFlow={onConnectFlow}
                         onGeneratePanorama={onGeneratePanorama}
-                        onCreateHotspot={handleCreateHotspot}
                         onDuplicate={handleDuplicate}
                         onRemoveBackground={onRemoveBackground}
                         onUpscale={onUpscale}
@@ -1348,14 +1316,6 @@ export function CanvasArea({
                         已选中 {selectedIds.length} 项{multiSelectionGroupIds.length > 0 ? ` · ${multiSelectionGroupIds.length} 组 / ${selectedGroupMemberCount} 个组内元素` : ''}{selectedSingleGroupId ? ' · 当前为单组选择' : ''}
                     </span>
                     <div className="h-6 w-px bg-gray-200 dark:bg-white/10" />
-
-                    <button
-                        onClick={handleCreateHotspotForSelection}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl text-sky-600 transition-colors hover:bg-sky-50 hover:text-sky-700 dark:text-sky-200 dark:hover:bg-sky-400/12 dark:hover:text-sky-100"
-                        title="添加热区"
-                    >
-                        <span className="text-[13px] font-semibold">热</span>
-                    </button>
 
                     <button
                         onClick={handleDuplicateSelection}
