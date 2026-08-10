@@ -6,6 +6,8 @@ import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
 import { PanoramaViewer } from './PanoramaViewer';
 import { ImageCompareNode } from './ImageCompareNode';
 import { InpaintNode } from './InpaintNode';
+import { GlobalViewNode } from './GlobalViewNode';
+import { MotionTransferNode } from './MotionTransferNode';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -27,12 +29,14 @@ import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-mod
 import { duplicateCanvasSelection, serializeCanvasSelection } from '@/lib/canvas-shortcuts';
 import type { CanvasFeatureSettings } from '@/lib/canvas-feature-settings';
 
-export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'inpaint' | 'connector';
+export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'global-view' | 'motion-transfer' | 'inpaint' | 'connector';
 
 const SMART_CONNECTION_TARGET_TYPES = new Set<CanvasElementType>([
     'image-generator',
     'video-generator',
     'image-compare',
+    'global-view',
+    'motion-transfer',
     'inpaint',
 ]);
 
@@ -136,6 +140,15 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     inpaintBrushSize?: number;
     inpaintFeather?: number;
     inpaintMask?: string;
+    globalViewZoom?: number;
+    globalViewOffsetX?: number;
+    globalViewOffsetY?: number;
+    globalViewRotation?: number;
+    motionModel?: 'kling-2.6' | 'kling-3.0';
+    motionMode?: 'std' | 'pro' | '4k';
+    motionKeepAudio?: boolean;
+    motionOrientation?: 'image' | 'video';
+    motionWatermark?: boolean;
     groupId?: string;
     linkedElements?: string[];
     connectorFrom?: string;
@@ -298,6 +311,8 @@ interface CanvasAreaProps {
         options: { x: number; y: number; width: number; height: number }
     ) => Promise<void>;
     onInpaintGenerate?: (element: CanvasElement, input: { image: string; mask: string; prompt: string }) => Promise<void>;
+    onGlobalViewCapture?: (element: CanvasElement, images: Array<{ content: string; label: string }>) => void;
+    onMotionTransferComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
     annotationImageId?: string | null;
     annotationObject?: DetectedObject | null;
     isDetectingObject?: boolean;
@@ -358,6 +373,8 @@ export function CanvasArea({
     onUpscale,
     onCrop,
     onInpaintGenerate,
+    onGlobalViewCapture,
+    onMotionTransferComplete,
     annotationImageId,
     annotationObject,
     isDetectingObject,
@@ -2087,6 +2104,44 @@ export function CanvasArea({
                                             onGenerate={sourceImage && onInpaintGenerate
                                                 ? (input) => onInpaintGenerate(el, input)
                                                 : undefined}
+                                        />
+                                    );
+                                })()}
+
+                                {el.type === 'global-view' && (() => {
+                                    const sourceImage = resolveConnectedNodeContents(el.id, 'image-in', elements)[0];
+                                    return (
+                                        <GlobalViewNode
+                                            sourceImage={sourceImage}
+                                            width={el.width || 420}
+                                            height={el.height || 390}
+                                            zoom={el.globalViewZoom ?? 1}
+                                            offsetX={el.globalViewOffsetX ?? 0}
+                                            offsetY={el.globalViewOffsetY ?? 0}
+                                            rotation={el.globalViewRotation ?? 0}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                            onCapture={onGlobalViewCapture ? (images) => onGlobalViewCapture(el, images) : undefined}
+                                        />
+                                    );
+                                })()}
+
+                                {el.type === 'motion-transfer' && (() => {
+                                    const sourceImage = resolveConnectedNodeContents(el.id, 'image-in', elements)[0];
+                                    const sourceVideo = resolveConnectedNodeContents(el.id, 'video-in', elements)[0];
+                                    const connectedPrompt = resolveConnectedNodeContents(el.id, 'prompt-in', elements).join('\n\n');
+                                    return (
+                                        <MotionTransferNode
+                                            sourceImage={sourceImage}
+                                            sourceVideo={sourceVideo}
+                                            connectedPrompt={connectedPrompt}
+                                            prompt={el.prompt || ''}
+                                            model={el.motionModel || 'kling-2.6'}
+                                            mode={el.motionMode || 'std'}
+                                            keepAudio={el.motionKeepAudio !== false}
+                                            orientation={el.motionOrientation || 'image'}
+                                            watermark={el.motionWatermark === true}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                            onComplete={onMotionTransferComplete ? (videoUrl) => onMotionTransferComplete(el, videoUrl) : undefined}
                                         />
                                     );
                                 })()}

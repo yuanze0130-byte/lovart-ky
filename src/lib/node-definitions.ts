@@ -13,7 +13,7 @@ export interface NodePortDefinition {
   multiple?: boolean;
 }
 
-export type NodeCreateAction = 'image-generator' | 'video-generator' | 'image-compare' | 'inpaint';
+export type NodeCreateAction = 'image-generator' | 'video-generator' | 'image-compare' | 'global-view' | 'motion-transfer' | 'inpaint';
 
 export interface NodeDefinition {
   type: RegisteredNodeType;
@@ -31,7 +31,7 @@ export interface NodeDefinition {
     action: NodeCreateAction;
     label: string;
     order: number;
-    icon: 'sparkles' | 'video' | 'compare' | 'paintbrush';
+    icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'paintbrush';
   };
 }
 
@@ -97,6 +97,46 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
       { id: 'compare-a-in', label: '图片 A', direction: 'input', kind: 'image' },
       { id: 'compare-b-in', label: '图片 B', direction: 'input', kind: 'image' },
       { id: 'image-out', label: '对比结果', direction: 'output', kind: 'image' },
+    ],
+  },
+  {
+    type: 'global-view', label: '全局视角', category: 'editing',
+    defaultState: {
+      width: 420,
+      height: 390,
+      globalViewZoom: 1,
+      globalViewOffsetX: 0,
+      globalViewOffsetY: 0,
+      globalViewRotation: 0,
+    },
+    creatable: true,
+    qdmy: { importTypes: ['global-perspective'], exportType: 'global-perspective' },
+    createMenu: { action: 'global-view', label: '全局视角', order: 32, icon: 'globe' },
+    ports: [
+      { id: 'image-in', label: '参考图', direction: 'input', kind: 'image' },
+      { id: 'image-out', label: '视角图', direction: 'output', kind: 'image' },
+    ],
+  },
+  {
+    type: 'motion-transfer', label: '动作迁移', category: 'generation',
+    defaultState: {
+      width: 420,
+      height: 580,
+      motionModel: 'kling-2.6',
+      motionMode: 'std',
+      motionKeepAudio: true,
+      motionOrientation: 'image',
+      motionWatermark: false,
+    },
+    creatable: true,
+    runnable: true,
+    qdmy: { importTypes: ['motion-control'], exportType: 'motion-control' },
+    createMenu: { action: 'motion-transfer', label: '动作迁移', order: 34, icon: 'motion' },
+    ports: [
+      { id: 'image-in', label: '参考图', direction: 'input', kind: 'image' },
+      { id: 'video-in', label: '参考视频', direction: 'input', kind: 'video' },
+      { id: 'prompt-in', label: '动作提示词', direction: 'input', kind: 'prompt' },
+      { id: 'video-out', label: '迁移结果', direction: 'output', kind: 'video' },
     ],
   },
   {

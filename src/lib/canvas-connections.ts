@@ -90,7 +90,7 @@ export function buildBatchConnections(
     });
   const workingElements = [...elements];
   const connectors: CanvasElement[] = [];
-  const preferredTargetTypes = new Set(['image-generator', 'video-generator', 'image-compare', 'inpaint']);
+  const preferredTargetTypes = new Set(['image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'inpaint']);
 
   selectedNodes.forEach((source, sourceIndex) => {
     const outputPorts = getNodePorts(source).filter((port) => port.direction === 'output');

@@ -140,6 +140,13 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
   const inpaintBrushSize = firstNumber(node.inpaintBrushSize, settings.inpaintBrushSize);
   const inpaintFeather = firstNumber(node.inpaintFeather, settings.inpaintFeather);
   const inpaintMask = firstString(node.inpaintMask, settings.inpaintMask);
+  const globalViewZoom = firstNumber(node.globalViewZoom, settings.globalViewZoom);
+  const globalViewOffsetX = firstNumber(node.globalViewOffsetX, settings.globalViewOffsetX);
+  const globalViewOffsetY = firstNumber(node.globalViewOffsetY, settings.globalViewOffsetY);
+  const globalViewRotation = firstNumber(node.globalViewRotation, settings.globalViewRotation);
+  const motionModel = firstString(node.motionModel, settings.motionModel, model);
+  const motionMode = firstString(node.motionMode, settings.motionMode);
+  const motionOrientation = firstString(node.motionOrientation, settings.motionOrientation);
 
   const element: CanvasElement = {
     id,
@@ -166,6 +173,19 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
     inpaintBrushSize: type === 'inpaint' ? inpaintBrushSize : undefined,
     inpaintFeather: type === 'inpaint' ? inpaintFeather : undefined,
     inpaintMask: type === 'inpaint' ? inpaintMask : undefined,
+    globalViewZoom: type === 'global-view' ? globalViewZoom : undefined,
+    globalViewOffsetX: type === 'global-view' ? globalViewOffsetX : undefined,
+    globalViewOffsetY: type === 'global-view' ? globalViewOffsetY : undefined,
+    globalViewRotation: type === 'global-view' ? globalViewRotation : undefined,
+    motionModel: type === 'motion-transfer' && (motionModel === 'kling-2.6' || motionModel === 'kling-3.0') ? motionModel : undefined,
+    motionMode: type === 'motion-transfer' && (motionMode === 'std' || motionMode === 'pro' || motionMode === '4k') ? motionMode : undefined,
+    motionKeepAudio: type === 'motion-transfer' && typeof (node.motionKeepAudio ?? settings.motionKeepAudio) === 'boolean'
+      ? Boolean(node.motionKeepAudio ?? settings.motionKeepAudio)
+      : undefined,
+    motionOrientation: type === 'motion-transfer' && (motionOrientation === 'image' || motionOrientation === 'video') ? motionOrientation : undefined,
+    motionWatermark: type === 'motion-transfer' && typeof (node.motionWatermark ?? settings.motionWatermark) === 'boolean'
+      ? Boolean(node.motionWatermark ?? settings.motionWatermark)
+      : undefined,
     generationMetadata: model || platformGroup ? {
       model,
       desktopPlatformGroup: platformGroup,
@@ -278,6 +298,15 @@ export function exportQdmyProject(input: QdmyExportInput) {
         inpaintBrushSize: element.inpaintBrushSize,
         inpaintFeather: element.inpaintFeather,
         inpaintMask: element.inpaintMask,
+        globalViewZoom: element.globalViewZoom,
+        globalViewOffsetX: element.globalViewOffsetX,
+        globalViewOffsetY: element.globalViewOffsetY,
+        globalViewRotation: element.globalViewRotation,
+        motionModel: element.motionModel,
+        motionMode: element.motionMode,
+        motionKeepAudio: element.motionKeepAudio,
+        motionOrientation: element.motionOrientation,
+        motionWatermark: element.motionWatermark,
         platformGroup: firstString(element.generationMetadata?.desktopPlatformGroup, settings.platformGroup),
         ratio: element.requestedAspectRatio,
         resolution: element.requestedResolution,

@@ -8,18 +8,18 @@ type AssetUploadResponse = {
   url?: string;
 };
 
-function isInlineImage(value: unknown): value is string {
-  return typeof value === 'string' && /^data:image\/[\w.+-]+;base64,/i.test(value);
+function isInlineAsset(value: unknown): value is string {
+  return typeof value === 'string' && /^data:(?:image|video)\/[\w.+-]+;base64,/i.test(value);
 }
 
-export async function uploadInlineCanvasImage(image: string) {
-  if (!isInlineImage(image)) return image;
+export async function uploadInlineCanvasAsset(asset: string) {
+  if (!isInlineAsset(asset)) return asset;
 
-  const blobResponse = await fetch(image);
-  if (!blobResponse.ok) throw new Error('无法读取画布图片');
+  const blobResponse = await fetch(asset);
+  if (!blobResponse.ok) throw new Error('无法读取画布素材');
 
   const formData = new FormData();
-  formData.set('file', await blobResponse.blob(), 'canvas-image');
+  formData.set('file', await blobResponse.blob(), 'canvas-asset');
 
   const response = await authedFetch('/api/canvas-assets', {
     method: 'POST',
@@ -28,20 +28,22 @@ export async function uploadInlineCanvasImage(image: string) {
   const result = (await response.json().catch(() => ({}))) as AssetUploadResponse;
 
   if (!response.ok || !result.url) {
-    throw new Error(result.error || '图片保存到服务器失败');
+    throw new Error(result.error || '素材保存到服务器失败');
   }
 
   return result.url;
 }
 
+export const uploadInlineCanvasImage = uploadInlineCanvasAsset;
+
 async function persistValue(
   value: unknown,
   uploadCache: Map<string, Promise<string>>
 ): Promise<unknown> {
-  if (isInlineImage(value)) {
+  if (isInlineAsset(value)) {
     let upload = uploadCache.get(value);
     if (!upload) {
-      upload = uploadInlineCanvasImage(value);
+      upload = uploadInlineCanvasAsset(value);
       uploadCache.set(value, upload);
     }
     return upload;

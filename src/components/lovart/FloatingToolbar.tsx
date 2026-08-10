@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush, Axis3D } from 'lucide-react';
+import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush, Axis3D, Globe2, PersonStanding } from 'lucide-react';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { getCreateMenuNodeDefinitions, type NodeCreateAction } from '@/lib/node-definitions';
 
@@ -15,11 +15,13 @@ interface FloatingToolbarProps {
     onOpenImageGenerator: () => void;
     onOpenImageCompare?: () => void;
     onOpen3DDirector?: () => void;
+    onOpenGlobalView?: () => void;
+    onOpenMotionTransfer?: () => void;
     onOpenInpaint?: () => void;
     onOpenVideoGenerator?: () => void;
 }
 
-export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpen3DDirector, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
+export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpen3DDirector, onOpenGlobalView, onOpenMotionTransfer, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
     const [showUploadMenu, setShowUploadMenu] = useState(false);
     const [showShapeMenu, setShowShapeMenu] = useState(false);
     const [showSelectMenu, setShowSelectMenu] = useState(false);
@@ -33,12 +35,16 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
         'image-generator': onOpenImageGenerator,
         'video-generator': onOpenVideoGenerator,
         'image-compare': onOpenImageCompare,
+        'global-view': onOpenGlobalView,
+        'motion-transfer': onOpenMotionTransfer,
         inpaint: onOpenInpaint,
     };
 
-    const createMenuIcon = (icon: 'sparkles' | 'video' | 'compare' | 'paintbrush') => {
+    const createMenuIcon = (icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'paintbrush') => {
         if (icon === 'video') return <Video size={16} />;
         if (icon === 'compare') return <Columns2 size={16} />;
+        if (icon === 'globe') return <Globe2 size={16} />;
+        if (icon === 'motion') return <PersonStanding size={16} />;
         if (icon === 'paintbrush') return <Paintbrush size={16} />;
         return <Sparkles size={16} />;
     };

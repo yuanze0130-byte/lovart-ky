@@ -244,6 +244,8 @@ function LovartCanvasContent() {
         handleElementsChange,
         handleOpenImageGenerator,
         handleOpenImageCompare,
+        handleOpenGlobalView,
+        handleOpenMotionTransfer,
         handleOpenInpaint,
         handleOpenVideoGenerator,
         createImageGeneratorElement,
@@ -748,6 +750,116 @@ function LovartCanvasContent() {
         } finally {
             setIsGenerating(false);
         }
+    }, [setElements, setSelectedIds]);
+
+    const handleGlobalViewCapture = useCallback((
+        element: CanvasElement,
+        images: Array<{ content: string; label: string }>,
+    ) => {
+        if (images.length === 0) return;
+        const resultIds: string[] = [];
+        const additions: CanvasElement[] = [];
+        images.forEach((image, index) => {
+            const resultId = uuidv4();
+            const connectorId = uuidv4();
+            resultIds.push(resultId);
+            const resultElement: CanvasElement = {
+                id: resultId,
+                type: 'image',
+                x: element.x + (element.width || 420) + 90 + (images.length > 1 ? (index % 2) * 390 : 0),
+                y: element.y + (images.length > 1 ? Math.floor(index / 2) * 315 : 0),
+                width: 360,
+                height: 270,
+                originalWidth: 1024,
+                originalHeight: 768,
+                content: image.content,
+                generationMetadata: {
+                    assetKind: 'image',
+                    layoutRole: images.length > 1 ? 'grid-item' : undefined,
+                    layoutLabel: image.label,
+                    generatedFromNode: true,
+                    generatorElementId: element.id,
+                },
+                linkedElements: [element.id, connectorId],
+            };
+            additions.push({
+                id: connectorId,
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: element.id,
+                connectorTo: resultId,
+                connectorSourcePort: 'image-out',
+                connectorTargetPort: 'image-in',
+                connectorDataKind: 'image',
+                connectorKind: 'result',
+                connectorOrder: index,
+                connectorStyle: 'solid',
+                color: '#10b981',
+            }, resultElement);
+            void addGenerationHistoryItem({
+                id: resultId,
+                kind: 'image',
+                content: image.content,
+                createdAt: new Date().toISOString(),
+                width: 1024,
+                height: 768,
+                metadata: resultElement.generationMetadata,
+            });
+        });
+        setElements((previous) => [...previous, ...additions]);
+        setSelectedIds(resultIds);
+    }, [setElements, setSelectedIds]);
+
+    const handleMotionTransferComplete = useCallback(async (element: CanvasElement, videoUrl: string) => {
+        const resultId = uuidv4();
+        const connectorId = uuidv4();
+        const resultElement: CanvasElement = {
+            id: resultId,
+            type: 'video',
+            x: element.x + (element.width || 420) + 90,
+            y: element.y,
+            width: 400,
+            height: 300,
+            originalWidth: 400,
+            originalHeight: 300,
+            content: videoUrl,
+            prompt: element.prompt,
+            generationMetadata: {
+                sourcePrompt: element.prompt,
+                model: `${element.motionModel || 'kling-2.6'}-${element.motionMode || 'std'}`,
+                generatedFromNode: true,
+                generatorElementId: element.id,
+            },
+            linkedElements: [element.id, connectorId],
+        };
+        const connector: CanvasElement = {
+            id: connectorId,
+            type: 'connector',
+            x: 0,
+            y: 0,
+            connectorFrom: element.id,
+            connectorTo: resultId,
+            connectorSourcePort: 'video-out',
+            connectorTargetPort: 'video-in',
+            connectorDataKind: 'video',
+            connectorKind: 'result',
+            connectorStyle: 'solid',
+            color: '#8b5cf6',
+        };
+        setElements((previous) => [...previous, connector, resultElement]);
+        setSelectedIds([resultId]);
+        void addGenerationHistoryItem({
+            id: resultId,
+            kind: 'video',
+            content: videoUrl,
+            prompt: element.prompt,
+            model: resultElement.generationMetadata?.model,
+            createdAt: new Date().toISOString(),
+            width: 400,
+            height: 300,
+            metadata: resultElement.generationMetadata,
+        });
     }, [setElements, setSelectedIds]);
 
     const handleInsertHistoryItem = useCallback(async (item: GenerationHistoryItem) => {
@@ -2650,6 +2762,8 @@ function LovartCanvasContent() {
                     onUpscale={handleUpscale}
                     onCrop={handleCrop}
                     onInpaintGenerate={handleInpaintGenerate}
+                    onGlobalViewCapture={handleGlobalViewCapture}
+                    onMotionTransferComplete={handleMotionTransferComplete}
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}
                     isDetectingObject={isDetectingObject}
@@ -2762,6 +2876,8 @@ function LovartCanvasContent() {
                     onOpenImageGenerator={handleOpenImageGenerator}
                     onOpenImageCompare={handleOpenImageCompare}
                     onOpen3DDirector={() => setShow3DDirector(true)}
+                    onOpenGlobalView={handleOpenGlobalView}
+                    onOpenMotionTransfer={handleOpenMotionTransfer}
                     onOpenInpaint={handleOpenInpaint}
                     onOpenVideoGenerator={handleOpenVideoGenerator}
                 />

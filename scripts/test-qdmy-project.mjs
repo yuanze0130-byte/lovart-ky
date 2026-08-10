@@ -106,16 +106,29 @@ try {
     elements: [
       { id: 'compare-1', type: 'image-compare', x: 0, y: 0, width: 420, height: 300, imageCompareSplit: 37, imageCompareSwapped: true },
       { id: 'inpaint-1', type: 'inpaint', x: 500, y: 0, width: 440, height: 360, prompt: '替换天空', inpaintBrushSize: 48, inpaintFeather: 7, inpaintMask: 'data:image/png;base64,TUFDSw==' },
+      { id: 'global-1', type: 'global-view', x: 0, y: 450, width: 420, height: 390, globalViewZoom: 1.3, globalViewOffsetX: 0.1, globalViewOffsetY: -0.05, globalViewRotation: 22 },
+      { id: 'motion-1', type: 'motion-transfer', x: 500, y: 450, width: 420, height: 580, prompt: '保持人物身份', motionModel: 'kling-3.0', motionMode: 'pro', motionKeepAudio: false, motionOrientation: 'video', motionWatermark: true },
     ],
   });
   const parityImported = importQdmyProject(parityProject);
   const compare = parityImported.elements.find((element) => element.id === 'compare-1');
   const inpaint = parityImported.elements.find((element) => element.id === 'inpaint-1');
+  const globalView = parityImported.elements.find((element) => element.id === 'global-1');
+  const motion = parityImported.elements.find((element) => element.id === 'motion-1');
   assert.equal(compare?.imageCompareSplit, 37);
   assert.equal(compare?.imageCompareSwapped, true);
   assert.equal(inpaint?.inpaintBrushSize, 48);
   assert.equal(inpaint?.inpaintFeather, 7);
   assert.equal(inpaint?.inpaintMask, 'data:image/png;base64,TUFDSw==');
+  assert.equal(globalView?.globalViewZoom, 1.3);
+  assert.equal(globalView?.globalViewOffsetX, 0.1);
+  assert.equal(globalView?.globalViewOffsetY, -0.05);
+  assert.equal(globalView?.globalViewRotation, 22);
+  assert.equal(motion?.motionModel, 'kling-3.0');
+  assert.equal(motion?.motionMode, 'pro');
+  assert.equal(motion?.motionKeepAudio, false);
+  assert.equal(motion?.motionOrientation, 'video');
+  assert.equal(motion?.motionWatermark, true);
 
   const merged = mergeQdmyElements([
     { id: 'generate-1', type: 'text', x: 0, y: 0, content: 'existing' },

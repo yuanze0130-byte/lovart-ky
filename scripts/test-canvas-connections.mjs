@@ -44,11 +44,11 @@ try {
 
   const definitions = listNodeDefinitions();
   assert.deepEqual(definitions.map((definition) => definition.type).sort(), [
-    'connector', 'image', 'image-compare', 'image-generator', 'inpaint',
+    'connector', 'global-view', 'image', 'image-compare', 'image-generator', 'inpaint', 'motion-transfer',
     'path', 'shape', 'text', 'video', 'video-generator',
   ]);
   assert.deepEqual(getCreateMenuNodeDefinitions().map((definition) => definition.type), [
-    'image-generator', 'video-generator', 'image-compare', 'inpaint',
+    'image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'inpaint',
   ]);
   assert.equal(getNodeDefaultState('image-compare').imageCompareSplit, 50);
   assert.equal(getNodeDefaultState('inpaint').inpaintFeather, 4);
@@ -58,6 +58,8 @@ try {
   assert.equal(getNodeTypeForQdmyImport('gen-speech'), 'text');
   assert.equal(getQdmyExportType('image-compare'), 'image-compare');
   assert.equal(getQdmyExportType('inpaint'), 'inpaint-menu');
+  assert.equal(getNodeTypeForQdmyImport('global-perspective'), 'global-view');
+  assert.equal(getNodeTypeForQdmyImport('motion-control'), 'motion-transfer');
 
   const textNode = { id: 'prompt', type: 'text', x: 0, y: 0, content: 'cinematic portrait' };
   const imageNode = { id: 'reference', type: 'image', x: 0, y: 100, content: 'data:image/png;base64,abc' };
@@ -117,6 +119,13 @@ try {
   assert.deepEqual(compareBatch.map((edge) => edge.connectorTargetPort).sort(), ['compare-a-in', 'compare-b-in']);
   const inpaintNode = { id: 'inpaint', type: 'inpaint', x: 900, y: 0 };
   assert.equal(getNodePorts(inpaintNode).some((port) => port.id === 'image-in'), true);
+  const globalViewNode = { id: 'global-view', type: 'global-view', x: 900, y: 400 };
+  assert.equal(canConnectPorts(imageOutput, getNodePorts(globalViewNode).find((port) => port.id === 'image-in')), true);
+  const motionNode = { id: 'motion', type: 'motion-transfer', x: 1300, y: 400 };
+  const videoNode = { id: 'video', type: 'video', x: 900, y: 800, content: 'data:video/mp4;base64,abc' };
+  const videoOutput = getNodePorts(videoNode).find((port) => port.id === 'video-out');
+  assert.equal(canConnectPorts(imageOutput, getNodePorts(motionNode).find((port) => port.id === 'image-in')), true);
+  assert.equal(canConnectPorts(videoOutput, getNodePorts(motionNode).find((port) => port.id === 'video-in')), true);
   assert.equal(wouldCreateConnectionCycle(normalized, 'generator', 'prompt'), true);
   assert.equal(wouldCreateConnectionCycle(normalized, 'prompt', 'reference'), false);
 

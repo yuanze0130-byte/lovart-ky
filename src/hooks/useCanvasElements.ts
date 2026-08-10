@@ -200,6 +200,20 @@ export function useCanvasElements({
     y: 300 - pan.y + elements.length * 20,
   }), [elements.length, pan.x, pan.y]);
 
+  const createGlobalViewElement = useCallback((): CanvasElement => ({
+    ...getNodeDefaultState('global-view'),
+    id: uuidv4(),
+    type: 'global-view',
+    ...getNextWorkflowPosition(),
+  }), [getNextWorkflowPosition]);
+
+  const createMotionTransferElement = useCallback((): CanvasElement => ({
+    ...getNodeDefaultState('motion-transfer'),
+    id: uuidv4(),
+    type: 'motion-transfer',
+    ...getNextWorkflowPosition(),
+  }), [getNextWorkflowPosition]);
+
   const handleOpenImageGenerator = useCallback(() => {
     appendElement(createImageGeneratorElement());
   }, [appendElement, createImageGeneratorElement]);
@@ -216,6 +230,14 @@ export function useCanvasElements({
     appendElement(createInpaintElement());
   }, [appendElement, createInpaintElement]);
 
+  const handleOpenGlobalView = useCallback(() => {
+    appendElement(createGlobalViewElement());
+  }, [appendElement, createGlobalViewElement]);
+
+  const handleOpenMotionTransfer = useCallback(() => {
+    appendElement(createMotionTransferElement());
+  }, [appendElement, createMotionTransferElement]);
+
   return {
     appendElement,
     handleAddImage,
@@ -229,11 +251,15 @@ export function useCanvasElements({
     handleOpenImageGenerator,
     handleOpenVideoGenerator,
     handleOpenImageCompare,
+    handleOpenGlobalView,
+    handleOpenMotionTransfer,
     handleOpenInpaint,
     createImageGeneratorElement,
     createPanoramaGeneratorElement,
     createVideoGeneratorElement,
     createImageCompareElement,
+    createGlobalViewElement,
+    createMotionTransferElement,
     createInpaintElement,
   };
 }
