@@ -1,6 +1,6 @@
 /* eslint-disable @next/next/no-img-element -- The canvas renders user-provided/generated image data directly. */
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
-import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Link2, Trash2, Unlink2, X } from 'lucide-react';
+import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Download, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
 import { PanoramaViewer } from './PanoramaViewer';
@@ -12,6 +12,7 @@ import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/ho
 import { v4 as uuidv4 } from 'uuid';
 import {
     PORT_COLORS,
+    buildBatchConnections,
     canConnectPorts,
     connectionKindForPorts,
     getNodePorts,
@@ -23,6 +24,7 @@ import {
     type CanvasPortDefinition,
 } from '@/lib/canvas-connections';
 import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-models';
+import { duplicateCanvasSelection, serializeCanvasSelection } from '@/lib/canvas-shortcuts';
 
 export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'inpaint' | 'connector';
 
@@ -359,7 +361,9 @@ export function CanvasArea({
         startY: number;
         currentX: number;
         currentY: number;
+        mode: 'select' | 'batch-connect';
     } | null>(null);
+    const [selectionContextMenu, setSelectionContextMenu] = useState<{ x: number; y: number } | null>(null);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [currentPath, setCurrentPath] = useState<{ points: { x: number; y: number }[] } | null>(null);
     const [connectionDraft, setConnectionDraft] = useState<{
@@ -502,9 +506,18 @@ export function CanvasArea({
         width: number = 0,
         height: number = 0
     ) => {
-        const isPanGesture = activeTool === 'hand' || e.button === 1;
+        const eventTarget = e.target as HTMLElement;
+        if (!elementId && e.button === 0 && eventTarget.closest('button, input, textarea, select, [role="menu"]')) return;
+        const isBlankPrimaryClick = !elementId && e.button === 0;
+        const isSelectionGesture = isBlankPrimaryClick && (e.ctrlKey || e.metaKey || e.shiftKey);
+        const isPanGesture = activeTool === 'hand'
+            || e.button === 1
+            || (isBlankPrimaryClick && activeTool !== 'draw' && !isSelectionGesture);
+
+        if (e.button === 0) setSelectionContextMenu(null);
 
         if (isPanGesture) {
+            if (isBlankPrimaryClick && !e.ctrlKey && !e.metaKey && !e.shiftKey) onSelect([]);
             setIsPanning(true);
             dragStartRef.current = {
                 x: e.clientX,
@@ -519,6 +532,8 @@ export function CanvasArea({
             return;
         }
 
+        if (e.button !== 0) return;
+
         if (activeTool === 'draw') {
             setIsDrawing(true);
             const point = getCanvasPoint(e.clientX, e.clientY);
@@ -527,9 +542,6 @@ export function CanvasArea({
         }
 
         if (!elementId) {
-            if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
-                onSelect([]);
-            }
             const point = getCanvasPoint(e.clientX, e.clientY);
             setIsSelecting(true);
             setSelectionBox({
@@ -537,6 +549,7 @@ export function CanvasArea({
                 startY: point.y,
                 currentX: point.x,
                 currentY: point.y,
+                mode: e.shiftKey ? 'batch-connect' : 'select',
             });
             setEditingTextId(null);
             return;
@@ -580,11 +593,21 @@ export function CanvasArea({
 
         if ((e.target as HTMLElement).dataset.handle) return;
 
+        let dragElements = elements;
+        if (e.altKey && e.button === 0 && dragSelectedIds.length > 0) {
+            e.preventDefault();
+            const duplicated = duplicateCanvasSelection(elements, dragSelectedIds, uuidv4, 0);
+            duplicated.elements.forEach((element) => onAddElement(element));
+            dragSelectedIds = duplicated.selectedIds;
+            dragElements = duplicated.elements;
+            onSelect(dragSelectedIds);
+        }
+
         setIsDragging(true);
         onDragStart?.();
         draggedElementIdRef.current = elementId;
 
-        const initialPositions = elements
+        const initialPositions = dragElements
             .filter((el) => dragSelectedIds.includes(el.id))
             .map((el) => ({ id: el.id, x: el.x, y: el.y, width: el.width, height: el.height }));
 
@@ -899,6 +922,9 @@ export function CanvasArea({
 
                 const expandedSelectedIds = Array.from(new Set(directlySelected.flatMap((el) => getGroupedSelectionIds(el.id))));
 
+                if (selectionBox.mode === 'batch-connect' && expandedSelectedIds.length > 1) {
+                    buildBatchConnections(elements, expandedSelectedIds, uuidv4).forEach((connector) => onAddElement(connector));
+                }
                 onSelect(expandedSelectedIds);
             }
         }
@@ -1251,6 +1277,33 @@ export function CanvasArea({
         onCreateNodeAt?.(point.x, point.y);
     };
 
+    const handleCanvasContextMenu = (event: React.MouseEvent) => {
+        event.preventDefault();
+        if (selectedIds.length === 0) {
+            setSelectionContextMenu(null);
+            return;
+        }
+        const bounds = event.currentTarget.getBoundingClientRect();
+        setSelectionContextMenu({
+            x: Math.min(event.clientX - bounds.left, Math.max(12, bounds.width - 220)),
+            y: Math.min(event.clientY - bounds.top, Math.max(12, bounds.height - 92)),
+        });
+    };
+
+    const handleSaveSelection = () => {
+        if (selectedIds.length === 0) return;
+        const content = serializeCanvasSelection(elements, selectedIds);
+        const blobUrl = URL.createObjectURL(new Blob([content], { type: 'application/json;charset=utf-8' }));
+        const anchor = document.createElement('a');
+        anchor.href = blobUrl;
+        anchor.download = `doodleverse-selection-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 0);
+        setSelectionContextMenu(null);
+    };
+
     return (
         <div
             className={`w-full h-full relative overflow-hidden ${
@@ -1265,6 +1318,7 @@ export function CanvasArea({
             onMouseDown={(e) => handleMouseDown(e, null)}
             onWheel={handleWheel}
             onDoubleClick={handleDoubleClickCanvas}
+            onContextMenu={handleCanvasContextMenu}
             onDragEnter={handleCanvasDragEnter}
             onDragOver={handleCanvasDragOver}
             onDragLeave={handleCanvasDragLeave}
@@ -1275,6 +1329,27 @@ export function CanvasArea({
                     <div className="rounded-2xl border border-sky-300 bg-white/92 px-5 py-3 text-sm font-medium text-sky-700 shadow-lg">
                         拖入图片到画布
                     </div>
+                </div>
+            )}
+            {selectionContextMenu && (
+                <div
+                    className="absolute z-[180] w-52 overflow-hidden rounded-xl border border-gray-200 bg-white p-1.5 shadow-[0_18px_50px_rgba(15,23,42,0.22)] dark:border-white/10 dark:bg-slate-950"
+                    style={{ left: selectionContextMenu.x, top: selectionContextMenu.y }}
+                    onMouseDown={(event) => event.stopPropagation()}
+                    role="menu"
+                >
+                    <button
+                        type="button"
+                        onClick={handleSaveSelection}
+                        className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-white/10"
+                        role="menuitem"
+                    >
+                        <Download size={15} />
+                        <span className="min-w-0 flex-1">
+                            <span className="block font-medium">保存选区</span>
+                            <span className="block truncate text-[10px] text-gray-400">包含节点、分组与内部连线</span>
+                        </span>
+                    </button>
                 </div>
             )}
             {selectedIds.length === 1 && selectedElement && !isDragging && !isResizing && !isPanning && !isDrawing && selectedElement.type !== 'connector' && (

@@ -76,6 +76,78 @@ export function wouldCreateConnectionCycle(elements: CanvasElement[], sourceId: 
   return false;
 }
 
+export function buildBatchConnections(
+  elements: CanvasElement[],
+  selectedNodeIds: string[],
+  createId: () => string,
+) {
+  const selectedIdSet = new Set(selectedNodeIds);
+  const selectedNodes = elements
+    .filter((element) => element.type !== 'connector' && selectedIdSet.has(element.id))
+    .sort((a, b) => {
+      const horizontalDelta = a.x - b.x;
+      return Math.abs(horizontalDelta) > 80 ? horizontalDelta : a.y - b.y;
+    });
+  const workingElements = [...elements];
+  const connectors: CanvasElement[] = [];
+  const preferredTargetTypes = new Set(['image-generator', 'video-generator', 'image-compare', 'inpaint']);
+
+  selectedNodes.forEach((source, sourceIndex) => {
+    const outputPorts = getNodePorts(source).filter((port) => port.direction === 'output');
+    outputPorts.forEach((sourcePort) => {
+      const targetMatch = selectedNodes
+        .slice(sourceIndex + 1)
+        .sort((a, b) => Number(!preferredTargetTypes.has(a.type)) - Number(!preferredTargetTypes.has(b.type)))
+        .map((target) => {
+          const preferredPort = getPreferredCompatibleInputPort(target, sourcePort);
+          const compatiblePorts = getNodePorts(target)
+            .filter((port) => port.direction === 'input' && canConnectPorts(sourcePort, port))
+            .sort((a, b) => Number(b.id === preferredPort?.id) - Number(a.id === preferredPort?.id));
+          const targetPort = compatiblePorts.find((port) => port.multiple || !workingElements.some((element) => (
+            element.type === 'connector'
+            && element.connectorTo === target.id
+            && element.connectorTargetPort === port.id
+          )));
+          return { target, targetPort };
+        })
+        .find(({ target, targetPort }) => {
+          if (!targetPort || wouldCreateConnectionCycle(workingElements, source.id, target.id)) return false;
+          const duplicate = workingElements.some((element) => element.type === 'connector'
+            && element.connectorFrom === source.id
+            && element.connectorTo === target.id
+            && element.connectorSourcePort === sourcePort.id
+            && element.connectorTargetPort === targetPort.id);
+          if (duplicate) return false;
+          return true;
+        });
+
+      if (!targetMatch?.targetPort) return;
+      const order = workingElements.filter((element) => element.type === 'connector'
+        && element.connectorTo === targetMatch.target.id
+        && element.connectorTargetPort === targetMatch.targetPort?.id).length;
+      const connector: CanvasElement = {
+        id: createId(),
+        type: 'connector',
+        x: 0,
+        y: 0,
+        connectorFrom: source.id,
+        connectorTo: targetMatch.target.id,
+        connectorSourcePort: sourcePort.id,
+        connectorTargetPort: targetMatch.targetPort.id,
+        connectorDataKind: sourcePort.kind,
+        connectorKind: connectionKindForPorts(sourcePort, targetMatch.targetPort),
+        connectorOrder: order,
+        connectorStyle: targetMatch.targetPort.multiple ? 'dashed' : 'solid',
+        color: PORT_COLORS[sourcePort.kind],
+      };
+      connectors.push(connector);
+      workingElements.push(connector);
+    });
+  });
+
+  return connectors;
+}
+
 export function connectionKindForPorts(source: CanvasPortDefinition, target: CanvasPortDefinition): CanvasConnectionKind {
   if (source.kind === 'prompt') return 'prompt';
   if (target.id === 'reference-in' || target.id === 'first-frame-in' || target.id === 'last-frame-in') return 'reference';

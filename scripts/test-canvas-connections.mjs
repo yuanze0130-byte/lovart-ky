@@ -27,6 +27,7 @@ await writeFile(outputPath, transpiled.outputText.replace(/from ['"]@\/lib\/node
 
 try {
   const {
+    buildBatchConnections,
     canConnectPorts,
     getNodePorts,
     normalizeCanvasConnections,
@@ -91,12 +92,29 @@ try {
   const combinedInputs = resolveConnectedInputs('generator', [textNode, secondTextNode, generator, ...orderedPromptEdges]);
   assert.equal(combinedInputs.prompt, 'warm sunset lighting\n\ncinematic portrait');
 
+  let batchId = 0;
+  const batchConnectors = buildBatchConnections(
+    [textNode, imageNode, generator],
+    ['prompt', 'reference', 'generator'],
+    () => `batch-${++batchId}`,
+  );
+  assert.equal(batchConnectors.length, 2);
+  assert.equal(batchConnectors.some((edge) => edge.connectorSourcePort === 'prompt-out' && edge.connectorTargetPort === 'prompt-in'), true);
+  assert.equal(batchConnectors.some((edge) => edge.connectorSourcePort === 'image-out' && edge.connectorTargetPort === 'reference-in'), true);
+
   const imageOutput = getNodePorts(imageNode).find((port) => port.id === 'image-out');
   const referenceInput = getNodePorts(generator).find((port) => port.id === 'reference-in');
   assert.equal(canConnectPorts(imageOutput, referenceInput), true);
   const compareNode = { id: 'compare', type: 'image-compare', x: 600, y: 0 };
   assert.equal(getNodePorts(compareNode).filter((port) => port.direction === 'input').length, 2);
   assert.equal(canConnectPorts(imageOutput, getNodePorts(compareNode).find((port) => port.id === 'compare-a-in')), true);
+  const secondImageNode = { id: 'reference-2', type: 'image', x: 100, y: 100, content: 'data:image/png;base64,def' };
+  const compareBatch = buildBatchConnections(
+    [imageNode, secondImageNode, compareNode],
+    ['reference', 'reference-2', 'compare'],
+    () => `compare-edge-${++batchId}`,
+  );
+  assert.deepEqual(compareBatch.map((edge) => edge.connectorTargetPort).sort(), ['compare-a-in', 'compare-b-in']);
   const inpaintNode = { id: 'inpaint', type: 'inpaint', x: 900, y: 0 };
   assert.equal(getNodePorts(inpaintNode).some((port) => port.id === 'image-in'), true);
   assert.equal(wouldCreateConnectionCycle(normalized, 'generator', 'prompt'), true);

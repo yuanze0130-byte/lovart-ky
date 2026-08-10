@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } fr
 import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { normalizeStoryboardItems, type StoryboardItem, type StoryboardLayoutMode } from '@/hooks/useProjectAssets';
+import { duplicateCanvasSelection, getSelectionWithConnections } from '@/lib/canvas-shortcuts';
 
 interface HistorySnapshot {
   elements: CanvasElement[];
@@ -50,52 +51,6 @@ function createSnapshot(input: Pick<UseCanvasHistoryParams, 'elements' | 'storyb
     storyboardLayout: input.storyboardLayout,
     selectedStoryboardItemId: input.selectedStoryboardItemId,
   };
-}
-
-function duplicateElements(source: CanvasElement[]) {
-  const idMap = new Map<string, string>();
-  source.forEach((element) => {
-    idMap.set(element.id, uuidv4());
-  });
-
-  return source.map((element) => {
-    const nextElement = {
-      ...element,
-      id: idMap.get(element.id)!,
-      x: element.x + 24,
-      y: element.y + 24,
-      referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) || element.referenceImageId : element.referenceImageId,
-      connectorFrom: element.connectorFrom ? idMap.get(element.connectorFrom) || element.connectorFrom : element.connectorFrom,
-      connectorTo: element.connectorTo ? idMap.get(element.connectorTo) || element.connectorTo : element.connectorTo,
-      linkedElements: element.linkedElements?.map((id) => idMap.get(id) || id),
-      groupId: element.groupId ? uuidv4() : element.groupId,
-    } as CanvasElement;
-
-    delete nextElement.storyboardItemId;
-    delete nextElement.storyboardShotLabel;
-    delete nextElement.storyboardTitle;
-    delete nextElement.storyboardMeta;
-    delete nextElement.storyboardBrief;
-    delete nextElement.storyboardAspectRatio;
-    delete nextElement.storyboardVideoSize;
-    delete nextElement.storyboardOrientation;
-    delete nextElement.storyboardSourceAspectRatio;
-    delete nextElement.storyboardSourceVideoSize;
-    delete nextElement.storyboardSourceOrientation;
-    delete nextElement.storyboardRenderProfile;
-    delete nextElement.storyboardDurationSec;
-    delete nextElement.storyboardShotIndex;
-    delete nextElement.storyboardShotCount;
-    delete nextElement.storyboardSequenceState;
-    delete nextElement.storyboardSequenceHint;
-    delete nextElement.storyboard序列State;
-    delete nextElement.storyboard序列Hint;
-    delete nextElement.storyboardBoardMode;
-    delete nextElement.storyboardElementRole;
-    delete nextElement.storyboardLaneOrientation;
-
-    return nextElement;
-  });
 }
 
 function normalizeElements(elements: CanvasElement[]) {
@@ -163,7 +118,7 @@ export function useCanvasHistory({
 }: UseCanvasHistoryParams) {
   const historyRef = useRef<HistorySnapshot[]>([]);
   const futureRef = useRef<HistorySnapshot[]>([]);
-  const clipboardRef = useRef<CanvasElement[]>([]);
+  const clipboardRef = useRef<{ elements: CanvasElement[]; selectedIds: string[] } | null>(null);
   const suppressHistoryRef = useRef(false);
   const historyCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSnapshotRef = useRef<Pick<
@@ -268,15 +223,22 @@ export function useCanvasHistory({
 
       if (modKey && key === 'c' && selectedIds.length > 0) {
         e.preventDefault();
-        clipboardRef.current = elements.filter((el) => selectedIds.includes(el.id));
+        clipboardRef.current = {
+          elements: getSelectionWithConnections(elements, selectedIds),
+          selectedIds: [...selectedIds],
+        };
         return;
       }
 
-      if (modKey && key === 'v' && clipboardRef.current.length > 0) {
+      if (modKey && key === 'v' && clipboardRef.current) {
         e.preventDefault();
-        const duplicated = duplicateElements(clipboardRef.current);
-        setElements((prev) => [...prev, ...duplicated]);
-        setSelectedIds(duplicated.map((el) => el.id));
+        const duplicated = duplicateCanvasSelection(
+          clipboardRef.current.elements,
+          clipboardRef.current.selectedIds,
+          uuidv4,
+        );
+        setElements((prev) => [...prev, ...duplicated.elements]);
+        setSelectedIds(duplicated.selectedIds);
         return;
       }
 
