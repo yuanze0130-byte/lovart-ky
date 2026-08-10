@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
-import { Plus, Minus, ChevronDown, Cloud, CloudOff, Download, LoaderCircle, Map as MapIcon, Upload, History as HistoryIcon, Bot } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Cloud, CloudOff, LoaderCircle, Map as MapIcon, History as HistoryIcon, Bot } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,7 +14,6 @@ import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import type { RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
-import { ProjectImportPreviewDialog } from '@/components/lovart/ProjectImportPreviewDialog';
 import { GenerationHistoryPanel } from '@/components/lovart/GenerationHistoryPanel';
 import { AgentPanel } from '@/components/lovart/AgentPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
@@ -35,7 +34,6 @@ import { useStoryboardManager } from '@/hooks/useStoryboardManager';
 import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult, AgentImageLayout } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 import { authedFetch } from '@/lib/authed-fetch';
-import { downloadQdmyProject, importQdmyProject, mergeQdmyElements, type QdmyImportResult } from '@/lib/qdmy-project';
 import { normalizeCanvasConnections } from '@/lib/canvas-connections';
 import type { ImageModelId } from '@/lib/image-models';
 import type { PromptLibraryItem } from '@/lib/prompt-library';
@@ -177,10 +175,7 @@ function LovartCanvasContent() {
     const [annotationSubject, setAnnotationSubject] = useState('');
     const [objectEditPrompt, setObjectEditPrompt] = useState('');
     const miniMapRef = useRef<HTMLDivElement | null>(null);
-    const projectImportRef = useRef<HTMLInputElement | null>(null);
     const lastFocusedRelightTargetRef = useRef<string | null>(null);
-    const [projectTransferStatus, setProjectTransferStatus] = useState<string | null>(null);
-    const [pendingProjectImport, setPendingProjectImport] = useState<QdmyImportResult | null>(null);
     const [showGenerationHistory, setShowGenerationHistory] = useState(false);
     const canvasFeatureStorageKey = useMemo(() => getCanvasFeatureStorageKey(projectId), [projectId]);
     const showMiniMap = canvasFeatures.navigator;
@@ -326,56 +321,6 @@ function LovartCanvasContent() {
         setElements,
         setSelectedIds,
     });
-
-    const handleImportQdmyProject = useCallback(async (file: File) => {
-        try {
-            const parsed = JSON.parse(await file.text()) as unknown;
-            const imported = importQdmyProject(parsed);
-            imported.elements = normalizeCanvasConnections(imported.elements);
-            setPendingProjectImport(imported);
-        } catch (error) {
-            setProjectTransferStatus(`导入失败：${error instanceof Error ? error.message : String(error)}`);
-        } finally {
-            window.setTimeout(() => setProjectTransferStatus(null), 5000);
-        }
-    }, []);
-
-    const handleReplaceWithImportedProject = useCallback(() => {
-        if (!pendingProjectImport) return;
-        setTitle(pendingProjectImport.title);
-        setElements(pendingProjectImport.elements);
-        setSelectedIds([]);
-        zoomTo(pendingProjectImport.view.zoom, { x: viewportSize.width / 2, y: viewportSize.height / 2 });
-        setPan({
-            x: viewportSize.width / 2 - pendingProjectImport.view.centerX * pendingProjectImport.view.zoom,
-            y: viewportSize.height / 2 - pendingProjectImport.view.centerY * pendingProjectImport.view.zoom,
-        });
-        setProjectTransferStatus(`已替换为 ${pendingProjectImport.stats.nodes} 个节点的项目`);
-        setPendingProjectImport(null);
-        window.setTimeout(() => setProjectTransferStatus(null), 4000);
-    }, [pendingProjectImport, setPan, viewportSize.height, viewportSize.width, zoomTo]);
-
-    const handleMergeImportedProject = useCallback(() => {
-        if (!pendingProjectImport) return;
-        const merged = mergeQdmyElements(elements, pendingProjectImport.elements);
-        setElements(merged.elements);
-        setSelectedIds(merged.importedIds);
-        setProjectTransferStatus(`已合并 ${pendingProjectImport.stats.nodes} 个节点`);
-        setPendingProjectImport(null);
-        window.setTimeout(() => setProjectTransferStatus(null), 4000);
-    }, [elements, pendingProjectImport]);
-
-    const handleExportQdmyProject = useCallback(() => {
-        const centerX = (viewportSize.width / 2 - pan.x) / scale;
-        const centerY = (viewportSize.height / 2 - pan.y) / scale;
-        downloadQdmyProject({
-            title,
-            elements,
-            view: { zoom: scale, centerX, centerY },
-        });
-        setProjectTransferStatus(`已导出 ${elements.filter((element) => element.type !== 'connector').length} 个节点`);
-        window.setTimeout(() => setProjectTransferStatus(null), 3000);
-    }, [elements, pan.x, pan.y, scale, title, viewportSize.height, viewportSize.width]);
 
     const {
         activeImageId: annotationImageId,
@@ -2543,35 +2488,6 @@ function LovartCanvasContent() {
                 </div>
 
                 <div className="flex items-center gap-2 pointer-events-auto">
-                    <input
-                        ref={projectImportRef}
-                        type="file"
-                        accept=".json,.qdmy"
-                        className="hidden"
-                        onChange={(event) => {
-                            const file = event.target.files?.[0];
-                            if (file) void handleImportQdmyProject(file);
-                            event.currentTarget.value = '';
-                        }}
-                    />
-                    <button
-                        type="button"
-                        onClick={() => projectImportRef.current?.click()}
-                        className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
-                        title="导入桥豆麻衣酱项目"
-                    >
-                        <Upload size={15} />
-                        <span>导入</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleExportQdmyProject}
-                        className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white"
-                        title="导出桥豆麻衣酱兼容项目"
-                    >
-                        <Download size={15} />
-                        <span>导出</span>
-                    </button>
                     <CanvasFeaturesMenu
                         settings={canvasFeatures}
                         onChange={updateCanvasFeature}
@@ -2607,21 +2523,6 @@ function LovartCanvasContent() {
                     <ThemeToggle />
                 </div>
             </header>
-
-            {projectTransferStatus && (
-                <div className="absolute right-4 top-16 z-[70] max-w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-gray-200 bg-white/96 px-3 py-2 text-sm text-gray-700 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/92 dark:text-slate-200">
-                    {projectTransferStatus}
-                </div>
-            )}
-
-            {pendingProjectImport && (
-                <ProjectImportPreviewDialog
-                    project={pendingProjectImport}
-                    onCancel={() => setPendingProjectImport(null)}
-                    onMerge={handleMergeImportedProject}
-                    onReplace={handleReplaceWithImportedProject}
-                />
-            )}
 
             {showGenerationHistory && (
                 <GenerationHistoryPanel
