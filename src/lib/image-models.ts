@@ -1,4 +1,11 @@
-export type ImageModelCategory = 'Google' | 'OpenAI' | 'ByteDance' | 'Alibaba';
+export type ImageModelCategory =
+  | 'Google'
+  | 'OpenAI'
+  | 'Black Forest Labs'
+  | 'xAI'
+  | 'ByteDance'
+  | 'Alibaba'
+  | 'Other';
 export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task';
 
 export type ImageModelId =
@@ -6,15 +13,28 @@ export type ImageModelId =
   | 'pro'
   | 'nano-banana'
   | 'nano-banana-2'
+  | 'nano-banana-2-lite'
   | 'nano-banana-pro'
   | 'gemini-3.1-flash-image-preview'
+  | 'gemini-3.1-flash-image-official'
+  | 'gemini-3-pro-image-official'
+  | 'gemini-2.5-flash-image-official'
+  | 'gpt-4o-image'
   | 'gpt-image-1'
   | 'gpt-image-1.5'
   | 'gpt-image-2'
   | 'gpt-image-2-official'
   | 'qwen-image-edit'
+  | 'flux-kontext'
+  | 'grok-4.1-image'
+  | 'grok-4.2-image'
+  | 'z-image-official'
+  | 'midjourney'
   | 'seedream-4.0'
-  | 'seedream-4.5';
+  | 'seedream-4.5'
+  | 'seedream-5.0-pro-official'
+  | 'seedream-4.5-api'
+  | 'seedream-5.0-api';
 
 export interface ImageModelDefinition {
   id: Exclude<ImageModelId, 'standard' | 'pro'>;
@@ -50,6 +70,16 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     supportsEditing: true,
   },
   {
+    id: 'nano-banana-2-lite',
+    label: 'Nano Banana 2 Lite',
+    category: 'Google',
+    description: '轻量快速生成，经中转站映射到 Gemini 3.1 Flash Lite Image',
+    transport: 'chat',
+    proxyModel: 'gemini-3.1-flash-lite-image',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
     id: 'nano-banana-pro',
     label: 'Nano Banana Pro',
     category: 'Google',
@@ -66,6 +96,46 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '高速生成与多轮视觉理解',
     transport: 'chat',
     proxyModel: 'gemini-3.1-flash-image-preview',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'gemini-3.1-flash-image-official',
+    label: 'Gemini 3.1 Flash 官',
+    category: 'Google',
+    description: '中转站 Gemini 3.1 Flash Image 正式模型入口',
+    transport: 'chat',
+    proxyModel: 'gemini-3.1-flash-image',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'gemini-3-pro-image-official',
+    label: 'Gemini 3 Pro 官',
+    category: 'Google',
+    description: '复杂构图、文字渲染与高质量参考图编辑',
+    transport: 'chat',
+    proxyModel: 'gemini-3-pro-image',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'gemini-2.5-flash-image-official',
+    label: 'Gemini 2.5 Flash 官',
+    category: 'Google',
+    description: '快速生成与参考图编辑的稳定版本',
+    transport: 'chat',
+    proxyModel: 'gemini-2.5-flash-image',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'gpt-4o-image',
+    label: 'GPT-4o Image',
+    category: 'OpenAI',
+    description: '经中转站 OpenAI 兼容接口进行图像生成与编辑',
+    transport: 'chat',
+    proxyModel: 'gpt-4o-image',
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -110,6 +180,56 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     supportsEditing: true,
   },
   {
+    id: 'flux-kontext',
+    label: 'Flux Kontext',
+    category: 'Black Forest Labs',
+    description: '参考图上下文编辑，中转站当前映射到 Flux Kontext Pro',
+    transport: 'chat',
+    proxyModel: 'flux-kontext-pro',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'grok-4.1-image',
+    label: 'Grok 4.1 Image',
+    category: 'xAI',
+    description: 'Grok 图像生成与参考图编辑',
+    transport: 'chat',
+    proxyModel: 'grok-4.1-image',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'grok-4.2-image',
+    label: 'Grok 4.2 Image',
+    category: 'xAI',
+    description: '更新版 Grok 图像生成与参考图编辑',
+    transport: 'chat',
+    proxyModel: 'grok-4.2-image',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'z-image-official',
+    label: 'Z-Image 官',
+    category: 'Other',
+    description: '中转站当前可用的 Z-Image Turbo 图像生成入口',
+    transport: 'chat',
+    proxyModel: 'z-image-turbo',
+    supportsReferences: false,
+    supportsEditing: false,
+  },
+  {
+    id: 'midjourney',
+    label: 'Midjourney',
+    category: 'Other',
+    description: '经中转站 OpenAI 兼容接口调用 Midjourney',
+    transport: 'chat',
+    proxyModel: 'midjourney',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
     id: 'seedream-4.0',
     label: 'Seedream 4.0',
     category: 'ByteDance',
@@ -126,6 +246,36 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '高细节中文场景与商业视觉',
     transport: 'chat',
     proxyModel: 'seedream-4.5',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'seedream-5.0-pro-official',
+    label: 'Seedream 5.0 Pro官',
+    category: 'ByteDance',
+    description: '高质量中文商业视觉与多参考图生成',
+    transport: 'chat',
+    proxyModel: 'seedream-v5-pro',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'seedream-4.5-api',
+    label: 'Seedream 4.5 API',
+    category: 'ByteDance',
+    description: '中转站火山方舟 Seedream 4.5 模型入口',
+    transport: 'chat',
+    proxyModel: 'doubao-seedream-4-5-251128',
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'seedream-5.0-api',
+    label: 'Seedream 5.0 API',
+    category: 'ByteDance',
+    description: '中转站火山方舟 Seedream 5.0 模型入口',
+    transport: 'chat',
+    proxyModel: 'doubao-seedream-5-0-260128',
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -163,6 +313,14 @@ export function getImageModelDefinition(modelId: ImageModelId) {
   return IMAGE_MODEL_OPTIONS.find((model) => model.id === normalized) || IMAGE_MODEL_OPTIONS[2];
 }
 
-export const IMAGE_MODEL_CATEGORIES: ImageModelCategory[] = ['Google', 'OpenAI', 'ByteDance', 'Alibaba'];
+export const IMAGE_MODEL_CATEGORIES: ImageModelCategory[] = [
+  'Google',
+  'OpenAI',
+  'Black Forest Labs',
+  'xAI',
+  'ByteDance',
+  'Alibaba',
+  'Other',
+];
 
 export type ImageGenerationExecutionMode = 'sequential' | 'parallel';
