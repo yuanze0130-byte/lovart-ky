@@ -7,8 +7,11 @@ export type CanvasConnectionKind = 'prompt' | 'reference' | 'result' | 'control'
 
 export type CanvasPortDefinition = NodePortDefinition;
 
+export type ConnectedNodeContentsIndex = Map<string, Map<string, string[]>>;
+
 export const PORT_COLORS: Record<CanvasPortKind, string> = {
   prompt: '#f59e0b',
+  content: '#0ea5e9',
   image: '#10b981',
   video: '#8b5cf6',
   any: '#64748b',
@@ -47,6 +50,8 @@ export function getPreferredCompatibleInputPort(element: CanvasElement, sourcePo
       ? ['prompt-in']
       : sourcePort.kind === 'video'
         ? ['video-in']
+        : sourcePort.kind === 'content'
+          ? ['content-in']
         : [];
 
   return preferredPortIds
@@ -90,7 +95,7 @@ export function buildBatchConnections(
     });
   const workingElements = [...elements];
   const connectors: CanvasElement[] = [];
-  const preferredTargetTypes = new Set(['image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'inpaint']);
+  const preferredTargetTypes = new Set(['image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'table-editor', 'video-frames', 'video-breakdown', 'script-writer', 'inpaint']);
 
   selectedNodes.forEach((source, sourceIndex) => {
     const outputPorts = getNodePorts(source).filter((port) => port.direction === 'output');
@@ -208,14 +213,63 @@ export function resolveConnectedInputs(targetId: string, elements: CanvasElement
   return { prompt: promptParts.join('\n\n'), references, firstFrame, lastFrame, edges };
 }
 
-export function resolveConnectedNodeContents(targetId: string, targetPortId: string, elements: CanvasElement[]) {
+export function buildConnectedNodeContentsIndex(elements: CanvasElement[]): ConnectedNodeContentsIndex {
   const byId = new Map(elements.map((element) => [element.id, element]));
-  return normalizeCanvasConnections(elements)
-    .filter((element) => element.type === 'connector'
-      && element.connectorTo === targetId
-      && element.connectorTargetPort === targetPortId)
-    .sort((a, b) => (a.connectorOrder || 0) - (b.connectorOrder || 0))
-    .map((edge) => edge.connectorFrom ? byId.get(edge.connectorFrom) : undefined)
-    .map((source) => source && typeof source.content === 'string' ? source.content : '')
-    .filter(Boolean);
+  const indexedEdges = new Map<string, Map<string, Array<{ content: string; order: number }>>>();
+
+  for (const edge of elements) {
+    if (edge.type !== 'connector' || !edge.connectorFrom || !edge.connectorTo) continue;
+    const source = byId.get(edge.connectorFrom);
+    const target = byId.get(edge.connectorTo);
+    const content = source && typeof source.content === 'string' ? source.content : '';
+    if (!content) continue;
+    const targetPortId = edge.connectorTargetPort
+      || (source && target
+        ? inferLegacyPorts(source, target).targetPort?.id
+        : undefined);
+    if (!targetPortId) continue;
+
+    let targetPorts = indexedEdges.get(edge.connectorTo);
+    if (!targetPorts) {
+      targetPorts = new Map();
+      indexedEdges.set(edge.connectorTo, targetPorts);
+    }
+    let portContents = targetPorts.get(targetPortId);
+    if (!portContents) {
+      portContents = [];
+      targetPorts.set(targetPortId, portContents);
+    }
+    portContents.push({ content, order: edge.connectorOrder || 0 });
+  }
+
+  const contentsIndex: ConnectedNodeContentsIndex = new Map();
+  for (const [targetId, targetPorts] of indexedEdges) {
+    const indexedPorts = new Map<string, string[]>();
+    for (const [targetPortId, portContents] of targetPorts) {
+      indexedPorts.set(
+        targetPortId,
+        portContents
+          .sort((a, b) => a.order - b.order)
+          .map(({ content }) => content),
+      );
+    }
+    contentsIndex.set(targetId, indexedPorts);
+  }
+  return contentsIndex;
+}
+
+export function resolveConnectedNodeContentsFromIndex(
+  targetId: string,
+  targetPortId: string,
+  index: ConnectedNodeContentsIndex,
+) {
+  return index.get(targetId)?.get(targetPortId) || [];
+}
+
+export function resolveConnectedNodeContents(targetId: string, targetPortId: string, elements: CanvasElement[]) {
+  return resolveConnectedNodeContentsFromIndex(
+    targetId,
+    targetPortId,
+    buildConnectedNodeContentsIndex(elements),
+  );
 }

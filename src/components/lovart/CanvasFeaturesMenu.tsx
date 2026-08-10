@@ -11,7 +11,7 @@ interface CanvasFeaturesMenuProps {
   onClear: () => void;
 }
 
-const FEATURE_BUTTONS: Array<{ key: keyof Pick<CanvasFeatureSettings, 'hideImages' | 'tilt3d' | 'flowAnimation' | 'stopwatch' | 'snap' | 'crosses' | 'follow' | 'marquee' | 'generationAnimation' | 'grid' | 'navigator' | 'groupMode'>; label: string; title: string }> = [
+const FEATURE_BUTTONS: Array<{ key: keyof Pick<CanvasFeatureSettings, 'hideImages' | 'tilt3d' | 'flowAnimation' | 'stopwatch' | 'snap' | 'crosses' | 'follow' | 'marquee' | 'generationAnimation' | 'grid' | 'navigator' | 'groupMode' | 'hideConnectors'>; label: string; title: string }> = [
   { key: 'hideImages', label: '隐图', title: '隐藏画布图片内容，只保留节点结构' },
   { key: 'follow', label: '跟随', title: '显示跟随鼠标移动的画布光标光晕' },
   { key: 'tilt3d', label: '3D倾斜', title: '节点悬停时启用 3D 倾斜效果' },
@@ -24,6 +24,7 @@ const FEATURE_BUTTONS: Array<{ key: keyof Pick<CanvasFeatureSettings, 'hideImage
   { key: 'navigator', label: '导航', title: '显示或隐藏画布小地图' },
   { key: 'crosses', label: '叉叉', title: '在节点右上角显示快速删除叉号' },
   { key: 'groupMode', label: '开始组', title: '框选多个节点后自动建立分组' },
+  { key: 'hideConnectors', label: '隐藏连线', title: '隐藏画布上的连接线，节点关系仍会保留' },
 ];
 
 const SLIDERS: Array<{ key: 'gridGap' | 'gridDotSize' | 'connectorWidth' | 'connectorOpacity'; label: string; min: number; max: number; step: number; suffix: string }> = [

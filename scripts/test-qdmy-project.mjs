@@ -63,6 +63,17 @@ try {
   assert.equal(imported.stats.connections, 2);
   assert.equal(imported.stats.skipped, 0);
   assert.equal(imported.elements.length, 8);
+
+  const defaultSizedTools = importQdmyProject({
+    nodes: [
+      { id: 'table-default', type: 'table-editor-node', position: { x: 12, y: 24 } },
+      { id: 'script-default', type: 'script-writer', position: { x: 560, y: 24 } },
+    ],
+  });
+  assert.deepEqual(
+    defaultSizedTools.elements.filter((element) => element.type !== 'connector').map((element) => [element.width, element.height]),
+    [[520, 430], [460, 600]],
+  );
   assert.deepEqual(imported.view, desktopProject.view);
 
   const generator = imported.elements.find((element) => element.id === 'generate-1');
@@ -108,6 +119,10 @@ try {
       { id: 'inpaint-1', type: 'inpaint', x: 500, y: 0, width: 440, height: 360, prompt: '替换天空', inpaintBrushSize: 48, inpaintFeather: 7, inpaintMask: 'data:image/png;base64,TUFDSw==' },
       { id: 'global-1', type: 'global-view', x: 0, y: 450, width: 420, height: 390, globalViewZoom: 1.3, globalViewOffsetX: 0.1, globalViewOffsetY: -0.05, globalViewRotation: 22 },
       { id: 'motion-1', type: 'motion-transfer', x: 500, y: 450, width: 420, height: 580, prompt: '保持人物身份', motionModel: 'kling-3.0', motionMode: 'pro', motionKeepAudio: false, motionOrientation: 'video', motionWatermark: true },
+      { id: 'table-1', type: 'table-editor', x: 1000, y: 0, width: 520, height: 430, tableColumns: ['镜头', '画面'], tableRows: [['1', '远景']], tableView: 'markdown', tableAutoHeight: false, tableMarkdown: '| 镜头 | 画面 |' },
+      { id: 'frames-1', type: 'video-frames', x: 1000, y: 500, width: 440, height: 500, videoFrameCount: 8 },
+      { id: 'breakdown-1', type: 'video-breakdown', x: 1500, y: 0, width: 440, height: 540, videoBreakdownSummary: '一段广告片', videoBreakdownRows: [{ timestamp: '00:00.0', shot: '镜头 1', visual: '产品特写', camera: '缓推', narration: '新品上市' }] },
+      { id: 'script-1', type: 'script-writer', x: 1500, y: 600, width: 460, height: 600, scriptGenre: '广告片', scriptDurationMinutes: 2, scriptCharacters: '主角', scriptTitle: '新品', scriptLogline: '新品发布', scriptScenes: [{ scene: '场 1', location: '影棚', time: '日', visual: '产品入画', action: '镜头推近', dialogue: '新品上市', shot: '特写' }] },
     ],
   });
   const parityImported = importQdmyProject(parityProject);
@@ -115,6 +130,10 @@ try {
   const inpaint = parityImported.elements.find((element) => element.id === 'inpaint-1');
   const globalView = parityImported.elements.find((element) => element.id === 'global-1');
   const motion = parityImported.elements.find((element) => element.id === 'motion-1');
+  const table = parityImported.elements.find((element) => element.id === 'table-1');
+  const frames = parityImported.elements.find((element) => element.id === 'frames-1');
+  const breakdown = parityImported.elements.find((element) => element.id === 'breakdown-1');
+  const script = parityImported.elements.find((element) => element.id === 'script-1');
   assert.equal(compare?.imageCompareSplit, 37);
   assert.equal(compare?.imageCompareSwapped, true);
   assert.equal(inpaint?.inpaintBrushSize, 48);
@@ -129,6 +148,16 @@ try {
   assert.equal(motion?.motionKeepAudio, false);
   assert.equal(motion?.motionOrientation, 'video');
   assert.equal(motion?.motionWatermark, true);
+  assert.deepEqual(table?.tableColumns, ['镜头', '画面']);
+  assert.deepEqual(table?.tableRows, [['1', '远景']]);
+  assert.equal(table?.tableView, 'markdown');
+  assert.equal(table?.tableAutoHeight, false);
+  assert.equal(frames?.videoFrameCount, 8);
+  assert.equal(breakdown?.videoBreakdownSummary, '一段广告片');
+  assert.equal(breakdown?.videoBreakdownRows?.[0]?.camera, '缓推');
+  assert.equal(script?.scriptGenre, '广告片');
+  assert.equal(script?.scriptDurationMinutes, 2);
+  assert.equal(script?.scriptScenes?.[0]?.shot, '特写');
 
   const merged = mergeQdmyElements([
     { id: 'generate-1', type: 'text', x: 0, y: 0, content: 'existing' },

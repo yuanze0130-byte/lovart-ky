@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush, Axis3D, Globe2, PersonStanding } from 'lucide-react';
+import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush, Axis3D, Globe2, PersonStanding, Table2, Film, ScanSearch, AlignHorizontalSpaceAround } from 'lucide-react';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { getCreateMenuNodeDefinitions, type NodeCreateAction } from '@/lib/node-definitions';
 
@@ -17,11 +17,15 @@ interface FloatingToolbarProps {
     onOpen3DDirector?: () => void;
     onOpenGlobalView?: () => void;
     onOpenMotionTransfer?: () => void;
+    onOpenTableEditor?: () => void;
+    onOpenVideoFrames?: () => void;
+    onOpenVideoBreakdown?: () => void;
+    onOpenNodeAlignment?: () => void;
     onOpenInpaint?: () => void;
     onOpenVideoGenerator?: () => void;
 }
 
-export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpen3DDirector, onOpenGlobalView, onOpenMotionTransfer, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
+export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpen3DDirector, onOpenGlobalView, onOpenMotionTransfer, onOpenTableEditor, onOpenVideoFrames, onOpenVideoBreakdown, onOpenNodeAlignment, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
     const [showUploadMenu, setShowUploadMenu] = useState(false);
     const [showShapeMenu, setShowShapeMenu] = useState(false);
     const [showSelectMenu, setShowSelectMenu] = useState(false);
@@ -37,14 +41,20 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
         'image-compare': onOpenImageCompare,
         'global-view': onOpenGlobalView,
         'motion-transfer': onOpenMotionTransfer,
+        'table-editor': onOpenTableEditor,
+        'video-frames': onOpenVideoFrames,
+        'video-breakdown': onOpenVideoBreakdown,
         inpaint: onOpenInpaint,
     };
 
-    const createMenuIcon = (icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'paintbrush') => {
+    const createMenuIcon = (icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'table' | 'frames' | 'breakdown' | 'paintbrush') => {
         if (icon === 'video') return <Video size={16} />;
         if (icon === 'compare') return <Columns2 size={16} />;
         if (icon === 'globe') return <Globe2 size={16} />;
         if (icon === 'motion') return <PersonStanding size={16} />;
+        if (icon === 'table') return <Table2 size={16} />;
+        if (icon === 'frames') return <Film size={16} />;
+        if (icon === 'breakdown') return <ScanSearch size={16} />;
         if (icon === 'paintbrush') return <Paintbrush size={16} />;
         return <Sparkles size={16} />;
     };
@@ -155,8 +165,8 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
 
                     {/* Upload Menu */}
                     {showUploadMenu && (
-                        <div className="absolute left-full top-0 pl-3 z-50">
-                            <div className="min-w-[160px] flex flex-col gap-1 rounded-xl border border-gray-100 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
+                        <div className="absolute left-full top-1/2 z-50 -translate-y-1/2 pl-3">
+                            <div className="flex max-h-[calc(100vh-80px)] min-w-[180px] flex-col gap-1 overflow-y-auto rounded-xl border border-gray-100 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-gray-950/96 dark:shadow-[0_24px_60px_rgba(0,0,0,0.4)]">
                                 <button
                                     onClick={handleImageUploadClick}
                                     className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-white/8 text-sm text-gray-700 dark:text-gray-200 transition-colors text-left"
@@ -200,6 +210,19 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                                                 >
                                                     <Axis3D size={16} />
                                                     <span>3D导演台</span>
+                                                </button>
+                                            )}
+                                            {definition.type === 'video-breakdown' && onOpenNodeAlignment && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onOpenNodeAlignment();
+                                                        setShowUploadMenu(false);
+                                                    }}
+                                                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
+                                                >
+                                                    <AlignHorizontalSpaceAround size={16} />
+                                                    <span>节点对齐</span>
                                                 </button>
                                             )}
                                         </React.Fragment>

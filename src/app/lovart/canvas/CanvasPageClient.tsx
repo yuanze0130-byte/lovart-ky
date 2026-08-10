@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
-import { Plus, Minus, ChevronDown, Cloud, CloudOff, LoaderCircle, Map as MapIcon, History as HistoryIcon, Bot } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Cloud, CloudOff, LoaderCircle, Map as MapIcon, History as HistoryIcon, Bot, Boxes } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,6 +10,8 @@ import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
 import { CanvasArea, type CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
 import { CanvasFeaturesMenu } from '@/components/lovart/CanvasFeaturesMenu';
+import { NodeAlignmentPanel } from '@/components/lovart/NodeAlignmentPanel';
+import { RhaiLibraryPanel } from '@/components/lovart/RhaiLibraryPanel';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import type { RelightConfig } from '@/components/lovart/RelightStudioModal';
@@ -37,7 +39,10 @@ import { authedFetch } from '@/lib/authed-fetch';
 import { normalizeCanvasConnections } from '@/lib/canvas-connections';
 import type { ImageModelId } from '@/lib/image-models';
 import type { PromptLibraryItem } from '@/lib/prompt-library';
+import { alignCanvasElements, type NodeAlignmentAction } from '@/lib/node-alignment';
+import type { ExtractedVideoFrame } from '@/lib/video-frame-extraction';
 import { addGenerationHistoryItem, type GenerationHistoryItem } from '@/lib/generation-history';
+import { importRemoteCanvasVideo } from '@/lib/canvas-asset-upload';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { persistProjectThumbnail } from '@/lib/project-thumbnail';
 import {
@@ -183,6 +188,8 @@ function LovartCanvasContent() {
     const lastFocusedRelightTargetRef = useRef<string | null>(null);
     const [showGenerationHistory, setShowGenerationHistory] = useState(false);
     const [show3DDirector, setShow3DDirector] = useState(false);
+    const [showNodeAlignment, setShowNodeAlignment] = useState(false);
+    const [showRhaiLibrary, setShowRhaiLibrary] = useState(false);
     const canvasFeatureStorageKey = useMemo(() => getCanvasFeatureStorageKey(projectId), [projectId]);
     const showMiniMap = canvasFeatures.navigator;
 
@@ -246,6 +253,10 @@ function LovartCanvasContent() {
         handleOpenImageCompare,
         handleOpenGlobalView,
         handleOpenMotionTransfer,
+        handleOpenTableEditor,
+        handleOpenVideoFrames,
+        handleOpenVideoBreakdown,
+        handleOpenScriptWriter,
         handleOpenInpaint,
         handleOpenVideoGenerator,
         createImageGeneratorElement,
@@ -253,11 +264,109 @@ function LovartCanvasContent() {
         createVideoGeneratorElement,
     } = useCanvasElements({
         pan,
+        scale,
         elements,
         setElements,
         setSelectedIds,
         setActiveTool,
     });
+
+    const selectedRhaiElements = useMemo(() => {
+        if (!showRhaiLibrary) return [];
+        const selectedSet = new Set(selectedIds);
+        return elements.filter((element) => selectedSet.has(element.id) || (
+            element.type === 'connector'
+            && Boolean(element.connectorFrom && selectedSet.has(element.connectorFrom))
+            && Boolean(element.connectorTo && selectedSet.has(element.connectorTo))
+        ));
+    }, [elements, selectedIds, showRhaiLibrary]);
+
+    const handleFillRhaiWorkflow = useCallback((templateElements: CanvasElement[]) => {
+        const idMap = new Map(templateElements.map((element) => [element.id, uuidv4()]));
+        const groupIdMap = new Map<string, string>();
+        const baseX = (140 - pan.x) / scale;
+        const baseY = (120 - pan.y) / scale;
+        const filled = templateElements.map((element): CanvasElement => {
+            const nextGroupId = element.groupId
+                ? groupIdMap.get(element.groupId) || (() => {
+                    const id = uuidv4();
+                    groupIdMap.set(element.groupId as string, id);
+                    return id;
+                })()
+                : undefined;
+            return {
+                ...element,
+                id: idMap.get(element.id) || uuidv4(),
+                x: element.type === 'connector' ? 0 : baseX + element.x,
+                y: element.type === 'connector' ? 0 : baseY + element.y,
+                groupId: nextGroupId,
+                linkedElements: element.linkedElements
+                    ?.map((id) => idMap.get(id))
+                    .filter((id): id is string => Boolean(id)),
+                connectorFrom: element.connectorFrom ? idMap.get(element.connectorFrom) : undefined,
+                connectorTo: element.connectorTo ? idMap.get(element.connectorTo) : undefined,
+                referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) : undefined,
+                hotspotTargetId: element.hotspotTargetId ? idMap.get(element.hotspotTargetId) : undefined,
+            };
+        });
+        setElements((current) => [...current, ...filled]);
+        setSelectedIds(filled.filter((element) => element.type !== 'connector').map((element) => element.id));
+        setActiveTool('select');
+    }, [pan.x, pan.y, scale, setActiveTool, setElements, setSelectedIds]);
+
+    const handleApplyNodeAlignment = useCallback((action: NodeAlignmentAction) => {
+        setElements((current) => alignCanvasElements(current, selectedIds, action));
+    }, [selectedIds, setElements]);
+
+    useEffect(() => {
+        if (!showNodeAlignment) return;
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setShowNodeAlignment(false);
+        };
+        window.addEventListener('keydown', closeOnEscape);
+        return () => window.removeEventListener('keydown', closeOnEscape);
+    }, [showNodeAlignment]);
+
+    const handleVideoFramesComplete = useCallback((sourceElement: CanvasElement, frames: ExtractedVideoFrame[]) => {
+        const groupId = uuidv4();
+        const columns = Math.min(3, Math.max(1, frames.length));
+        const created: CanvasElement[] = [];
+        frames.forEach((frame, index) => {
+            const imageId = uuidv4();
+            created.push({
+                id: imageId,
+                type: 'image',
+                x: sourceElement.x + (sourceElement.width || 440) + 100 + (index % columns) * 280,
+                y: sourceElement.y + Math.floor(index / columns) * 200,
+                width: 240,
+                height: 135,
+                originalWidth: frame.width,
+                originalHeight: frame.height,
+                content: frame.dataUrl,
+                annotationLabel: `抽帧 ${index + 1} · ${frame.label}`,
+                groupId,
+            });
+            created.push({
+                id: uuidv4(),
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: sourceElement.id,
+                connectorTo: imageId,
+                connectorSourcePort: 'image-out',
+                connectorTargetPort: 'image-in',
+                connectorDataKind: 'image',
+                connectorKind: 'result',
+                connectorOrder: index,
+                connectorStyle: 'solid',
+                color: '#10b981',
+            });
+        });
+        setElements((current) => current.some((element) => element.id === sourceElement.id)
+            ? [...current, ...created]
+            : current);
+        setSelectedIds(created.filter((element) => element.type === 'image').map((element) => element.id));
+    }, [setElements, setSelectedIds]);
 
     const handleInsertDirectorCapture = useCallback(async (dataUrl: string) => {
         const response = await fetch(dataUrl);
@@ -812,6 +921,7 @@ function LovartCanvasContent() {
     }, [setElements, setSelectedIds]);
 
     const handleMotionTransferComplete = useCallback(async (element: CanvasElement, videoUrl: string) => {
+        const persistedVideoUrl = await importRemoteCanvasVideo(videoUrl);
         const resultId = uuidv4();
         const connectorId = uuidv4();
         const resultElement: CanvasElement = {
@@ -823,7 +933,7 @@ function LovartCanvasContent() {
             height: 300,
             originalWidth: 400,
             originalHeight: 300,
-            content: videoUrl,
+            content: persistedVideoUrl,
             prompt: element.prompt,
             generationMetadata: {
                 sourcePrompt: element.prompt,
@@ -847,12 +957,14 @@ function LovartCanvasContent() {
             connectorStyle: 'solid',
             color: '#8b5cf6',
         };
-        setElements((previous) => [...previous, connector, resultElement]);
+        setElements((previous) => previous.some((candidate) => candidate.id === element.id)
+            ? [...previous, connector, resultElement]
+            : previous);
         setSelectedIds([resultId]);
         void addGenerationHistoryItem({
             id: resultId,
             kind: 'video',
-            content: videoUrl,
+            content: persistedVideoUrl,
             prompt: element.prompt,
             model: resultElement.generationMetadata?.model,
             createdAt: new Date().toISOString(),
@@ -2613,6 +2725,19 @@ function LovartCanvasContent() {
                 </div>
 
                 <div className="flex items-center gap-2 pointer-events-auto">
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowChat(false);
+                            setShowGenerationHistory(false);
+                            setShowRhaiLibrary((value) => !value);
+                        }}
+                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showRhaiLibrary ? 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
+                        title="打开 RHAI 应用库"
+                    >
+                        <Boxes size={15} />
+                        <span>RHAI</span>
+                    </button>
                     <CanvasFeaturesMenu
                         settings={canvasFeatures}
                         onChange={updateCanvasFeature}
@@ -2656,6 +2781,26 @@ function LovartCanvasContent() {
                         void handleInsertHistoryItem(item);
                         setShowGenerationHistory(false);
                     }}
+                />
+            )}
+
+            {showRhaiLibrary && (
+                <RhaiLibraryPanel
+                    key={`rhai-${user?.id || 'guest'}`}
+                    userId={user?.id}
+                    selectedElements={selectedRhaiElements}
+                    onFillWorkflow={handleFillRhaiWorkflow}
+                    onCreateScriptWriter={handleOpenScriptWriter}
+                    onCreateVideoBreakdown={handleOpenVideoBreakdown}
+                    onClose={() => setShowRhaiLibrary(false)}
+                />
+            )}
+
+            {showNodeAlignment && (
+                <NodeAlignmentPanel
+                    selectedCount={selectedIds.filter((id) => elements.find((element) => element.id === id)?.type !== 'connector').length}
+                    onApply={handleApplyNodeAlignment}
+                    onClose={() => setShowNodeAlignment(false)}
                 />
             )}
 
@@ -2764,6 +2909,7 @@ function LovartCanvasContent() {
                     onInpaintGenerate={handleInpaintGenerate}
                     onGlobalViewCapture={handleGlobalViewCapture}
                     onMotionTransferComplete={handleMotionTransferComplete}
+                    onVideoFramesComplete={handleVideoFramesComplete}
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}
                     isDetectingObject={isDetectingObject}
@@ -2878,6 +3024,10 @@ function LovartCanvasContent() {
                     onOpen3DDirector={() => setShow3DDirector(true)}
                     onOpenGlobalView={handleOpenGlobalView}
                     onOpenMotionTransfer={handleOpenMotionTransfer}
+                    onOpenTableEditor={handleOpenTableEditor}
+                    onOpenVideoFrames={handleOpenVideoFrames}
+                    onOpenVideoBreakdown={handleOpenVideoBreakdown}
+                    onOpenNodeAlignment={() => setShowNodeAlignment((value) => !value)}
                     onOpenInpaint={handleOpenInpaint}
                     onOpenVideoGenerator={handleOpenVideoGenerator}
                 />

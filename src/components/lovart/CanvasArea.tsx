@@ -8,6 +8,10 @@ import { ImageCompareNode } from './ImageCompareNode';
 import { InpaintNode } from './InpaintNode';
 import { GlobalViewNode } from './GlobalViewNode';
 import { MotionTransferNode } from './MotionTransferNode';
+import { TableEditorNode } from './TableEditorNode';
+import { VideoFramesNode } from './VideoFramesNode';
+import { VideoBreakdownNode } from './VideoBreakdownNode';
+import { ScriptWriterNode } from './ScriptWriterNode';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -15,21 +19,23 @@ import { v4 as uuidv4 } from 'uuid';
 import {
     PORT_COLORS,
     buildBatchConnections,
+    buildConnectedNodeContentsIndex,
     canConnectPorts,
     connectionKindForPorts,
     getNodePorts,
     getPreferredCompatibleInputPort,
     getPortAnchor,
     inferLegacyPorts,
-    resolveConnectedNodeContents,
+    resolveConnectedNodeContentsFromIndex,
     wouldCreateConnectionCycle,
     type CanvasPortDefinition,
 } from '@/lib/canvas-connections';
 import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-models';
 import { duplicateCanvasSelection, serializeCanvasSelection } from '@/lib/canvas-shortcuts';
 import type { CanvasFeatureSettings } from '@/lib/canvas-feature-settings';
+import type { ExtractedVideoFrame } from '@/lib/video-frame-extraction';
 
-export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'global-view' | 'motion-transfer' | 'inpaint' | 'connector';
+export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'global-view' | 'motion-transfer' | 'table-editor' | 'video-frames' | 'video-breakdown' | 'script-writer' | 'inpaint' | 'connector';
 
 const SMART_CONNECTION_TARGET_TYPES = new Set<CanvasElementType>([
     'image-generator',
@@ -37,8 +43,32 @@ const SMART_CONNECTION_TARGET_TYPES = new Set<CanvasElementType>([
     'image-compare',
     'global-view',
     'motion-transfer',
+    'table-editor',
+    'video-frames',
+    'video-breakdown',
+    'script-writer',
     'inpaint',
 ]);
+
+export interface VideoBreakdownRow {
+    [key: string]: string;
+    timestamp: string;
+    shot: string;
+    visual: string;
+    camera: string;
+    narration: string;
+}
+
+export interface ScriptScene {
+    [key: string]: string;
+    scene: string;
+    location: string;
+    time: string;
+    visual: string;
+    action: string;
+    dialogue: string;
+    shot: string;
+}
 
 export interface GenerationMetadata extends Record<string, Json | undefined> {
     sourcePrompt?: string;
@@ -149,6 +179,20 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     motionKeepAudio?: boolean;
     motionOrientation?: 'image' | 'video';
     motionWatermark?: boolean;
+    tableColumns?: string[];
+    tableRows?: string[][];
+    tableView?: 'table' | 'markdown';
+    tableAutoHeight?: boolean;
+    tableMarkdown?: string;
+    videoFrameCount?: number;
+    videoBreakdownRows?: VideoBreakdownRow[];
+    videoBreakdownSummary?: string;
+    scriptGenre?: string;
+    scriptDurationMinutes?: number;
+    scriptCharacters?: string;
+    scriptTitle?: string;
+    scriptLogline?: string;
+    scriptScenes?: ScriptScene[];
     groupId?: string;
     linkedElements?: string[];
     connectorFrom?: string;
@@ -156,7 +200,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     connectorStyle?: 'solid' | 'dashed';
     connectorSourcePort?: string;
     connectorTargetPort?: string;
-    connectorDataKind?: 'prompt' | 'image' | 'video' | 'any';
+    connectorDataKind?: 'prompt' | 'content' | 'image' | 'video' | 'any';
     connectorKind?: 'prompt' | 'reference' | 'result' | 'control';
     connectorOrder?: number;
 }
@@ -313,6 +357,7 @@ interface CanvasAreaProps {
     onInpaintGenerate?: (element: CanvasElement, input: { image: string; mask: string; prompt: string }) => Promise<void>;
     onGlobalViewCapture?: (element: CanvasElement, images: Array<{ content: string; label: string }>) => void;
     onMotionTransferComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
+    onVideoFramesComplete?: (element: CanvasElement, frames: ExtractedVideoFrame[]) => void;
     annotationImageId?: string | null;
     annotationObject?: DetectedObject | null;
     isDetectingObject?: boolean;
@@ -375,6 +420,7 @@ export function CanvasArea({
     onInpaintGenerate,
     onGlobalViewCapture,
     onMotionTransferComplete,
+    onVideoFramesComplete,
     annotationImageId,
     annotationObject,
     isDetectingObject,
@@ -393,6 +439,7 @@ export function CanvasArea({
     const [isDrawing, setIsDrawing] = useState(false);
     const [isSelecting, setIsSelecting] = useState(false);
     const [isDragOverCanvas, setIsDragOverCanvas] = useState(false);
+    const [runningToolNodeIds, setRunningToolNodeIds] = useState<Set<string>>(() => new Set());
     const dragDepthRef = useRef(0);
     const [selectionBox, setSelectionBox] = useState<{
         startX: number;
@@ -1042,6 +1089,16 @@ export function CanvasArea({
     const selectedElement = elements.find((el) => selectedIds.includes(el.id));
     const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
     const elementById = useMemo(() => new Map(elements.map((element) => [element.id, element])), [elements]);
+    const connectedContentsIndex = useMemo(() => buildConnectedNodeContentsIndex(elements), [elements]);
+    const handleToolRunningChange = useCallback((elementId: string, running: boolean) => {
+        setRunningToolNodeIds((current) => {
+            if (current.has(elementId) === running) return current;
+            const next = new Set(current);
+            if (running) next.add(elementId);
+            else next.delete(elementId);
+            return next;
+        });
+    }, []);
     const referenceConnectionCountByTarget = useMemo(() => {
         const counts = new Map<string, number>();
         elements.forEach((element) => {
@@ -1062,26 +1119,29 @@ export function CanvasArea({
     }, [pan.x, pan.y, scale, viewportHeight, viewportWidth]);
     const isElementInViewport = useCallback((element: CanvasElement) => {
         if (!viewportBounds) return true;
-        if (selectedIdSet.has(element.id) || element.id === annotationImageId || element.id === relightTargetId) return true;
+        if (selectedIdSet.has(element.id) || runningToolNodeIds.has(element.id) || element.id === annotationImageId || element.id === relightTargetId) return true;
         const width = element.width || (element.type === 'text' ? 240 : 120);
         const height = element.height || (element.type === 'text' ? 100 : 120);
         return element.x < viewportBounds.right
             && element.x + width > viewportBounds.left
             && element.y < viewportBounds.bottom
             && element.y + height > viewportBounds.top;
-    }, [annotationImageId, relightTargetId, selectedIdSet, viewportBounds]);
+    }, [annotationImageId, relightTargetId, runningToolNodeIds, selectedIdSet, viewportBounds]);
     const visibleElements = useMemo(
         () => elements.filter((element) => element.type !== 'connector' && isElementInViewport(element)),
         [elements, isElementInViewport]
     );
     const visibleConnectors = useMemo(
-        () => elements.filter((element) => {
+        () => {
+            if (featureSettings.hideConnectors) return [];
+            return elements.filter((element) => {
             if (element.type !== 'connector') return false;
             const fromElement = element.connectorFrom ? elementById.get(element.connectorFrom) : undefined;
             const toElement = element.connectorTo ? elementById.get(element.connectorTo) : undefined;
             return Boolean((fromElement && isElementInViewport(fromElement)) || (toElement && isElementInViewport(toElement)));
-        }),
-        [elementById, elements, isElementInViewport]
+            });
+        },
+        [elementById, elements, featureSettings.hideConnectors, isElementInViewport]
     );
 
     const renderPath = (points: { x: number; y: number }[]) => {
@@ -1658,7 +1718,7 @@ export function CanvasArea({
                 )}
 
                 <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
-                    {visibleConnectors
+                    {!featureSettings.hideConnectors && visibleConnectors
                         .map((connector) => {
                             const fromEl = connector.connectorFrom ? elementById.get(connector.connectorFrom) : undefined;
                             const toEl = connector.connectorTo ? elementById.get(connector.connectorTo) : undefined;
@@ -2076,8 +2136,8 @@ export function CanvasArea({
                                 )}
 
                                 {el.type === 'image-compare' && (() => {
-                                    const firstImage = resolveConnectedNodeContents(el.id, 'compare-a-in', elements)[0];
-                                    const secondImage = resolveConnectedNodeContents(el.id, 'compare-b-in', elements)[0];
+                                    const firstImage = resolveConnectedNodeContentsFromIndex(el.id, 'compare-a-in', connectedContentsIndex)[0];
+                                    const secondImage = resolveConnectedNodeContentsFromIndex(el.id, 'compare-b-in', connectedContentsIndex)[0];
                                     return (
                                         <ImageCompareNode
                                             firstImage={firstImage}
@@ -2090,7 +2150,7 @@ export function CanvasArea({
                                 })()}
 
                                 {el.type === 'inpaint' && (() => {
-                                    const sourceImage = resolveConnectedNodeContents(el.id, 'image-in', elements)[0];
+                                    const sourceImage = resolveConnectedNodeContentsFromIndex(el.id, 'image-in', connectedContentsIndex)[0];
                                     return (
                                         <InpaintNode
                                             sourceImage={sourceImage}
@@ -2109,7 +2169,7 @@ export function CanvasArea({
                                 })()}
 
                                 {el.type === 'global-view' && (() => {
-                                    const sourceImage = resolveConnectedNodeContents(el.id, 'image-in', elements)[0];
+                                    const sourceImage = resolveConnectedNodeContentsFromIndex(el.id, 'image-in', connectedContentsIndex)[0];
                                     return (
                                         <GlobalViewNode
                                             sourceImage={sourceImage}
@@ -2126,9 +2186,9 @@ export function CanvasArea({
                                 })()}
 
                                 {el.type === 'motion-transfer' && (() => {
-                                    const sourceImage = resolveConnectedNodeContents(el.id, 'image-in', elements)[0];
-                                    const sourceVideo = resolveConnectedNodeContents(el.id, 'video-in', elements)[0];
-                                    const connectedPrompt = resolveConnectedNodeContents(el.id, 'prompt-in', elements).join('\n\n');
+                                    const sourceImage = resolveConnectedNodeContentsFromIndex(el.id, 'image-in', connectedContentsIndex)[0];
+                                    const sourceVideo = resolveConnectedNodeContentsFromIndex(el.id, 'video-in', connectedContentsIndex)[0];
+                                    const connectedPrompt = resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex).join('\n\n');
                                     return (
                                         <MotionTransferNode
                                             sourceImage={sourceImage}
@@ -2142,6 +2202,74 @@ export function CanvasArea({
                                             watermark={el.motionWatermark === true}
                                             onConfigChange={(updates) => onElementChange(el.id, updates)}
                                             onComplete={onMotionTransferComplete ? (videoUrl) => onMotionTransferComplete(el, videoUrl) : undefined}
+                                        />
+                                    );
+                                })()}
+
+                                {el.type === 'table-editor' && (() => {
+                                    const connectedContent = [
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex),
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'content-in', connectedContentsIndex),
+                                    ].join('\n\n');
+                                    return (
+                                        <TableEditorNode
+                                            connectedContent={connectedContent}
+                                            columns={el.tableColumns || ['#']}
+                                            rows={el.tableRows || []}
+                                            view={el.tableView || 'table'}
+                                            autoHeight={el.tableAutoHeight !== false}
+                                            markdown={el.tableMarkdown || el.content || ''}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                        />
+                                    );
+                                })()}
+
+                                {el.type === 'video-frames' && (() => {
+                                    const sourceVideo = resolveConnectedNodeContentsFromIndex(el.id, 'video-in', connectedContentsIndex)[0];
+                                    return (
+                                        <VideoFramesNode
+                                            sourceVideo={sourceVideo}
+                                            frameCount={el.videoFrameCount || 6}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                            onComplete={onVideoFramesComplete ? (frames) => onVideoFramesComplete(el, frames) : undefined}
+                                            onRunningChange={(running) => handleToolRunningChange(el.id, running)}
+                                        />
+                                    );
+                                })()}
+
+                                {el.type === 'video-breakdown' && (() => {
+                                    const sourceVideo = resolveConnectedNodeContentsFromIndex(el.id, 'video-in', connectedContentsIndex)[0];
+                                    const connectedPrompt = resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex).join('\n\n');
+                                    return (
+                                        <VideoBreakdownNode
+                                            sourceVideo={sourceVideo}
+                                            connectedPrompt={connectedPrompt}
+                                            prompt={el.prompt || ''}
+                                            rows={el.videoBreakdownRows || []}
+                                            summary={el.videoBreakdownSummary}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                            onRunningChange={(running) => handleToolRunningChange(el.id, running)}
+                                        />
+                                    );
+                                })()}
+
+                                {el.type === 'script-writer' && (() => {
+                                    const connectedBrief = [
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex),
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'content-in', connectedContentsIndex),
+                                    ].join('\n\n');
+                                    return (
+                                        <ScriptWriterNode
+                                            connectedBrief={connectedBrief}
+                                            brief={el.prompt || ''}
+                                            genre={el.scriptGenre || '剧情短片'}
+                                            durationMinutes={el.scriptDurationMinutes || 3}
+                                            characters={el.scriptCharacters || ''}
+                                            title={el.scriptTitle}
+                                            logline={el.scriptLogline}
+                                            scenes={el.scriptScenes || []}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                            onRunningChange={(running) => handleToolRunningChange(el.id, running)}
                                         />
                                     );
                                 })()}

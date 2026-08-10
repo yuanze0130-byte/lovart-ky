@@ -20,8 +20,9 @@ await writeFile(outputPath, transpiled.outputText, 'utf8');
 try {
   const features = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
   const defaults = features.DEFAULT_CANVAS_FEATURE_SETTINGS;
-  assert.equal(Object.keys(defaults).length, 16);
-  assert.equal(Object.values(defaults).filter((value) => typeof value === 'boolean').length, 12);
+  assert.equal(Object.keys(defaults).length, 17);
+  assert.equal(Object.values(defaults).filter((value) => typeof value === 'boolean').length, 13);
+  assert.equal(defaults.hideConnectors, false);
   assert.equal(defaults.gridGap, 20);
   assert.equal(defaults.gridDotSize, 0.5);
   assert.equal(defaults.connectorWidth, 2);

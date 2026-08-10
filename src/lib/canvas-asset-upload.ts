@@ -5,10 +5,14 @@ import { authedFetch } from '@/lib/authed-fetch';
 
 type AssetUploadResponse = {
   error?: string;
+  kind?: 'image' | 'video';
+  size?: number;
   url?: string;
 };
 
-function isInlineAsset(value: unknown): value is string {
+export type RemoteCanvasAssetKind = 'image' | 'video';
+
+function isInlineAsset(value: unknown) {
   return typeof value === 'string' && /^data:(?:image|video)\/[\w.+-]+;base64,/i.test(value);
 }
 
@@ -36,11 +40,48 @@ export async function uploadInlineCanvasAsset(asset: string) {
 
 export const uploadInlineCanvasImage = uploadInlineCanvasAsset;
 
+export async function importRemoteCanvasAsset(
+  remoteUrl: string,
+  kind: RemoteCanvasAssetKind = 'video',
+  signal?: AbortSignal,
+) {
+  if (isInlineAsset(remoteUrl)) return uploadInlineCanvasAsset(remoteUrl);
+  if (remoteUrl.startsWith('/media/canvas/')) return remoteUrl;
+  if (typeof window !== 'undefined') {
+    try {
+      const resolved = new URL(remoteUrl, window.location.origin);
+      if (resolved.origin === window.location.origin && resolved.pathname.startsWith('/media/canvas/')) {
+        return `${resolved.pathname}${resolved.search}`;
+      }
+    } catch {
+      // The authenticated import endpoint returns the user-facing validation error.
+    }
+  }
+
+  const response = await authedFetch('/api/canvas-assets/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: remoteUrl, kind }),
+    signal,
+  });
+  const result = (await response.json().catch(() => ({}))) as AssetUploadResponse;
+
+  if (!response.ok || !result.url) {
+    throw new Error(result.error || '远程素材保存到服务器失败');
+  }
+
+  return result.url;
+}
+
+export function importRemoteCanvasVideo(remoteUrl: string, signal?: AbortSignal) {
+  return importRemoteCanvasAsset(remoteUrl, 'video', signal);
+}
+
 async function persistValue(
   value: unknown,
   uploadCache: Map<string, Promise<string>>
 ): Promise<unknown> {
-  if (isInlineAsset(value)) {
+  if (typeof value === 'string' && isInlineAsset(value)) {
     let upload = uploadCache.get(value);
     if (!upload) {
       upload = uploadInlineCanvasAsset(value);

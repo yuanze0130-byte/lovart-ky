@@ -1,6 +1,6 @@
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { Json } from '@/lib/supabase';
-import { getNodeTypeForQdmyImport, getQdmyExportType } from '@/lib/node-definitions';
+import { getNodeDefaultState, getNodeTypeForQdmyImport, getQdmyExportType } from '@/lib/node-definitions';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -121,6 +121,7 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
   const desktopType = firstString(node.type, node.nodeType) || '';
   const type = getNodeTypeForQdmyImport(desktopType);
   if (!id || !type || type === 'connector') return null;
+  const defaultState = getNodeDefaultState(type);
 
   const settings = asRecord(node.settings);
   const data = asRecord(node.data);
@@ -147,14 +148,38 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
   const motionModel = firstString(node.motionModel, settings.motionModel, model);
   const motionMode = firstString(node.motionMode, settings.motionMode);
   const motionOrientation = firstString(node.motionOrientation, settings.motionOrientation);
+  const tableColumns = asArray(node.tableColumns ?? settings.tableColumns).filter((value): value is string => typeof value === 'string');
+  const tableRows = asArray(node.tableRows ?? settings.tableRows).map((row) => asArray(row).map((value) => String(value ?? '')));
+  const videoBreakdownRows = asArray(node.videoBreakdownRows ?? settings.videoBreakdownRows).map((row) => {
+    const item = asRecord(row);
+    return {
+      timestamp: firstString(item.timestamp) || '',
+      shot: firstString(item.shot) || '',
+      visual: firstString(item.visual) || '',
+      camera: firstString(item.camera) || '',
+      narration: firstString(item.narration) || '',
+    };
+  });
+  const scriptScenes = asArray(node.scriptScenes ?? settings.scriptScenes).map((scene) => {
+    const item = asRecord(scene);
+    return {
+      scene: firstString(item.scene) || '',
+      location: firstString(item.location) || '',
+      time: firstString(item.time) || '',
+      visual: firstString(item.visual) || '',
+      action: firstString(item.action) || '',
+      dialogue: firstString(item.dialogue) || '',
+      shot: firstString(item.shot) || '',
+    };
+  });
 
   const element: CanvasElement = {
     id,
     type,
     x: position.x,
     y: position.y,
-    width: position.width,
-    height: position.height,
+    width: position.width ?? defaultState.width,
+    height: position.height ?? defaultState.height,
     groupId: firstString(node.groupId, groupId),
     prompt,
     initialPrompt: type === 'image-generator' || type === 'video-generator' ? prompt : undefined,
@@ -186,6 +211,20 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
     motionWatermark: type === 'motion-transfer' && typeof (node.motionWatermark ?? settings.motionWatermark) === 'boolean'
       ? Boolean(node.motionWatermark ?? settings.motionWatermark)
       : undefined,
+    tableColumns: type === 'table-editor' && tableColumns.length > 0 ? tableColumns : undefined,
+    tableRows: type === 'table-editor' ? tableRows : undefined,
+    tableView: type === 'table-editor' && firstString(node.tableView, settings.tableView) === 'markdown' ? 'markdown' : undefined,
+    tableAutoHeight: type === 'table-editor' && typeof (node.tableAutoHeight ?? settings.tableAutoHeight) === 'boolean' ? Boolean(node.tableAutoHeight ?? settings.tableAutoHeight) : undefined,
+    tableMarkdown: type === 'table-editor' ? firstString(node.tableMarkdown, settings.tableMarkdown) : undefined,
+    videoFrameCount: type === 'video-frames' ? firstNumber(node.videoFrameCount, settings.videoFrameCount) : undefined,
+    videoBreakdownRows: type === 'video-breakdown' ? videoBreakdownRows : undefined,
+    videoBreakdownSummary: type === 'video-breakdown' ? firstString(node.videoBreakdownSummary, settings.videoBreakdownSummary) : undefined,
+    scriptGenre: type === 'script-writer' ? firstString(node.scriptGenre, settings.scriptGenre) : undefined,
+    scriptDurationMinutes: type === 'script-writer' ? firstNumber(node.scriptDurationMinutes, settings.scriptDurationMinutes) : undefined,
+    scriptCharacters: type === 'script-writer' ? firstString(node.scriptCharacters, settings.scriptCharacters) : undefined,
+    scriptTitle: type === 'script-writer' ? firstString(node.scriptTitle, settings.scriptTitle) : undefined,
+    scriptLogline: type === 'script-writer' ? firstString(node.scriptLogline, settings.scriptLogline) : undefined,
+    scriptScenes: type === 'script-writer' ? scriptScenes : undefined,
     generationMetadata: model || platformGroup ? {
       model,
       desktopPlatformGroup: platformGroup,
@@ -307,6 +346,20 @@ export function exportQdmyProject(input: QdmyExportInput) {
         motionKeepAudio: element.motionKeepAudio,
         motionOrientation: element.motionOrientation,
         motionWatermark: element.motionWatermark,
+        tableColumns: element.tableColumns,
+        tableRows: element.tableRows,
+        tableView: element.tableView,
+        tableAutoHeight: element.tableAutoHeight,
+        tableMarkdown: element.tableMarkdown,
+        videoFrameCount: element.videoFrameCount,
+        videoBreakdownRows: element.videoBreakdownRows,
+        videoBreakdownSummary: element.videoBreakdownSummary,
+        scriptGenre: element.scriptGenre,
+        scriptDurationMinutes: element.scriptDurationMinutes,
+        scriptCharacters: element.scriptCharacters,
+        scriptTitle: element.scriptTitle,
+        scriptLogline: element.scriptLogline,
+        scriptScenes: element.scriptScenes,
         platformGroup: firstString(element.generationMetadata?.desktopPlatformGroup, settings.platformGroup),
         ratio: element.requestedAspectRatio,
         resolution: element.requestedResolution,

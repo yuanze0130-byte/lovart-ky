@@ -6,10 +6,12 @@ const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 const DEFAULT_ASSET_ROOT = path.join(/* turbopackIgnore: true */ process.cwd(), '.local-data', 'canvas-assets');
 
-type SupportedAsset = {
+export type CanvasAssetKind = 'image' | 'video';
+
+export type SupportedCanvasAsset = {
   extension: 'png' | 'jpg' | 'webp' | 'gif' | 'avif' | 'mp4' | 'webm' | 'mov';
   contentType: string;
-  kind: 'image' | 'video';
+  kind: CanvasAssetKind;
 };
 
 function getAssetRoot() {
@@ -34,7 +36,11 @@ function hasBytes(bytes: Uint8Array, offset: number, expected: number[]) {
   return expected.every((value, index) => bytes[offset + index] === value);
 }
 
-function detectAsset(bytes: Uint8Array): SupportedAsset | null {
+export function getCanvasAssetMaxBytes(kind: CanvasAssetKind) {
+  return kind === 'video' ? getMaxVideoBytes() : getMaxImageBytes();
+}
+
+export function detectCanvasAsset(bytes: Uint8Array): SupportedCanvasAsset | null {
   if (hasBytes(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
     return { extension: 'png', contentType: 'image/png', kind: 'image' };
   }
@@ -85,9 +91,9 @@ export function getCanvasAssetFile(userId: string, fileName: string) {
 export async function saveCanvasAsset(userId: string, bytes: Uint8Array) {
   if (bytes.byteLength === 0) throw new Error('素材文件为空');
 
-  const asset = detectAsset(bytes);
+  const asset = detectCanvasAsset(bytes);
   if (!asset) throw new Error('仅支持 PNG、JPEG、WebP、GIF、AVIF、MP4、WebM 或 MOV 素材');
-  const maxBytes = asset.kind === 'video' ? getMaxVideoBytes() : getMaxImageBytes();
+  const maxBytes = getCanvasAssetMaxBytes(asset.kind);
   if (bytes.byteLength > maxBytes) throw new Error(`${asset.kind === 'video' ? '视频' : '图片'}超过服务器允许的大小`);
 
   const digest = createHash('sha256').update(bytes).digest('hex');

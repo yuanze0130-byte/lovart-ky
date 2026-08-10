@@ -11,6 +11,7 @@ export interface CanvasFeatureSettings {
   grid: boolean;
   navigator: boolean;
   groupMode: boolean;
+  hideConnectors: boolean;
   gridGap: number;
   gridDotSize: number;
   connectorWidth: number;
@@ -30,6 +31,7 @@ export const DEFAULT_CANVAS_FEATURE_SETTINGS: CanvasFeatureSettings = {
   grid: true,
   navigator: false,
   groupMode: false,
+  hideConnectors: false,
   gridGap: 20,
   gridDotSize: 0.5,
   connectorWidth: 2,

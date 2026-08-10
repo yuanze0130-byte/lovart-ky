@@ -28,10 +28,13 @@ await writeFile(outputPath, transpiled.outputText.replace(/from ['"]@\/lib\/node
 try {
   const {
     buildBatchConnections,
+    buildConnectedNodeContentsIndex,
     canConnectPorts,
     getNodePorts,
     normalizeCanvasConnections,
     resolveConnectedInputs,
+    resolveConnectedNodeContents,
+    resolveConnectedNodeContentsFromIndex,
     wouldCreateConnectionCycle,
   } = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
   const {
@@ -45,13 +48,16 @@ try {
   const definitions = listNodeDefinitions();
   assert.deepEqual(definitions.map((definition) => definition.type).sort(), [
     'connector', 'global-view', 'image', 'image-compare', 'image-generator', 'inpaint', 'motion-transfer',
-    'path', 'shape', 'text', 'video', 'video-generator',
+    'path', 'script-writer', 'shape', 'table-editor', 'text', 'video', 'video-breakdown', 'video-frames', 'video-generator',
   ]);
   assert.deepEqual(getCreateMenuNodeDefinitions().map((definition) => definition.type), [
-    'image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'inpaint',
+    'image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'table-editor', 'video-frames', 'video-breakdown', 'inpaint',
   ]);
   assert.equal(getNodeDefaultState('image-compare').imageCompareSplit, 50);
   assert.equal(getNodeDefaultState('inpaint').inpaintFeather, 4);
+  assert.deepEqual(getNodeDefaultState('table-editor').tableColumns, ['#']);
+  assert.equal(getNodeDefaultState('video-frames').videoFrameCount, 6);
+  assert.equal(getNodeDefaultState('script-writer').scriptDurationMinutes, 3);
   assert.equal(getNodeTypeForQdmyImport('custom-agent'), 'text');
   assert.equal(getNodeTypeForQdmyImport('comfy-ui'), 'image-generator');
   assert.equal(getNodeTypeForQdmyImport('gen-music'), 'text');
@@ -60,6 +66,9 @@ try {
   assert.equal(getQdmyExportType('inpaint'), 'inpaint-menu');
   assert.equal(getNodeTypeForQdmyImport('global-perspective'), 'global-view');
   assert.equal(getNodeTypeForQdmyImport('motion-control'), 'motion-transfer');
+  assert.equal(getNodeTypeForQdmyImport('table-editor-node'), 'table-editor');
+  assert.equal(getNodeTypeForQdmyImport('video-analyze'), 'video-breakdown');
+  assert.equal(getNodeTypeForQdmyImport('storyboard-node'), 'script-writer');
 
   const textNode = { id: 'prompt', type: 'text', x: 0, y: 0, content: 'cinematic portrait' };
   const imageNode = { id: 'reference', type: 'image', x: 0, y: 100, content: 'data:image/png;base64,abc' };
@@ -81,6 +90,15 @@ try {
   const inputs = resolveConnectedInputs('generator', normalized);
   assert.equal(inputs.prompt, 'cinematic portrait');
   assert.deepEqual(inputs.references, ['data:image/png;base64,abc']);
+  const legacyContentsIndex = buildConnectedNodeContentsIndex(elements);
+  assert.deepEqual(
+    resolveConnectedNodeContentsFromIndex('generator', 'prompt-in', legacyContentsIndex),
+    ['cinematic portrait'],
+  );
+  assert.deepEqual(
+    resolveConnectedNodeContentsFromIndex('generator', 'reference-in', legacyContentsIndex),
+    ['data:image/png;base64,abc'],
+  );
 
   const secondTextNode = { id: 'prompt-2', type: 'text', x: 0, y: 200, content: 'warm sunset lighting' };
   const orderedPromptEdges = [
@@ -93,6 +111,18 @@ try {
   ];
   const combinedInputs = resolveConnectedInputs('generator', [textNode, secondTextNode, generator, ...orderedPromptEdges]);
   assert.equal(combinedInputs.prompt, 'warm sunset lighting\n\ncinematic portrait');
+
+  const connectedContentsElements = [textNode, secondTextNode, generator, ...orderedPromptEdges];
+  const connectedContentsIndex = buildConnectedNodeContentsIndex(connectedContentsElements);
+  assert.deepEqual(
+    resolveConnectedNodeContentsFromIndex('generator', 'prompt-in', connectedContentsIndex),
+    ['warm sunset lighting', 'cinematic portrait'],
+  );
+  assert.deepEqual(resolveConnectedNodeContentsFromIndex('generator', 'reference-in', connectedContentsIndex), []);
+  assert.deepEqual(
+    resolveConnectedNodeContents('generator', 'prompt-in', connectedContentsElements),
+    resolveConnectedNodeContentsFromIndex('generator', 'prompt-in', connectedContentsIndex),
+  );
 
   let batchId = 0;
   const batchConnectors = buildBatchConnections(
@@ -126,6 +156,15 @@ try {
   const videoOutput = getNodePorts(videoNode).find((port) => port.id === 'video-out');
   assert.equal(canConnectPorts(imageOutput, getNodePorts(motionNode).find((port) => port.id === 'image-in')), true);
   assert.equal(canConnectPorts(videoOutput, getNodePorts(motionNode).find((port) => port.id === 'video-in')), true);
+  const frameNode = { id: 'frames', type: 'video-frames', x: 1300, y: 800 };
+  const breakdownNode = { id: 'breakdown', type: 'video-breakdown', x: 1700, y: 800 };
+  const tableNode = { id: 'table', type: 'table-editor', x: 2100, y: 800 };
+  const scriptNode = { id: 'script', type: 'script-writer', x: 2500, y: 800 };
+  assert.equal(canConnectPorts(videoOutput, getNodePorts(frameNode).find((port) => port.id === 'video-in')), true);
+  assert.equal(canConnectPorts(videoOutput, getNodePorts(breakdownNode).find((port) => port.id === 'video-in')), true);
+  assert.equal(canConnectPorts(getNodePorts(breakdownNode).find((port) => port.id === 'content-out'), getNodePorts(tableNode).find((port) => port.id === 'content-in')), true);
+  assert.equal(canConnectPorts(getNodePorts(tableNode).find((port) => port.id === 'content-out'), getNodePorts(scriptNode).find((port) => port.id === 'content-in')), true);
+  assert.equal(canConnectPorts(getNodePorts(tableNode).find((port) => port.id === 'content-out'), getNodePorts(breakdownNode).find((port) => port.id === 'video-in')), false);
   assert.equal(wouldCreateConnectionCycle(normalized, 'generator', 'prompt'), true);
   assert.equal(wouldCreateConnectionCycle(normalized, 'prompt', 'reference'), false);
 

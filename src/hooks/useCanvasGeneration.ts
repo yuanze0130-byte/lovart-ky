@@ -7,6 +7,7 @@ import { authedFetch } from '@/lib/authed-fetch';
 import { resolveConnectedInputs } from '@/lib/canvas-connections';
 import { isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { addGenerationHistoryItem } from '@/lib/generation-history';
+import { importRemoteCanvasVideo } from '@/lib/canvas-asset-upload';
 import { uploadReferenceImages } from '@/lib/reference-image-upload';
 
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
@@ -433,6 +434,7 @@ export function useCanvasGeneration({
 }: UseCanvasGenerationParams) {
   const handleGenerateVideo = useCallback(
     async (videoUrl: string, targetElementId?: string) => {
+      const persistedVideoUrl = await importRemoteCanvasVideo(videoUrl);
       const targetedGenerator = targetElementId
         ? elements.find((el) => el.id === targetElementId && el.type === 'video-generator')
         : undefined;
@@ -444,7 +446,7 @@ export function useCanvasGeneration({
         void addGenerationHistoryItem({
           id: uuidv4(),
           kind: 'video',
-          content: videoUrl,
+          content: persistedVideoUrl,
           prompt: generatorElement.prompt,
           model: generatorElement.videoModelMode,
           createdAt: new Date().toISOString(),
@@ -458,7 +460,7 @@ export function useCanvasGeneration({
               return {
                 ...el,
                 type: 'video',
-                content: videoUrl,
+                content: persistedVideoUrl,
                 width: el.width || generatorElement.width || 400,
                 height: el.height || generatorElement.height || 300,
                 originalWidth: el.originalWidth || generatorElement.originalWidth || el.width || generatorElement.width || 400,
@@ -502,14 +504,14 @@ export function useCanvasGeneration({
           y: 300 - pan.y,
           width: 400,
           height: 300,
-          content: videoUrl,
+          content: persistedVideoUrl,
         };
         setElements((prev) => [...prev, newElement]);
         setSelectedIds([newElement.id]);
         void addGenerationHistoryItem({
           id: resultId,
           kind: 'video',
-          content: videoUrl,
+          content: persistedVideoUrl,
           createdAt: new Date().toISOString(),
           width: 400,
           height: 300,

@@ -3,7 +3,7 @@ import type { CanvasElement, CanvasElementType } from '@/components/lovart/Canva
 export type RegisteredNodeType = CanvasElementType;
 
 export type NodePortDirection = 'input' | 'output';
-export type NodePortKind = 'prompt' | 'image' | 'video' | 'any';
+export type NodePortKind = 'prompt' | 'content' | 'image' | 'video' | 'any';
 
 export interface NodePortDefinition {
   id: string;
@@ -13,7 +13,7 @@ export interface NodePortDefinition {
   multiple?: boolean;
 }
 
-export type NodeCreateAction = 'image-generator' | 'video-generator' | 'image-compare' | 'global-view' | 'motion-transfer' | 'inpaint';
+export type NodeCreateAction = 'image-generator' | 'video-generator' | 'image-compare' | 'global-view' | 'motion-transfer' | 'table-editor' | 'video-frames' | 'video-breakdown' | 'inpaint';
 
 export interface NodeDefinition {
   type: RegisteredNodeType;
@@ -31,7 +31,7 @@ export interface NodeDefinition {
     action: NodeCreateAction;
     label: string;
     order: number;
-    icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'paintbrush';
+    icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'table' | 'frames' | 'breakdown' | 'paintbrush';
   };
 }
 
@@ -140,12 +140,75 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
     ],
   },
   {
+    type: 'table-editor', label: '表格编辑', category: 'editing',
+    defaultState: {
+      width: 520,
+      height: 430,
+      tableColumns: ['#'],
+      tableRows: [],
+      tableView: 'table',
+      tableAutoHeight: true,
+      tableMarkdown: '',
+    },
+    creatable: true,
+    qdmy: { importTypes: ['table-editor-node'], exportType: 'table-editor-node' },
+    createMenu: { action: 'table-editor', label: '表格编辑', order: 36, icon: 'table' },
+    ports: [
+      { id: 'prompt-in', label: '文本 / Agent', direction: 'input', kind: 'prompt' },
+      { id: 'content-in', label: '结构化内容', direction: 'input', kind: 'content' },
+      { id: 'content-out', label: '表格内容', direction: 'output', kind: 'content' },
+    ],
+  },
+  {
+    type: 'video-frames', label: '视频抽帧', category: 'editing',
+    defaultState: { width: 440, height: 500, videoFrameCount: 6 },
+    creatable: true,
+    qdmy: { importTypes: ['video-frame-extract'], exportType: 'video-frame-extract' },
+    createMenu: { action: 'video-frames', label: '视频抽帧', order: 38, icon: 'frames' },
+    ports: [
+      { id: 'video-in', label: '视频输入', direction: 'input', kind: 'video' },
+      { id: 'image-out', label: '关键帧', direction: 'output', kind: 'image' },
+    ],
+  },
+  {
+    type: 'video-breakdown', label: '视频拆解', category: 'editing',
+    defaultState: { width: 440, height: 540, videoBreakdownRows: [] },
+    creatable: true,
+    runnable: true,
+    qdmy: { importTypes: ['video-analyze'], exportType: 'video-analyze' },
+    createMenu: { action: 'video-breakdown', label: '视频拆解', order: 39, icon: 'breakdown' },
+    ports: [
+      { id: 'video-in', label: '视频输入', direction: 'input', kind: 'video' },
+      { id: 'prompt-in', label: '拆解要求', direction: 'input', kind: 'prompt' },
+      { id: 'content-out', label: '拆解结果', direction: 'output', kind: 'content' },
+    ],
+  },
+  {
+    type: 'script-writer', label: '剧本创作', category: 'generation',
+    defaultState: {
+      width: 460,
+      height: 600,
+      scriptGenre: '剧情短片',
+      scriptDurationMinutes: 3,
+      scriptCharacters: '',
+      scriptScenes: [],
+    },
+    creatable: true,
+    runnable: true,
+    qdmy: { importTypes: ['storyboard-node', 'storyboard-chart-node', 'script-writer'], exportType: 'storyboard-node' },
+    ports: [
+      { id: 'prompt-in', label: '创意 / 文本', direction: 'input', kind: 'prompt' },
+      { id: 'content-in', label: '拆解 / 表格', direction: 'input', kind: 'content' },
+      { id: 'script-out', label: '剧本', direction: 'output', kind: 'content' },
+    ],
+  },
+  {
     type: 'inpaint', label: '局部重绘', category: 'editing',
     defaultState: { width: 440, height: 360, inpaintBrushSize: 32, inpaintFeather: 4 },
     creatable: true,
     runnable: true,
     qdmy: { importTypes: ['inpaint-menu'], exportType: 'inpaint-menu' },
-    createMenu: { action: 'inpaint', label: '局部重绘', order: 40, icon: 'paintbrush' },
+    createMenu: { action: 'inpaint', label: '局部重绘', order: 50, icon: 'paintbrush' },
     ports: [
       { id: 'image-in', label: '原图', direction: 'input', kind: 'image' },
       { id: 'prompt-in', label: '提示词', direction: 'input', kind: 'prompt' },
