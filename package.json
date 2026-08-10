@@ -10,6 +10,7 @@
     "test:qdmy": "node scripts/test-qdmy-project.mjs",
     "test:connections": "node scripts/test-canvas-connections.mjs",
     "test:canvas-shortcuts": "node scripts/test-canvas-shortcuts.mjs",
+    "test:canvas-features": "node scripts/test-canvas-features.mjs",
     "test:prompt-library": "node scripts/test-prompt-library.mjs",
     "test:image-models": "node scripts/test-image-models.mjs",
     "test:generation-jobs": "node scripts/test-generation-jobs.mjs",

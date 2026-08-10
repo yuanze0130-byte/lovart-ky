@@ -25,6 +25,7 @@ import {
 } from '@/lib/canvas-connections';
 import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-models';
 import { duplicateCanvasSelection, serializeCanvasSelection } from '@/lib/canvas-shortcuts';
+import type { CanvasFeatureSettings } from '@/lib/canvas-feature-settings';
 
 export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'inpaint' | 'connector';
 
@@ -306,6 +307,24 @@ interface CanvasAreaProps {
     onDetectObjectAt?: (element: CanvasElement, point: { x: number; y: number }) => void;
     onAnnotateRegion?: (element: CanvasElement, region: { x: number; y: number; width: number; height: number }) => void;
     relightTargetId?: string | null;
+    featureSettings: CanvasFeatureSettings;
+    isGenerating?: boolean;
+}
+
+function CanvasStopwatch() {
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    useEffect(() => {
+        const timer = window.setInterval(() => setElapsedSeconds((seconds) => seconds + 1), 1000);
+        return () => window.clearInterval(timer);
+    }, []);
+    const hours = Math.floor(elapsedSeconds / 3600);
+    const minutes = Math.floor((elapsedSeconds % 3600) / 60);
+    const seconds = elapsedSeconds % 60;
+    return (
+        <div className="absolute right-4 top-16 z-40 rounded-full border border-gray-200 bg-white/92 px-3 py-1.5 font-mono text-xs font-semibold tabular-nums text-gray-700 shadow-lg backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/82 dark:text-sky-200">
+            {hours > 0 ? `${String(hours).padStart(2, '0')}:` : ''}{String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+        </div>
+    );
 }
 
 export function CanvasArea({
@@ -348,6 +367,8 @@ export function CanvasArea({
     onDetectObjectAt,
     onAnnotateRegion,
     relightTargetId,
+    featureSettings,
+    isGenerating = false,
 }: CanvasAreaProps) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
@@ -389,6 +410,7 @@ export function CanvasArea({
     const draggedElementIdRef = useRef<string | null>(null);
     const resizeHandleRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const followGlowRef = useRef<HTMLDivElement>(null);
     const panFrameRef = useRef<number | null>(null);
     const pendingPanRef = useRef<{ x: number; y: number } | null>(null);
     const elementUpdateFrameRef = useRef<number | null>(null);
@@ -672,6 +694,11 @@ export function CanvasArea({
     };
 
     const handleMouseMove = (e: React.MouseEvent) => {
+        if (featureSettings.follow && followGlowRef.current) {
+            const bounds = e.currentTarget.getBoundingClientRect();
+            followGlowRef.current.style.transform = `translate(${e.clientX - bounds.left - 96}px, ${e.clientY - bounds.top - 96}px)`;
+            followGlowRef.current.style.opacity = '1';
+        }
         const point = getCanvasPoint(e.clientX, e.clientY);
 
         if (connectionDraft) {
@@ -708,7 +735,10 @@ export function CanvasArea({
         if (isDragging && dragStartRef.current.initialPositions) {
             queueElementUpdates(dragStartRef.current.initialPositions.map((pos) => ({
                 id: pos.id,
-                updates: { x: pos.x + dx, y: pos.y + dy },
+                updates: {
+                    x: featureSettings.snap ? Math.round((pos.x + dx) / featureSettings.gridGap) * featureSettings.gridGap : pos.x + dx,
+                    y: featureSettings.snap ? Math.round((pos.y + dy) / featureSettings.gridGap) * featureSettings.gridGap : pos.y + dy,
+                },
             })));
         } else if (isResizing && resizeHandleRef.current) {
             if (draggedElementIdRef.current === '__selection__' && dragStartRef.current.selectionBounds && dragStartRef.current.initialPositions) {
@@ -924,6 +954,10 @@ export function CanvasArea({
 
                 if (selectionBox.mode === 'batch-connect' && expandedSelectedIds.length > 1) {
                     buildBatchConnections(elements, expandedSelectedIds, uuidv4).forEach((connector) => onAddElement(connector));
+                }
+                if (featureSettings.groupMode && expandedSelectedIds.length > 1) {
+                    const groupId = uuidv4();
+                    applyElementUpdates(expandedSelectedIds.map((id) => ({ id, updates: { groupId } })));
                 }
                 onSelect(expandedSelectedIds);
             }
@@ -1274,7 +1308,10 @@ export function CanvasArea({
     const handleDoubleClickCanvas = (e: React.MouseEvent) => {
         if ((e.target as HTMLElement).closest('[data-canvas-element="true"]')) return;
         const point = getCanvasPoint(e.clientX, e.clientY);
-        onCreateNodeAt?.(point.x, point.y);
+        onCreateNodeAt?.(
+            featureSettings.snap ? Math.round(point.x / featureSettings.gridGap) * featureSettings.gridGap : point.x,
+            featureSettings.snap ? Math.round(point.y / featureSettings.gridGap) * featureSettings.gridGap : point.y,
+        );
     };
 
     const handleCanvasContextMenu = (event: React.MouseEvent) => {
@@ -1324,6 +1361,10 @@ export function CanvasArea({
             onDragLeave={handleCanvasDragLeave}
             onDrop={handleCanvasDrop}
         >
+            {featureSettings.follow && (
+                <div ref={followGlowRef} className="pointer-events-none absolute left-0 top-0 z-[5] h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.14),transparent_68%)] opacity-0 transition-opacity will-change-transform dark:bg-[radial-gradient(circle,rgba(56,189,248,0.16),transparent_68%)]" />
+            )}
+            {featureSettings.stopwatch && <CanvasStopwatch />}
             {isDragOverCanvas && (
                 <div className="pointer-events-none absolute inset-0 z-[140] flex items-center justify-center bg-sky-500/10 backdrop-blur-[1px]">
                     <div className="rounded-2xl border border-sky-300 bg-white/92 px-5 py-3 text-sm font-medium text-sky-700 shadow-lg">
@@ -1587,15 +1628,17 @@ export function CanvasArea({
                 className={`w-full h-full origin-top-left ${isPanning ? '' : 'transition-transform duration-200 ease-out'}`}
                 style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
             >
-                <div
-                    className="absolute inset-0 opacity-[0.22] dark:opacity-[0.22]"
-                    style={{
-                        backgroundImage: 'radial-gradient(rgba(148,163,184,0.28) 1px, transparent 1px)',
-                        backgroundSize: '20px 20px',
-                        width: '10000px',
-                        height: '10000px',
-                    }}
-                />
+                {featureSettings.grid && (
+                    <div
+                        className="absolute inset-0 opacity-[0.28] dark:opacity-[0.24]"
+                        style={{
+                            backgroundImage: `radial-gradient(circle, rgba(100,116,139,0.5) ${featureSettings.gridDotSize}px, transparent ${featureSettings.gridDotSize}px)`,
+                            backgroundSize: `${featureSettings.gridGap}px ${featureSettings.gridGap}px`,
+                            width: '10000px',
+                            height: '10000px',
+                        }}
+                    />
+                )}
 
                 <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ overflow: 'visible' }}>
                     {visibleConnectors
@@ -1619,10 +1662,11 @@ export function CanvasArea({
                                         d={curve}
                                         fill="none"
                                         stroke={connector.color || '#6B7280'}
-                                        strokeWidth={selected ? 3.5 : connector.strokeWidth || 2}
-                                        strokeDasharray={connector.connectorStyle === 'dashed' ? '8 4' : '0'}
+                                        strokeWidth={selected ? featureSettings.connectorWidth + 1.5 : featureSettings.connectorWidth}
+                                        strokeOpacity={featureSettings.connectorOpacity / 100}
+                                        strokeDasharray={featureSettings.flowAnimation ? '12 8' : connector.connectorStyle === 'dashed' ? '8 4' : '0'}
                                         markerEnd="url(#arrowhead)"
-                                        className="pointer-events-none"
+                                        className={`pointer-events-none ${featureSettings.flowAnimation ? 'canvas-flow-connector' : ''}`}
                                     />
                                 </g>
                             );
@@ -1654,7 +1698,7 @@ export function CanvasArea({
                             <div
                                 key={el.id}
                                 data-canvas-element="true"
-                                className={`absolute group rounded-xl transition-[box-shadow] ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''} ${connectionDraft
+                                className={`absolute group rounded-xl transition-[box-shadow,transform] ${featureSettings.tilt3d ? 'canvas-tilt-node' : ''} ${featureSettings.marquee && selectedIds.includes(el.id) ? 'canvas-marquee-node' : ''} ${featureSettings.generationAnimation && isGenerating && (el.type === 'image-generator' || el.type === 'video-generator') ? 'canvas-generation-animation' : ''} ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''} ${connectionDraft
                                     && connectionDraft.sourceNodeId !== el.id
                                     && SMART_CONNECTION_TARGET_TYPES.has(el.type)
                                     && getPreferredCompatibleInputPort(el, connectionDraft.sourcePort)
@@ -1705,6 +1749,24 @@ export function CanvasArea({
                                         </button>
                                     );
                                 })}
+                                {featureSettings.crosses && (
+                                    <button
+                                        type="button"
+                                        className="absolute -right-3 -top-3 z-[70] grid h-7 w-7 place-items-center rounded-full border-2 border-white bg-red-500 text-white shadow-lg transition hover:scale-110 hover:bg-red-600 dark:border-slate-950"
+                                        onMouseDown={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                        }}
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            onDelete(el.id);
+                                        }}
+                                        aria-label="删除节点"
+                                        title="删除节点"
+                                    >
+                                        <X size={13} />
+                                    </button>
+                                )}
                                 {el.type === 'image-generator' && (() => {
                                     const metadata = el.generationMetadata;
                                     const outputCount = typeof metadata?.generationRunCount === 'number' ? metadata.generationRunCount : 0;
@@ -2030,6 +2092,14 @@ export function CanvasArea({
                                 })()}
 
                                 {el.type === 'image' && el.content && (() => {
+                                    if (featureSettings.hideImages) {
+                                        return (
+                                            <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100/95 text-slate-500 dark:border-white/15 dark:bg-slate-900/95 dark:text-slate-400">
+                                                <div className="text-xs font-semibold uppercase tracking-[0.16em]">图片已隐藏</div>
+                                                <div className="mt-1 text-[10px] opacity-70">关闭“隐图”恢复显示</div>
+                                            </div>
+                                        );
+                                    }
                                     const metadata = el.generationMetadata;
                                     const providerLabel = getProviderLabel(metadata);
                                     const modelLabel = getModelLabel(metadata);

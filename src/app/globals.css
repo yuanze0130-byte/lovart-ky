@@ -23,3 +23,62 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes canvas-flow-line {
+  to { stroke-dashoffset: -40; }
+}
+
+@keyframes canvas-marquee-border {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.8), 0 0 16px rgba(59, 130, 246, 0.16); }
+  50% { box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.45), 0 0 28px rgba(56, 189, 248, 0.3); }
+}
+
+@keyframes canvas-generation-sweep {
+  from { transform: translateX(-130%) rotate(12deg); }
+  to { transform: translateX(330%) rotate(12deg); }
+}
+
+.canvas-flow-connector {
+  animation: canvas-flow-line 0.9s linear infinite;
+}
+
+.canvas-marquee-node {
+  animation: canvas-marquee-border 1.25s ease-in-out infinite;
+}
+
+.canvas-tilt-node {
+  transform-style: preserve-3d;
+  transform-origin: center;
+}
+
+.canvas-tilt-node:hover {
+  transform: perspective(900px) rotateX(2.5deg) rotateY(-3.5deg) translateY(-2px);
+}
+
+.canvas-generation-animation {
+  isolation: isolate;
+}
+
+.canvas-generation-animation::after {
+  content: "";
+  position: absolute;
+  inset: -45% auto -45% -25%;
+  width: 24%;
+  pointer-events: none;
+  z-index: 65;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.68), transparent);
+  filter: blur(1px);
+  animation: canvas-generation-sweep 1.45s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-flow-connector,
+  .canvas-marquee-node,
+  .canvas-generation-animation::after {
+    animation: none;
+  }
+
+  .canvas-tilt-node:hover {
+    transform: none;
+  }
+}

@@ -9,6 +9,7 @@ import { useSupabase } from '@/hooks/useSupabase';
 import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
 import { CanvasArea, type CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
+import { CanvasFeaturesMenu } from '@/components/lovart/CanvasFeaturesMenu';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
 import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import type { RelightConfig } from '@/components/lovart/RelightStudioModal';
@@ -41,6 +42,13 @@ import type { PromptLibraryItem } from '@/lib/prompt-library';
 import { addGenerationHistoryItem, type GenerationHistoryItem } from '@/lib/generation-history';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { persistProjectThumbnail } from '@/lib/project-thumbnail';
+import {
+    DEFAULT_CANVAS_FEATURE_SETTINGS,
+    getCanvasFeatureStorageKey,
+    loadCanvasFeatureSettings,
+    saveCanvasFeatureSettings,
+    type CanvasFeatureSettings,
+} from '@/lib/canvas-feature-settings';
 
 const RelightStudioPanel = dynamic(
     () => import('@/components/lovart/RelightStudioModal').then((module) => module.RelightStudioPanel),
@@ -158,7 +166,8 @@ function LovartCanvasContent() {
     const [isDraggingElement, setIsDraggingElement] = useState(false);
     const [showChat, setShowChat] = useState(false);
     const [assetsCollapsed, setAssetsCollapsed] = useState(false);
-    const [showMiniMap, setShowMiniMap] = useState(false);
+    const [canvasFeatures, setCanvasFeatures] = useState<CanvasFeatureSettings>(DEFAULT_CANVAS_FEATURE_SETTINGS);
+    const skipCanvasFeatureSaveRef = useRef(true);
     const [isMiniMapDragging, setIsMiniMapDragging] = useState(false);
     const [miniMapHoveredId, setMiniMapHoveredId] = useState<string | null>(null);
     const [relightRestoreSelection, setRelightRestoreSelection] = useState<string[] | null>(null);
@@ -173,6 +182,25 @@ function LovartCanvasContent() {
     const [projectTransferStatus, setProjectTransferStatus] = useState<string | null>(null);
     const [pendingProjectImport, setPendingProjectImport] = useState<QdmyImportResult | null>(null);
     const [showGenerationHistory, setShowGenerationHistory] = useState(false);
+    const canvasFeatureStorageKey = useMemo(() => getCanvasFeatureStorageKey(projectId), [projectId]);
+    const showMiniMap = canvasFeatures.navigator;
+
+    useEffect(() => {
+        skipCanvasFeatureSaveRef.current = true;
+        setCanvasFeatures({ ...loadCanvasFeatureSettings(canvasFeatureStorageKey) });
+    }, [canvasFeatureStorageKey]);
+
+    useEffect(() => {
+        if (skipCanvasFeatureSaveRef.current) {
+            skipCanvasFeatureSaveRef.current = false;
+            return;
+        }
+        saveCanvasFeatureSettings(canvasFeatureStorageKey, canvasFeatures);
+    }, [canvasFeatureStorageKey, canvasFeatures]);
+
+    const updateCanvasFeature = useCallback(<K extends keyof CanvasFeatureSettings,>(key: K, value: CanvasFeatureSettings[K]) => {
+        setCanvasFeatures((current) => ({ ...current, [key]: value }));
+    }, []);
     const handleProjectLoaded = useCallback(({ title: loadedTitle, elements: loadedElements, append }: {
         title: string;
         elements: CanvasElement[];
@@ -1183,6 +1211,12 @@ function LovartCanvasContent() {
         setSelectedIds,
         projectAssets,
     });
+    const handleClearCanvas = useCallback(() => {
+        if (elements.length === 0) return;
+        if (!window.confirm(`确定清空当前画布的 ${elements.filter((element) => element.type !== 'connector').length} 个节点吗？此操作可以使用 Ctrl+Z 撤销。`)) return;
+        handleDeleteElements(elements.map((element) => element.id));
+        setSelectedIds([]);
+    }, [elements, handleDeleteElements, setSelectedIds]);
     const agentContext = useAgentContext({
         page: 'canvas',
         projectId,
@@ -2538,6 +2572,12 @@ function LovartCanvasContent() {
                         <Download size={15} />
                         <span>导出</span>
                     </button>
+                    <CanvasFeaturesMenu
+                        settings={canvasFeatures}
+                        onChange={updateCanvasFeature}
+                        onReset={() => setCanvasFeatures(DEFAULT_CANVAS_FEATURE_SETTINGS)}
+                        onClear={handleClearCanvas}
+                    />
                     <button
                         type="button"
                         onClick={() => {
@@ -2668,6 +2708,8 @@ function LovartCanvasContent() {
                     onDeleteMany={handleDeleteElements}
                     onAddElement={appendElement}
                     backgroundColor={canvasBackground}
+                    featureSettings={canvasFeatures}
+                    isGenerating={isGenerating}
                     onCreateNodeAt={(x, y) => {
                         appendElement({
                             ...createImageGeneratorElement(),
@@ -3023,7 +3065,7 @@ function LovartCanvasContent() {
                         </label>
                         <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-white/10" />
                         <button
-                            onClick={() => setShowMiniMap((prev) => !prev)}
+                            onClick={() => updateCanvasFeature('navigator', !showMiniMap)}
                             className={`rounded-xl p-2 transition-all ${showMiniMap ? 'bg-sky-100 text-sky-700 shadow-[0_0_0_1px_rgba(14,165,233,0.14)] dark:bg-sky-400/14 dark:text-sky-200 dark:shadow-[0_0_0_1px_rgba(56,189,248,0.16)]' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200'}`}
                             title="切换小地图"
                         >
