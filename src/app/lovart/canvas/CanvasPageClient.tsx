@@ -58,6 +58,11 @@ const AssetsPanel = dynamic(
     { ssr: false }
 );
 
+const ThreeDDirectorModal = dynamic(
+    () => import('@/components/lovart/ThreeDDirectorModal').then((module) => module.ThreeDDirectorModal),
+    { ssr: false }
+);
+
 function buildCanvasElementBase(input: {
     id: string;
     type: CanvasElement['type'];
@@ -177,6 +182,7 @@ function LovartCanvasContent() {
     const miniMapRef = useRef<HTMLDivElement | null>(null);
     const lastFocusedRelightTargetRef = useRef<string | null>(null);
     const [showGenerationHistory, setShowGenerationHistory] = useState(false);
+    const [show3DDirector, setShow3DDirector] = useState(false);
     const canvasFeatureStorageKey = useMemo(() => getCanvasFeatureStorageKey(projectId), [projectId]);
     const showMiniMap = canvasFeatures.navigator;
 
@@ -250,6 +256,13 @@ function LovartCanvasContent() {
         setSelectedIds,
         setActiveTool,
     });
+
+    const handleInsertDirectorCapture = useCallback(async (dataUrl: string) => {
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        handleAddImage(new File([blob], `director-shot-${Date.now()}.png`, { type: 'image/png' }));
+        setShow3DDirector(false);
+    }, [handleAddImage]);
 
     const handleInsertPromptLibraryItem = useCallback((generatorId: string, item: PromptLibraryItem) => {
         setElements((previousElements) => {
@@ -2534,6 +2547,13 @@ function LovartCanvasContent() {
                 />
             )}
 
+            {show3DDirector && (
+                <ThreeDDirectorModal
+                    onClose={() => setShow3DDirector(false)}
+                    onInsertCapture={handleInsertDirectorCapture}
+                />
+            )}
+
             {agentPanelEnabled && showChat && (
                 <AgentPanel
                     onClose={() => setShowChat(false)}
@@ -2741,6 +2761,7 @@ function LovartCanvasContent() {
                     onAddShape={handleAddShape}
                     onOpenImageGenerator={handleOpenImageGenerator}
                     onOpenImageCompare={handleOpenImageCompare}
+                    onOpen3DDirector={() => setShow3DDirector(true)}
                     onOpenInpaint={handleOpenInpaint}
                     onOpenVideoGenerator={handleOpenVideoGenerator}
                 />

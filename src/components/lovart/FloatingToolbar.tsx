@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush } from 'lucide-react';
+import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush, Axis3D } from 'lucide-react';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { getCreateMenuNodeDefinitions, type NodeCreateAction } from '@/lib/node-definitions';
 
@@ -14,11 +14,12 @@ interface FloatingToolbarProps {
     onAddShape: (type: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right') => void;
     onOpenImageGenerator: () => void;
     onOpenImageCompare?: () => void;
+    onOpen3DDirector?: () => void;
     onOpenInpaint?: () => void;
     onOpenVideoGenerator?: () => void;
 }
 
-export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
+export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpen3DDirector, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
     const [showUploadMenu, setShowUploadMenu] = useState(false);
     const [showShapeMenu, setShowShapeMenu] = useState(false);
     const [showSelectMenu, setShowSelectMenu] = useState(false);
@@ -171,17 +172,31 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
                                     const action = createActions[menu.action];
                                     if (!action) return null;
                                     return (
-                                        <button
-                                            key={definition.type}
-                                            onClick={() => {
-                                                action();
-                                                setShowUploadMenu(false);
-                                            }}
-                                            className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
-                                        >
-                                            {createMenuIcon(menu.icon)}
-                                            <span>{menu.label}</span>
-                                        </button>
+                                        <React.Fragment key={definition.type}>
+                                            <button
+                                                onClick={() => {
+                                                    action();
+                                                    setShowUploadMenu(false);
+                                                }}
+                                                className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
+                                            >
+                                                {createMenuIcon(menu.icon)}
+                                                <span>{menu.label}</span>
+                                            </button>
+                                            {definition.type === 'image-compare' && onOpen3DDirector && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onOpen3DDirector();
+                                                        setShowUploadMenu(false);
+                                                    }}
+                                                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-gray-700 transition-colors hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-white/8"
+                                                >
+                                                    <Axis3D size={16} />
+                                                    <span>3D导演台</span>
+                                                </button>
+                                            )}
+                                        </React.Fragment>
                                     );
                                 })}
                             </div>
