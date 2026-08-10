@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:qdmy": "node scripts/test-qdmy-project.mjs",
     "test:connections": "node scripts/test-canvas-connections.mjs",
+    "test:prompt-library": "node scripts/test-prompt-library.mjs",
     "test:image-models": "node scripts/test-image-models.mjs",
     "test:generation-jobs": "node scripts/test-generation-jobs.mjs",
     "migrate:canvas-assets": "node scripts/migrate-canvas-assets.mjs"

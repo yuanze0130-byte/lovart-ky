@@ -104,6 +104,9 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     storyboardBoardMode?: string;
     storyboardElementRole?: 'board-header' | 'board-surface' | 'board-lane' | 'board-lane-label';
     storyboardLaneOrientation?: 'portrait' | 'landscape' | 'square';
+    promptLibraryId?: string;
+    promptLibraryLabel?: string;
+    promptLibraryCategory?: string;
     prompt?: string;
     generationMetadata?: GenerationMetadata;
     previousContent?: string;
@@ -2280,6 +2283,20 @@ export function CanvasArea({
                                         onBlur={() => setEditingTextId(null)}
                                         onMouseDown={(e) => e.stopPropagation()}
                                     />
+                                ) : el.promptLibraryId ? (
+                                    <div className="relative flex h-full w-full select-none flex-col overflow-hidden rounded-2xl border border-amber-300/80 bg-[linear-gradient(145deg,rgba(255,251,235,0.98),rgba(255,255,255,0.98))] p-4 shadow-[0_16px_40px_rgba(146,64,14,0.10)] dark:border-amber-300/25 dark:bg-[linear-gradient(145deg,rgba(69,26,3,0.92),rgba(15,23,42,0.96))]">
+                                        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400" />
+                                        <div className="flex items-center justify-between gap-3">
+                                            <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-semibold tracking-[0.14em] text-amber-700 dark:bg-amber-300/15 dark:text-amber-100">词库</span>
+                                            <span className="truncate text-[10px] text-amber-700/65 dark:text-amber-100/55">{el.promptLibraryCategory || '常用提示词'}</span>
+                                        </div>
+                                        <div className="mt-3 truncate text-sm font-semibold text-slate-900 dark:text-white">{el.promptLibraryLabel || '常用提示词'}</div>
+                                        <div className="mt-2 line-clamp-5 flex-1 overflow-hidden text-xs leading-5 text-slate-600 dark:text-slate-300">{el.content}</div>
+                                        <div className="mt-3 flex items-center gap-2 border-t border-amber-200/70 pt-2 text-[10px] font-medium text-amber-700 dark:border-amber-200/10 dark:text-amber-200">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                                            提示词输出 · 双击可编辑
+                                        </div>
+                                    </div>
                                 ) : el.storyboardElementRole === 'board-lane-label' ? (
                                     <div className={`inline-flex h-full items-center rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] shadow-sm ${el.storyboardLaneOrientation === 'landscape' ? 'border-violet-200 bg-violet-50/90 text-violet-700 dark:border-violet-400/20 dark:bg-violet-400/10 dark:text-violet-100' : el.storyboardLaneOrientation === 'square' ? 'border-emerald-200 bg-emerald-50/90 text-emerald-700 dark:border-emerald-400/20 dark:bg-emerald-400/10 dark:text-emerald-100' : 'border-sky-200 bg-sky-50/90 text-sky-700 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-100'}`}>
                                         {el.content || '轨道'}

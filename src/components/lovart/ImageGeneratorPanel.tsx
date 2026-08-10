@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
 import React, { useEffect, useMemo, useState } from 'react';
-import { Sparkles, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Settings2, ChevronUp, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { Sparkles, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Settings2, ChevronUp, ChevronDown, Eye, EyeOff, BookOpen, Search, X, Cable } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageCreditCost } from '@/lib/credits';
 import {
@@ -15,6 +15,12 @@ import {
 } from '@/lib/image-models';
 import { DEFAULT_IMAGE_MODEL_PREFERENCES, loadImageModelPreferences, saveImageModelPreferences, type ImageModelPreferences } from '@/lib/image-model-preferences';
 import { resolveConnectedInputs } from '@/lib/canvas-connections';
+import {
+  PROMPT_LIBRARY_CATEGORIES,
+  PROMPT_LIBRARY_ITEMS,
+  type PromptLibraryCategory,
+  type PromptLibraryItem,
+} from '@/lib/prompt-library';
 
 type Resolution = '1K' | '2K' | '4K';
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
@@ -51,6 +57,7 @@ interface ImageGeneratorPanelProps {
   style?: React.CSSProperties;
   canvasElements: CanvasElement[];
   onConfigChange?: (elementId: string, updates: Partial<CanvasElement>) => void;
+  onInsertPromptLibraryItem?: (elementId: string, item: PromptLibraryItem) => void;
 }
 
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
@@ -99,6 +106,7 @@ export function ImageGeneratorPanel({
   style,
   canvasElements,
   onConfigChange,
+  onInsertPromptLibraryItem,
 }: ImageGeneratorPanelProps) {
   const initialElement = canvasElements.find((item) => item.id === elementId);
   const [prompt, setPrompt] = useState(initialPrompt || '');
@@ -115,6 +123,9 @@ export function ImageGeneratorPanel({
   );
   const [isBatchSubmitting, setIsBatchSubmitting] = useState(false);
   const [showModelManager, setShowModelManager] = useState(false);
+  const [showPromptLibrary, setShowPromptLibrary] = useState(false);
+  const [promptLibraryQuery, setPromptLibraryQuery] = useState('');
+  const [promptLibraryCategory, setPromptLibraryCategory] = useState<PromptLibraryCategory | '全部'>('全部');
   const [modelPreferences, setModelPreferences] = useState<ImageModelPreferences>(DEFAULT_IMAGE_MODEL_PREFERENCES);
   const [editMode] = useState<ImageEditMode>(initialMode);
   const [progress, setProgress] = useState(0);
@@ -176,6 +187,14 @@ export function ImageGeneratorPanel({
     .map((id) => IMAGE_MODEL_OPTIONS.find((model) => model.id === id))
     .filter((model): model is (typeof IMAGE_MODEL_OPTIONS)[number] => Boolean(model))
     .filter((model) => !modelPreferences.hiddenModelIds.includes(model.id) || model.id === modelVariant), [modelPreferences, modelVariant]);
+  const filteredPromptLibraryItems = useMemo(() => {
+    const normalizedQuery = promptLibraryQuery.trim().toLowerCase();
+    return PROMPT_LIBRARY_ITEMS.filter((item) => (
+      (promptLibraryCategory === '全部' || item.category === promptLibraryCategory)
+      && (!normalizedQuery || `${item.label} ${item.summary} ${item.prompt}`.toLowerCase().includes(normalizedQuery))
+    ));
+  }, [promptLibraryCategory, promptLibraryQuery]);
+  const hasEffectivePrompt = Boolean(connectedInputs.prompt.trim() || prompt.trim());
 
   const updatePreferences = (next: ImageModelPreferences) => {
     setModelPreferences(next);
@@ -682,12 +701,92 @@ export function ImageGeneratorPanel({
           预计消耗：<span className="font-medium text-violet-700 dark:text-violet-300">{totalCreditCost} 积分</span>
         </div>
 
+        {showPromptLibrary && (
+          <div className="mt-3 overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/70 shadow-sm dark:border-amber-400/20 dark:bg-amber-500/8">
+            <div className="flex items-start justify-between gap-3 border-b border-amber-200/70 px-3 py-3 dark:border-amber-400/15">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                  <BookOpen size={15} className="text-amber-600 dark:text-amber-300" />
+                  常用提示词库
+                </div>
+                <div className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">选择后会创建词库节点，并自动连到当前生成器。</div>
+              </div>
+              <button type="button" onClick={() => setShowPromptLibrary(false)} className="rounded-lg p-1.5 text-gray-400 transition hover:bg-white hover:text-gray-700 dark:hover:bg-white/10 dark:hover:text-white" aria-label="关闭词库">
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="space-y-2 p-3">
+              <label className="flex items-center gap-2 rounded-xl border border-amber-200/80 bg-white px-3 py-2 dark:border-white/10 dark:bg-black/20">
+                <Search size={14} className="shrink-0 text-gray-400" />
+                <input
+                  value={promptLibraryQuery}
+                  onChange={(event) => setPromptLibraryQuery(event.target.value)}
+                  placeholder="搜索提示词"
+                  className="min-w-0 flex-1 bg-transparent text-xs text-gray-700 outline-none placeholder:text-gray-400 dark:text-white"
+                />
+              </label>
+
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {(['全部', ...PROMPT_LIBRARY_CATEGORIES] as const).map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setPromptLibraryCategory(category)}
+                    className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-medium transition ${promptLibraryCategory === category ? 'bg-amber-500 text-white shadow-sm' : 'bg-white text-gray-500 hover:text-gray-900 dark:bg-white/8 dark:text-slate-300 dark:hover:text-white'}`}
+                  >
+                    {category}
+                  </button>
+                ))}
+              </div>
+
+              <div className="max-h-60 space-y-1.5 overflow-y-auto pr-1">
+                {filteredPromptLibraryItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      onInsertPromptLibraryItem?.(elementId, item);
+                      setShowPromptLibrary(false);
+                    }}
+                    disabled={!onInsertPromptLibraryItem}
+                    className="group flex w-full items-start gap-3 rounded-xl border border-transparent bg-white px-3 py-2.5 text-left transition hover:border-amber-300 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white/6 dark:hover:border-amber-300/30"
+                  >
+                    <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 transition group-hover:bg-amber-500 group-hover:text-white dark:bg-amber-400/12 dark:text-amber-200">
+                      <Cable size={13} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-xs font-semibold text-gray-800 dark:text-slate-100">{item.label}</span>
+                        <span className="shrink-0 rounded-full bg-gray-100 px-1.5 py-0.5 text-[9px] text-gray-500 dark:bg-white/8 dark:text-slate-400">{item.category}</span>
+                      </span>
+                      <span className="mt-1 block line-clamp-2 text-[10px] leading-4 text-gray-500 dark:text-slate-400">{item.summary}</span>
+                    </span>
+                    <span className="mt-1 shrink-0 text-[9px] font-medium text-amber-600 opacity-0 transition group-hover:opacity-100 dark:text-amber-300">连线</span>
+                  </button>
+                ))}
+                {filteredPromptLibraryItems.length === 0 && (
+                  <div className="rounded-xl bg-white px-3 py-6 text-center text-xs text-gray-400 dark:bg-white/5">没有匹配的提示词</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {selectedElement?.type === 'image-generator' && (
-          <div className="mt-4 flex justify-end">
+          <div className="mt-4 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setShowPromptLibrary((value) => !value)}
+              className={`inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition ${showPromptLibrary ? 'border-amber-400 bg-amber-50 text-amber-700 dark:border-amber-300/40 dark:bg-amber-400/12 dark:text-amber-100' : 'border-gray-200 bg-white text-gray-600 hover:border-amber-300 hover:text-amber-700 dark:border-white/10 dark:bg-white/6 dark:text-slate-300 dark:hover:border-amber-300/30 dark:hover:text-amber-100'}`}
+            >
+              <BookOpen size={15} />
+              词库
+            </button>
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={!prompt.trim() || isBusy}
+              disabled={!hasEffectivePrompt || isBusy}
               className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isBusy ? <Loader2 size={16} className="animate-spin" /> : <activeMeta.icon size={16} />}

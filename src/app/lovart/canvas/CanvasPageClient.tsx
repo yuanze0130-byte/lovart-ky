@@ -37,6 +37,7 @@ import { authedFetch } from '@/lib/authed-fetch';
 import { downloadQdmyProject, importQdmyProject, mergeQdmyElements, type QdmyImportResult } from '@/lib/qdmy-project';
 import { normalizeCanvasConnections } from '@/lib/canvas-connections';
 import type { ImageModelId } from '@/lib/image-models';
+import type { PromptLibraryItem } from '@/lib/prompt-library';
 import { addGenerationHistoryItem, type GenerationHistoryItem } from '@/lib/generation-history';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { persistProjectThumbnail } from '@/lib/project-thumbnail';
@@ -226,6 +227,55 @@ function LovartCanvasContent() {
         setSelectedIds,
         setActiveTool,
     });
+
+    const handleInsertPromptLibraryItem = useCallback((generatorId: string, item: PromptLibraryItem) => {
+        setElements((previousElements) => {
+            const generator = previousElements.find((element) => element.id === generatorId && element.type === 'image-generator');
+            if (!generator) return previousElements;
+
+            const incomingPromptCount = previousElements.filter((element) => (
+                element.type === 'connector'
+                && element.connectorTo === generatorId
+                && element.connectorTargetPort === 'prompt-in'
+            )).length;
+            const column = Math.floor(incomingPromptCount / 3);
+            const row = incomingPromptCount % 3;
+            const promptNodeId = uuidv4();
+            const connectorId = uuidv4();
+            const promptNode: CanvasElement = {
+                id: promptNodeId,
+                type: 'text',
+                x: generator.x - 360 - column * 340,
+                y: generator.y + row * 200,
+                width: 320,
+                height: 180,
+                content: item.prompt,
+                fontSize: 14,
+                color: '#78350f',
+                promptLibraryId: item.id,
+                promptLibraryLabel: item.label,
+                promptLibraryCategory: item.category,
+            };
+            const connector: CanvasElement = {
+                id: connectorId,
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: promptNodeId,
+                connectorTo: generatorId,
+                connectorSourcePort: 'prompt-out',
+                connectorTargetPort: 'prompt-in',
+                connectorDataKind: 'prompt',
+                connectorKind: 'prompt',
+                connectorStyle: 'solid',
+                connectorOrder: incomingPromptCount,
+                color: '#f59e0b',
+                strokeWidth: 2,
+            };
+
+            return [...previousElements, promptNode, connector];
+        });
+    }, [setElements]);
 
     const {
         handleGenerateVideo,
@@ -2784,6 +2834,7 @@ function LovartCanvasContent() {
                                 initialPrompt={selectedEl.initialPrompt}
                                 onGenerate={handleGenerateImage}
                                 onConfigChange={handleElementChange}
+                                onInsertPromptLibraryItem={handleInsertPromptLibraryItem}
                                 isGenerating={isGenerating}
                                 canvasElements={elements}
                                 style={{

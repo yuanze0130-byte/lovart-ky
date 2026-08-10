@@ -79,6 +79,18 @@ try {
   assert.equal(inputs.prompt, 'cinematic portrait');
   assert.deepEqual(inputs.references, ['data:image/png;base64,abc']);
 
+  const secondTextNode = { id: 'prompt-2', type: 'text', x: 0, y: 200, content: 'warm sunset lighting' };
+  const orderedPromptEdges = [
+    {
+      id: 'edge-prompt-2', type: 'connector', x: 0, y: 0,
+      connectorFrom: 'prompt-2', connectorTo: 'generator',
+      connectorSourcePort: 'prompt-out', connectorTargetPort: 'prompt-in', connectorOrder: 0,
+    },
+    { ...migratedPromptEdge, connectorOrder: 1 },
+  ];
+  const combinedInputs = resolveConnectedInputs('generator', [textNode, secondTextNode, generator, ...orderedPromptEdges]);
+  assert.equal(combinedInputs.prompt, 'warm sunset lighting\n\ncinematic portrait');
+
   const imageOutput = getNodePorts(imageNode).find((port) => port.id === 'image-out');
   const referenceInput = getNodePorts(generator).find((port) => port.id === 'reference-in');
   assert.equal(canConnectPorts(imageOutput, referenceInput), true);
