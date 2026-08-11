@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     }
 
     const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
-    const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn');
+    const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || 'https://ai.comfly.org');
 
     if (!apiKey) {
       return NextResponse.json({ error: 'VIDEO_API_KEY or GEMINI_API_KEY not configured' }, { status: 500 });
@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(`${baseUrl}/v2/videos/generations/${taskId}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${apiKey}` },
+      signal: request.signal,
     });
 
     const rawText = await response.text();

@@ -12,6 +12,7 @@ import { TableEditorNode } from './TableEditorNode';
 import { VideoFramesNode } from './VideoFramesNode';
 import { VideoBreakdownNode } from './VideoBreakdownNode';
 import { ScriptWriterNode } from './ScriptWriterNode';
+import { VideoGeneratorNode } from './VideoGeneratorNode';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -110,6 +111,16 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     id: string;
     type: CanvasElementType;
     videoModelMode?: 'standard' | 'fast';
+    videoModelId?: string;
+    videoAspectRatio?: 'auto' | '4:3' | '4:5' | '1:1' | '3:2' | '9:16' | '2:3' | '16:9' | '3:4' | '21:9';
+    videoDuration?: number;
+    videoResolution?: string;
+    videoHd?: boolean;
+    videoUseStartEndFrames?: boolean;
+    videoAudioMode?: 'none' | 'auto' | 'custom';
+    videoGenerateAudio?: boolean;
+    videoMultiShot?: boolean;
+    videoCameraFixed?: boolean;
     x: number;
     y: number;
     content?: string;
@@ -357,6 +368,7 @@ interface CanvasAreaProps {
     onInpaintGenerate?: (element: CanvasElement, input: { image: string; mask: string; prompt: string }) => Promise<void>;
     onGlobalViewCapture?: (element: CanvasElement, images: Array<{ content: string; label: string }>) => void;
     onMotionTransferComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
+    onVideoGeneratorComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
     onVideoFramesComplete?: (element: CanvasElement, frames: ExtractedVideoFrame[]) => void;
     annotationImageId?: string | null;
     annotationObject?: DetectedObject | null;
@@ -420,6 +432,7 @@ export function CanvasArea({
     onInpaintGenerate,
     onGlobalViewCapture,
     onMotionTransferComplete,
+    onVideoGeneratorComplete,
     onVideoFramesComplete,
     annotationImageId,
     annotationObject,
@@ -1892,14 +1905,14 @@ export function CanvasArea({
                                     );
                                 })()}
 
-                                {el.type === 'video-generator' && (() => {
-                                    const promptText = typeof el.prompt === 'string' ? el.prompt : '';
+                                {el.type === 'video-generator' && false && (() => {
+                                    const promptText: string = typeof el.prompt === 'string' ? String(el.prompt) : '';
                                     const promptParts = promptText.split('｜').filter(Boolean);
                                     const shotLabel = (typeof el.storyboardShotLabel === 'string' && el.storyboardShotLabel) || promptParts[0] || '镜头';
                                     const shotTitle = (typeof el.storyboardTitle === 'string' && el.storyboardTitle) || promptParts[1] || '视频生成器';
                                     const shotMeta = (typeof el.storyboardMeta === 'string' && el.storyboardMeta) || promptParts[2] || `${Math.round(el.width || 0)} x ${Math.round(el.height || 0)}`;
                                     const sizeMeta = (typeof el.storyboardVideoSize === 'string' && el.storyboardVideoSize)
-                                        || (typeof el.content === 'string' && /^\d+x\d+$/.test(el.content) ? el.content : undefined);
+                                        || (typeof el.content === 'string' && /^\d+x\d+$/.test(String(el.content)) ? el.content : undefined);
                                     const aspectLabel = (typeof el.storyboardAspectRatio === 'string' && el.storyboardAspectRatio)
                                         || shotMeta.match(/(9:16|16:9|4:5|1:1)/)?.[1];
                                     const orientationLabel = el.storyboardOrientation === 'landscape'
@@ -1973,6 +1986,7 @@ export function CanvasArea({
                                             : '竖版轨道';
                                     const outputRailLabel = sizeMeta ? `${sizeMeta} 渲染` : '分镜渲染';
                                     const fallbackSummary = el.generationMetadata?.providerFallbackUsed
+                                        // @ts-expect-error Legacy storyboard card is retained only for backwards-compatible source data.
                                         ? (el.generationMetadata.fallbackReason || '已触发回退')
                                         : undefined;
 
@@ -2081,6 +2095,24 @@ export function CanvasArea({
                                                 </div>
                                             </div>
                                         </div>
+                                    );
+                                })()}
+
+                                {el.type === 'video-generator' && (() => {
+                                    const connectedPrompt = resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex).join('\n\n');
+                                    const referenceImages = resolveConnectedNodeContentsFromIndex(el.id, 'reference-in', connectedContentsIndex);
+                                    const firstFrame = resolveConnectedNodeContentsFromIndex(el.id, 'first-frame-in', connectedContentsIndex)[0];
+                                    const lastFrame = resolveConnectedNodeContentsFromIndex(el.id, 'last-frame-in', connectedContentsIndex)[0];
+                                    return (
+                                        <VideoGeneratorNode
+                                            element={el}
+                                            connectedPrompt={connectedPrompt}
+                                            referenceImages={referenceImages}
+                                            firstFrame={firstFrame}
+                                            lastFrame={lastFrame}
+                                            onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                            onComplete={onVideoGeneratorComplete ? (videoUrl) => onVideoGeneratorComplete(el, videoUrl) : undefined}
+                                        />
                                     );
                                 })()}
 

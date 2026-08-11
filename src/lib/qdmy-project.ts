@@ -133,6 +133,10 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
   const imageModelId = firstString(node.imageModelId, settings.imageModelId, model);
   const imageOutputCount = Number(node.imageOutputCount ?? settings.imageOutputCount);
   const imageExecutionMode = firstString(node.imageExecutionMode, settings.imageExecutionMode);
+  const videoModelId = firstString(node.videoModelId, settings.videoModelId, type === 'video-generator' ? model : undefined);
+  const videoAspectRatio = firstString(node.videoAspectRatio, settings.videoAspectRatio, settings.ratio);
+  const videoDuration = firstNumber(node.videoDuration, settings.videoDuration, settings.duration);
+  const videoResolution = firstString(node.videoResolution, settings.videoResolution, settings.resolution);
   const ratio = normalizeRatio(node.ratio ?? settings.ratio ?? settings.aspectRatio ?? data.ratio);
   const resolution = normalizeResolution(node.resolution ?? settings.resolution ?? data.resolution);
   const platformGroup = firstString(node.platformGroup, settings.platformGroup, data.platformGroup);
@@ -193,6 +197,18 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
     imageExecutionMode: type === 'image-generator' && (imageExecutionMode === 'parallel' || imageExecutionMode === 'sequential')
       ? imageExecutionMode
       : undefined,
+    videoModelId: type === 'video-generator' ? videoModelId : undefined,
+    videoAspectRatio: type === 'video-generator' && ['auto', '4:3', '4:5', '1:1', '3:2', '9:16', '2:3', '16:9', '3:4', '21:9'].includes(videoAspectRatio || '')
+      ? videoAspectRatio as CanvasElement['videoAspectRatio']
+      : undefined,
+    videoDuration: type === 'video-generator' ? videoDuration : undefined,
+    videoResolution: type === 'video-generator' ? videoResolution : undefined,
+    videoHd: type === 'video-generator' && typeof (node.videoHd ?? settings.videoHd) === 'boolean' ? Boolean(node.videoHd ?? settings.videoHd) : undefined,
+    videoUseStartEndFrames: type === 'video-generator' && typeof (node.videoUseStartEndFrames ?? settings.videoUseStartEndFrames) === 'boolean' ? Boolean(node.videoUseStartEndFrames ?? settings.videoUseStartEndFrames) : undefined,
+    videoAudioMode: type === 'video-generator' && ['none', 'auto', 'custom'].includes(firstString(node.videoAudioMode, settings.videoAudioMode) || '') ? firstString(node.videoAudioMode, settings.videoAudioMode) as CanvasElement['videoAudioMode'] : undefined,
+    videoGenerateAudio: type === 'video-generator' && typeof (node.videoGenerateAudio ?? settings.videoGenerateAudio) === 'boolean' ? Boolean(node.videoGenerateAudio ?? settings.videoGenerateAudio) : undefined,
+    videoMultiShot: type === 'video-generator' && typeof (node.videoMultiShot ?? settings.videoMultiShot) === 'boolean' ? Boolean(node.videoMultiShot ?? settings.videoMultiShot) : undefined,
+    videoCameraFixed: type === 'video-generator' && typeof (node.videoCameraFixed ?? settings.videoCameraFixed) === 'boolean' ? Boolean(node.videoCameraFixed ?? settings.videoCameraFixed) : undefined,
     imageCompareSplit: type === 'image-compare' ? imageCompareSplit : undefined,
     imageCompareSwapped: type === 'image-compare' && typeof imageCompareSwapped === 'boolean' ? imageCompareSwapped : undefined,
     inpaintBrushSize: type === 'inpaint' ? inpaintBrushSize : undefined,
@@ -328,10 +344,20 @@ export function exportQdmyProject(input: QdmyExportInput) {
       settings: {
         ...settings,
         prompt: firstString(element.prompt, element.initialPrompt),
-        model: firstString(element.imageModelId, element.generationMetadata?.model, settings.model),
+        model: firstString(element.imageModelId, element.videoModelId, element.generationMetadata?.model, settings.model),
         imageModelId: element.imageModelId,
         imageOutputCount: element.imageOutputCount,
         imageExecutionMode: element.imageExecutionMode,
+        videoModelId: element.videoModelId,
+        videoAspectRatio: element.videoAspectRatio,
+        videoDuration: element.videoDuration,
+        videoResolution: element.videoResolution,
+        videoHd: element.videoHd,
+        videoUseStartEndFrames: element.videoUseStartEndFrames,
+        videoAudioMode: element.videoAudioMode,
+        videoGenerateAudio: element.videoGenerateAudio,
+        videoMultiShot: element.videoMultiShot,
+        videoCameraFixed: element.videoCameraFixed,
         imageCompareSplit: element.imageCompareSplit,
         imageCompareSwapped: element.imageCompareSwapped,
         inpaintBrushSize: element.inpaintBrushSize,

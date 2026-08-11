@@ -15,6 +15,7 @@ import {
   type GenerationJobFailureKind,
   type GenerationJobStatus,
 } from '@/lib/generation-jobs';
+import type { VideoAspectRatio, VideoAudioMode } from '@/lib/video-models';
 
 export type VideoModelMode = 'standard' | 'fast';
 export type VideoGenerationStartResult = {
@@ -22,6 +23,7 @@ export type VideoGenerationStartResult = {
   status?: string;
   model?: string;
   modelMode?: VideoModelMode;
+  modelId?: string;
   ratio?: string;
   jobStatus?: GenerationJobStatus;
 };
@@ -37,6 +39,7 @@ export type VideoGenerationStatusResult = {
   seconds?: number;
   jobStatus?: GenerationJobStatus;
   failureKind?: GenerationJobFailureKind;
+  error?: string;
 };
 
 export function normalizeVideoGenerationStatus(status?: string | null) {
@@ -63,10 +66,23 @@ export function isVideoGenerationReady(result: Pick<VideoGenerationStatusResult,
 
 export async function startVideoGeneration(input: {
   prompt: string;
-  seconds: number;
-  size: string;
+  seconds?: number;
+  size?: string;
   modelMode?: VideoModelMode;
   referenceImage?: string;
+  modelId?: string;
+  aspectRatio?: VideoAspectRatio;
+  duration?: number;
+  resolution?: string;
+  hd?: boolean;
+  useStartEndFrames?: boolean;
+  audioMode?: VideoAudioMode;
+  generateAudio?: boolean;
+  multiShot?: boolean;
+  cameraFixed?: boolean;
+  referenceImages?: string[];
+  firstFrame?: string;
+  lastFrame?: string;
 }): Promise<VideoGenerationStartResult> {
   const response = await authedFetch('/api/generate-video', {
     method: 'POST',

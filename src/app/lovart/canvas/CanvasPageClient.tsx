@@ -13,7 +13,7 @@ import { CanvasFeaturesMenu } from '@/components/lovart/CanvasFeaturesMenu';
 import { NodeAlignmentPanel } from '@/components/lovart/NodeAlignmentPanel';
 import { RhaiLibraryPanel } from '@/components/lovart/RhaiLibraryPanel';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
-import { VideoGeneratorPanel, startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
+import { startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import type { RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
 import { GenerationHistoryPanel } from '@/components/lovart/GenerationHistoryPanel';
@@ -425,7 +425,6 @@ function LovartCanvasContent() {
     }, [setElements]);
 
     const {
-        handleGenerateVideo,
         handleConnectFlow,
         handleGenerateFromImage,
         handleGenerateImage,
@@ -1953,9 +1952,61 @@ function LovartCanvasContent() {
         setActiveTool('select');
     }, [buildStoryboardVideoFlow, getStoryboardNodeSize, pan.x, pan.y, scale, setActiveTool, setElements, setSelectedIds, storyboard, storyboardLayout]);
 
-    const handleVideoGeneratorConfigChange = useCallback((elementId: string, updates: Partial<CanvasElement>) => {
-        handleElementChange(elementId, updates);
-    }, [handleElementChange]);
+    const handleVideoGeneratorNodeComplete = useCallback(async (generator: CanvasElement, remoteVideoUrl: string) => {
+        const videoUrl = await importRemoteCanvasVideo(remoteVideoUrl);
+        const resultId = uuidv4();
+        const connectorId = uuidv4();
+        const resultWidth = Math.max(320, generator.width || 430);
+        const resultHeight = Math.max(240, Math.round(resultWidth * 9 / 16));
+        const videoElement: CanvasElement = {
+            id: resultId,
+            type: 'video',
+            x: generator.x + (generator.width || 430) + 96,
+            y: generator.y,
+            width: resultWidth,
+            height: resultHeight,
+            originalWidth: resultWidth,
+            originalHeight: resultHeight,
+            content: videoUrl,
+            prompt: generator.prompt,
+            videoModelId: generator.videoModelId,
+            videoAspectRatio: generator.videoAspectRatio,
+            videoDuration: generator.videoDuration,
+            videoResolution: generator.videoResolution,
+            generationMetadata: generator.generationMetadata,
+            linkedElements: [generator.id, connectorId],
+        };
+        const connector: CanvasElement = {
+            id: connectorId,
+            type: 'connector',
+            x: 0,
+            y: 0,
+            connectorFrom: generator.id,
+            connectorTo: resultId,
+            connectorSourcePort: 'video-out',
+            connectorTargetPort: 'video-in',
+            connectorDataKind: 'video',
+            connectorKind: 'result',
+            connectorStyle: 'dashed',
+            connectorOrder: 0,
+            color: '#8b5cf6',
+            strokeWidth: 2,
+        };
+
+        setElements((previous) => [...previous, videoElement, connector]);
+        setSelectedIds([resultId]);
+        void addGenerationHistoryItem({
+            id: resultId,
+            kind: 'video',
+            content: videoUrl,
+            prompt: generator.prompt,
+            model: generator.videoModelId,
+            createdAt: new Date().toISOString(),
+            width: resultWidth,
+            height: resultHeight,
+            metadata: generator.generationMetadata,
+        });
+    }, [setElements, setSelectedIds]);
 
     useCanvasHistory({
         elements,
@@ -2909,6 +2960,7 @@ function LovartCanvasContent() {
                     onInpaintGenerate={handleInpaintGenerate}
                     onGlobalViewCapture={handleGlobalViewCapture}
                     onMotionTransferComplete={handleMotionTransferComplete}
+                    onVideoGeneratorComplete={handleVideoGeneratorNodeComplete}
                     onVideoFramesComplete={handleVideoFramesComplete}
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}
@@ -3066,28 +3118,6 @@ function LovartCanvasContent() {
                                 onConfigChange={handleElementChange}
                                 onInsertPromptLibraryItem={handleInsertPromptLibraryItem}
                                 isGenerating={isGenerating}
-                                canvasElements={elements}
-                                style={{
-                                    left: `${left}px`,
-                                    top: `${top}px`,
-                                }}
-                            />
-                        );
-                    }
-                    return null;
-                })()}
-
-                {selectedIds.length === 1 && !isDraggingElement && (() => {
-                    const selectedEl = elements.find(el => el.id === selectedIds[0]);
-                    if (selectedEl?.type === 'video-generator') {
-                        const left = (selectedEl.x * scale) + pan.x;
-                        const top = ((selectedEl.y + (selectedEl.height || 300)) * scale) + pan.y + 20;
-
-                        return (
-                            <VideoGeneratorPanel
-                                elementId={selectedIds[0]}
-                                onGenerate={handleGenerateVideo}
-                                onConfigChange={handleVideoGeneratorConfigChange}
                                 canvasElements={elements}
                                 style={{
                                     left: `${left}px`,
