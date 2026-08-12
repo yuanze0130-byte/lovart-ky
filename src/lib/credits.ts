@@ -1,61 +1,15 @@
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import type { UserCreditsRow } from '@/lib/supabase';
-import type { ImageModelId } from '@/lib/image-models';
+import type { Json } from '@/lib/supabase';
 
 export const DEFAULT_SIGNUP_CREDITS = 30;
 
-export type ImageModelVariant = ImageModelId;
-export type ImageResolution = '1K' | '2K' | '4K';
 export type VideoModelMode = 'standard' | 'fast';
 export type UpscaleScale = 2 | 4 | 6;
 
 export const CREDIT_COSTS = {
   detectObject: 3,
   removeBackground: 3,
-  generateImage: {
-    standard: {
-      '1K': 2,
-      '2K': 3,
-      '4K': 4,
-    },
-    pro: {
-      '1K': 4,
-      '2K': 5,
-      '4K': 6,
-    },
-    'gpt-image-2': {
-      '1K': 4,
-      '2K': 5,
-      '4K': 6,
-    },
-    'gpt-image-2-official': {
-      '1K': 4,
-      '2K': 5,
-      '4K': 6,
-    },
-    'nano-banana': { '1K': 2, '2K': 3, '4K': 4 },
-    'nano-banana-2': { '1K': 3, '2K': 4, '4K': 5 },
-    'nano-banana-2-lite': { '1K': 2, '2K': 3, '4K': 4 },
-    'nano-banana-pro': { '1K': 4, '2K': 5, '4K': 6 },
-    'gemini-3.1-flash-image-preview': { '1K': 3, '2K': 4, '4K': 5 },
-    'gemini-3.1-flash-image-official': { '1K': 3, '2K': 4, '4K': 5 },
-    'gemini-3-pro-image-official': { '1K': 4, '2K': 5, '4K': 6 },
-    'gemini-2.5-flash-image-official': { '1K': 2, '2K': 3, '4K': 4 },
-    'gpt-4o-image': { '1K': 4, '2K': 5, '4K': 6 },
-    'gpt-image-1': { '1K': 3, '2K': 4, '4K': 5 },
-    'gpt-image-1.5': { '1K': 4, '2K': 5, '4K': 6 },
-    'flux-kontext': { '1K': 4, '2K': 5, '4K': 6 },
-    'grok-4.1-image': { '1K': 4, '2K': 5, '4K': 6 },
-    'grok-4.2-image': { '1K': 4, '2K': 5, '4K': 6 },
-    'z-image-official': { '1K': 2, '2K': 3, '4K': 4 },
-    midjourney: { '1K': 4, '2K': 5, '4K': 6 },
-    'seedream-4.0': { '1K': 3, '2K': 4, '4K': 5 },
-    'seedream-4.5': { '1K': 4, '2K': 5, '4K': 6 },
-    'seedream-5.0-pro-official': { '1K': 5, '2K': 6, '4K': 8 },
-    'seedream-4.5-api': { '1K': 4, '2K': 5, '4K': 6 },
-    'seedream-5.0-api': { '1K': 4, '2K': 5, '4K': 6 },
-    'qwen-image-edit': { '1K': 3, '2K': 4, '4K': 5 },
-  },
   generateVideo: {
     fast: 18,
     standard: 28,
@@ -67,10 +21,6 @@ export const CREDIT_COSTS = {
     6: 22,
   },
 } as const;
-
-export function getImageCreditCost(modelVariant: ImageModelVariant = 'pro', resolution: ImageResolution = '1K') {
-  return CREDIT_COSTS.generateImage[modelVariant][resolution];
-}
 
 export function getVideoCreditCost(modelMode: VideoModelMode = 'standard') {
   return CREDIT_COSTS.generateVideo[modelMode] ?? CREDIT_COSTS.generateVideo.standard;
@@ -156,9 +106,40 @@ export async function consumeCredits(params: {
   type: CreditAction;
   description: string;
   referenceId?: string;
+  referenceType?: string;
+  meta?: Json;
 }) {
-  const { userId, amount, type, description, referenceId } = params;
+  const { userId, amount, type, description, referenceId, referenceType, meta } = params;
   const supabase = createServiceRoleSupabaseClient();
+
+  if (referenceId) {
+    const { data, error } = await supabase.rpc('consume_credits_atomic', {
+      p_user_id: userId,
+      p_amount: amount,
+      p_type: type,
+      p_description: description,
+      p_reference_id: referenceId,
+      p_reference_type: referenceType || null,
+      p_meta: meta || {},
+    });
+    if (error) throw error;
+    const result = data?.[0];
+    if (!result?.success) {
+      return {
+        ok: false as const,
+        currentCredits: result?.current_credits ?? 0,
+        requiredCredits: result?.required_credits ?? amount,
+        errorCode: result?.error_code || 'CREDIT_DEBIT_FAILED',
+      };
+    }
+    return {
+      ok: true as const,
+      currentCredits: result.current_credits,
+      requiredCredits: result.required_credits,
+      transactionId: result.transaction_id,
+      idempotent: result.idempotent,
+    };
+  }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const current = await ensureUserCredits(userId);
@@ -213,9 +194,38 @@ export async function refundCredits(params: {
   type: CreditAction;
   description: string;
   referenceId?: string;
+  originalType?: CreditAction;
+  meta?: Json;
 }) {
-  const { userId, amount, type, description, referenceId } = params;
+  const { userId, amount, type, description, referenceId, originalType, meta } = params;
   const supabase = createServiceRoleSupabaseClient();
+
+  if (referenceId && originalType) {
+    const { data, error } = await supabase.rpc('refund_credits_atomic', {
+      p_user_id: userId,
+      p_reference_id: referenceId,
+      p_original_type: originalType,
+      p_description: description,
+      p_meta: meta || {},
+    });
+    if (error) throw error;
+    const result = data?.[0];
+    if (!result?.success) {
+      return {
+        ok: false as const,
+        currentCredits: result?.current_credits ?? 0,
+        refundedCredits: 0,
+        errorCode: result?.error_code || 'CREDIT_REFUND_FAILED',
+      };
+    }
+    return {
+      ok: true as const,
+      currentCredits: result.current_credits,
+      refundedCredits: result.refunded_credits,
+      transactionId: result.transaction_id,
+      idempotent: result.idempotent,
+    };
+  }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const current = await ensureUserCredits(userId);

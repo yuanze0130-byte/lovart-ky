@@ -15,7 +15,7 @@ import {
   type GenerationJobFailureKind,
   type GenerationJobStatus,
 } from '@/lib/generation-jobs';
-import type { VideoAspectRatio, VideoAudioMode } from '@/lib/video-models';
+import type { VideoAspectRatio, VideoAudioMode, VideoQualityMode } from '@/lib/video-models';
 
 export type VideoModelMode = 'standard' | 'fast';
 export type VideoGenerationStartResult = {
@@ -26,6 +26,10 @@ export type VideoGenerationStartResult = {
   modelId?: string;
   ratio?: string;
   jobStatus?: GenerationJobStatus;
+  requestId?: string;
+  chargedCredits?: number;
+  priceVersion?: string;
+  comflyEstimatedCost?: number;
 };
 
 export type VideoGenerationStatusResult = {
@@ -40,6 +44,9 @@ export type VideoGenerationStatusResult = {
   jobStatus?: GenerationJobStatus;
   failureKind?: GenerationJobFailureKind;
   error?: string;
+  requestId?: string;
+  chargedCredits?: number;
+  refundedCredits?: number;
 };
 
 export function normalizeVideoGenerationStatus(status?: string | null) {
@@ -66,6 +73,7 @@ export function isVideoGenerationReady(result: Pick<VideoGenerationStatusResult,
 
 export async function startVideoGeneration(input: {
   prompt: string;
+  requestId?: string;
   seconds?: number;
   size?: string;
   modelMode?: VideoModelMode;
@@ -74,6 +82,7 @@ export async function startVideoGeneration(input: {
   aspectRatio?: VideoAspectRatio;
   duration?: number;
   resolution?: string;
+  qualityMode?: VideoQualityMode;
   hd?: boolean;
   useStartEndFrames?: boolean;
   audioMode?: VideoAudioMode;

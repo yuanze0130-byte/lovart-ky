@@ -171,6 +171,7 @@ export async function requestImageGeneration(input: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      requestId: uuidv4(),
       prompt: finalPrompt,
       resolution,
       aspectRatio,

@@ -16,7 +16,9 @@
     "test:canvas-asset-import": "node scripts/test-canvas-asset-import.mjs",
     "test:prompt-library": "node scripts/test-prompt-library.mjs",
     "test:image-models": "node scripts/test-image-models.mjs",
+    "test:image-pricing": "node scripts/test-image-pricing.mjs",
     "test:video-models": "node scripts/test-video-models.mjs",
+    "test:video-pricing": "node scripts/test-video-pricing.mjs",
     "test:generation-jobs": "node scripts/test-generation-jobs.mjs",
     "migrate:canvas-assets": "node scripts/migrate-canvas-assets.mjs"
   },

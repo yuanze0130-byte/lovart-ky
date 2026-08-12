@@ -4,7 +4,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Settings2, ChevronUp, ChevronDown, Eye, EyeOff, BookOpen, Search, X, Cable } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
-import { getImageCreditCost } from '@/lib/credits';
+import { authedFetch } from '@/lib/authed-fetch';
+import type { ImagePriceQuote } from '@/lib/image-pricing';
 import {
   IMAGE_MODEL_CATEGORIES,
   IMAGE_MODEL_OPTIONS,
@@ -134,6 +135,9 @@ export function ImageGeneratorPanel({
   const [officialBackground, setOfficialBackground] = useState<OfficialBackground>('auto');
   const [officialOutputFormat, setOfficialOutputFormat] = useState<OfficialOutputFormat>('png');
   const [officialModeration, setOfficialModeration] = useState<OfficialModeration>('auto');
+  const [priceQuote, setPriceQuote] = useState<ImagePriceQuote | null>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [isPriceLoading, setIsPriceLoading] = useState(true);
 
   const selectedElement = useMemo(
     () => canvasElements.find((item) => item.id === elementId),
@@ -179,8 +183,7 @@ export function ImageGeneratorPanel({
           ? GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS
           : ASPECT_RATIO_OPTIONS
   ), [isPanorama, modelDefinition.transport]);
-  const imageCreditCost = useMemo(() => getImageCreditCost(modelVariant, resolution), [modelVariant, resolution]);
-  const totalCreditCost = imageCreditCost * outputCount;
+  const totalCreditCost = (priceQuote?.credits || 0) * outputCount;
   const isOfficialModel = modelDefinition.transport === 'official-image-task';
   const isBusy = isGenerating || isBatchSubmitting;
   const orderedModelOptions = useMemo(() => modelPreferences.modelOrder
@@ -195,6 +198,7 @@ export function ImageGeneratorPanel({
     ));
   }, [promptLibraryCategory, promptLibraryQuery]);
   const hasEffectivePrompt = Boolean(connectedInputs.prompt.trim() || prompt.trim());
+  const isPriceReady = Boolean(priceQuote && !priceError && !isPriceLoading);
 
   const updatePreferences = (next: ImageModelPreferences) => {
     setModelPreferences(next);
@@ -236,6 +240,42 @@ export function ImageGeneratorPanel({
   }, [aspectRatio, availableAspectRatios, isPanorama]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    setIsPriceLoading(true);
+    setPriceError(null);
+    setPriceQuote(null);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await authedFetch('/api/image-price-quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            modelId: modelVariant,
+            resolution,
+            referenceCount: displayedReferenceImages.length,
+          }),
+          signal: controller.signal,
+        });
+        const data = await response.json() as { quote?: ImagePriceQuote; error?: string };
+        if (!response.ok || !data.quote) {
+          throw new Error(data.error || '暂时无法核算该规格的积分');
+        }
+        setPriceQuote(data.quote);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setPriceError(error instanceof Error ? error.message : '图片积分报价失败');
+      } finally {
+        if (!controller.signal.aborted) setIsPriceLoading(false);
+      }
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [displayedReferenceImages.length, modelVariant, resolution]);
+
+  useEffect(() => {
     if (!isOfficialModel) return;
 
     setOfficialQuality((prev) => (prev === 'auto' ? 'high' : prev));
@@ -263,7 +303,7 @@ export function ImageGeneratorPanel({
 
   const handleSubmit = async () => {
     const effectivePrompt = connectedInputs.prompt.trim() || prompt.trim();
-    if (!effectivePrompt || isBusy) return;
+    if (!effectivePrompt || isBusy || !isPriceReady) return;
 
     const effectiveReferenceImages = displayedReferenceImages;
     if (modelDefinition.requiresReference && effectiveReferenceImages.length === 0) {
@@ -698,8 +738,20 @@ export function ImageGeneratorPanel({
           <span className="mx-2">·</span>
           分辨率：<span className="font-medium text-gray-900 dark:text-white">{resolution}</span>
           <span className="mx-2">·</span>
-          预计消耗：<span className="font-medium text-violet-700 dark:text-violet-300">{totalCreditCost} 积分</span>
+          预计消耗：
+          {isPriceLoading ? (
+            <span className="font-medium text-gray-400">核价中...</span>
+          ) : priceError ? (
+            <span className="font-medium text-rose-600 dark:text-rose-300">暂不可用</span>
+          ) : (
+            <span className="font-medium text-violet-700 dark:text-violet-300">{totalCreditCost} 积分</span>
+          )}
         </div>
+        {priceError && (
+          <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-400/20 dark:bg-rose-500/10 dark:text-rose-200">
+            {priceError}。为避免错误扣费，此规格已暂停生成。
+          </div>
+        )}
 
         {showPromptLibrary && (
           <div className="mt-3 overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/70 shadow-sm dark:border-amber-400/20 dark:bg-amber-500/8">
@@ -786,12 +838,16 @@ export function ImageGeneratorPanel({
             <button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={!hasEffectivePrompt || isBusy}
+              disabled={!hasEffectivePrompt || isBusy || !isPriceReady}
               className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isBusy ? <Loader2 size={16} className="animate-spin" /> : <activeMeta.icon size={16} />}
               {isBusy
                 ? `生成中 ${outputCount} 张...`
+                : isPriceLoading
+                  ? '正在核算积分...'
+                  : priceError
+                    ? '当前规格暂不可用'
                 : editMode === 'generate'
                   ? `生成 ${outputCount} 张 · ${totalCreditCost} 积分`
                   : `执行${activeMeta.title} · ${totalCreditCost} 积分`}

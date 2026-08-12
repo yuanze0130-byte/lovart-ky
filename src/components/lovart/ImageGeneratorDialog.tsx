@@ -132,6 +132,7 @@ export function ImageGeneratorDialog({ isOpen, onClose, onImageGenerated }: Imag
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
+                    requestId: crypto.randomUUID(),
                     prompt,
                     resolution,
                     aspectRatio,

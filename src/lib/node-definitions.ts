@@ -74,7 +74,7 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
   },
   {
     type: 'video-generator', label: '视频生成器', category: 'generation',
-    defaultState: { width: 430, height: 460, videoModelId: 'jimeng-cli-seedance2.0', videoAspectRatio: '16:9', videoDuration: 8, videoResolution: '1080p' },
+    defaultState: { width: 430, height: 460, videoModelId: 'doubao-seedance-2-0-260128', videoAspectRatio: '16:9', videoDuration: 8, videoResolution: '1080p', videoQualityMode: 'pro' },
     creatable: true,
     runnable: true,
     qdmy: { importTypes: ['gen-video'], exportType: 'gen-video' },

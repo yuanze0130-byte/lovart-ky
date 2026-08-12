@@ -6,6 +6,8 @@ import {
   normalizeGenerationProgress,
   normalizeProviderStatus,
 } from '@/lib/generation-jobs';
+import { createServiceRoleSupabaseClient } from '@/lib/supabase';
+import { refundCredits } from '@/lib/credits';
 
 function stringifyErrorPayload(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -54,11 +56,20 @@ function normalizeVideoBaseURL(baseUrl: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireUser(request);
+    const user = await requireUser(request);
     const taskId = request.nextUrl.searchParams.get('taskId');
     if (!taskId) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
     }
+
+    const supabase = createServiceRoleSupabaseClient();
+    const { data: billingJob, error: billingLookupError } = await supabase
+      .from('video_generation_jobs')
+      .select('request_id,user_id,task_id,charged_credits,refunded_credits,status')
+      .eq('task_id', taskId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (billingLookupError) throw billingLookupError;
 
     const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || 'https://ai.comfly.org');
@@ -106,6 +117,35 @@ export async function GET(request: NextRequest) {
       data.data?.content?.urls?.[0];
 
     const resolvedProgress = normalizeGenerationProgress(data.progress, jobStatus);
+    const failureReason = data.data?.fail_reason || stringifyErrorPayload(data.error || '上游视频任务失败');
+
+    if (billingJob && jobStatus === 'failed') {
+      const refund = await refundCredits({
+        userId: user.id,
+        amount: billingJob.charged_credits,
+        type: 'refund',
+        originalType: 'generate_video',
+        description: '视频任务最终失败，自动退回积分',
+        referenceId: billingJob.request_id,
+        meta: { taskId, providerStatus: normalizedStatus || null, reason: failureReason.slice(0, 1000) },
+      });
+      await supabase.from('video_generation_jobs').update({
+        status: 'refunded',
+        refunded_credits: refund.refundedCredits,
+        failure_reason: failureReason.slice(0, 1000),
+        updated_at: new Date().toISOString(),
+      }).eq('request_id', billingJob.request_id).eq('user_id', user.id);
+    } else if (billingJob && jobStatus === 'succeeded') {
+      await supabase.from('video_generation_jobs').update({
+        status: 'succeeded',
+        updated_at: new Date().toISOString(),
+      }).eq('request_id', billingJob.request_id).eq('user_id', user.id);
+    } else if (billingJob) {
+      await supabase.from('video_generation_jobs').update({
+        status: normalizedStatus || jobStatus,
+        updated_at: new Date().toISOString(),
+      }).eq('request_id', billingJob.request_id).eq('user_id', user.id);
+    }
 
     return NextResponse.json({
       id: data.id || data.task_id,
@@ -119,6 +159,9 @@ export async function GET(request: NextRequest) {
       size: data.size,
       seconds: data.seconds,
       error: data.data?.fail_reason,
+      requestId: billingJob?.request_id,
+      chargedCredits: billingJob?.charged_credits,
+      refundedCredits: jobStatus === 'failed' ? billingJob?.charged_credits : billingJob?.refunded_credits,
     });
   } catch (error: unknown) {
     if (isNotAuthenticatedError(error)) {

@@ -101,6 +101,56 @@ export interface Database {
         };
         Relationships: [];
       };
+      video_generation_jobs: {
+        Row: {
+          request_id: string;
+          user_id: string;
+          task_id: string | null;
+          model_id: string;
+          upstream_model: string;
+          price_group: string;
+          price_version: string;
+          duration: number;
+          resolution: string | null;
+          quality_mode: string;
+          generate_audio: boolean;
+          estimated_comfly_cost_micros: number;
+          charged_credits: number;
+          refunded_credits: number;
+          status: string;
+          failure_reason: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          request_id: string;
+          user_id: string;
+          task_id?: string | null;
+          model_id: string;
+          upstream_model: string;
+          price_group: string;
+          price_version: string;
+          duration: number;
+          resolution?: string | null;
+          quality_mode: string;
+          generate_audio?: boolean;
+          estimated_comfly_cost_micros: number;
+          charged_credits: number;
+          refunded_credits?: number;
+          status?: string;
+          failure_reason?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          task_id?: string | null;
+          refunded_credits?: number;
+          status?: string;
+          failure_reason?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       redeem_code_batches: {
         Row: {
           id: string;
@@ -507,6 +557,42 @@ export interface Database {
           transaction_id: string | null;
           redemption_id: string | null;
           batch_name: string | null;
+        }[];
+      };
+      consume_credits_atomic: {
+        Args: {
+          p_user_id: string;
+          p_amount: number;
+          p_type: string;
+          p_description: string;
+          p_reference_id: string;
+          p_reference_type?: string | null;
+          p_meta?: Json;
+        };
+        Returns: {
+          success: boolean;
+          error_code: string | null;
+          current_credits: number;
+          required_credits: number;
+          transaction_id: string | null;
+          idempotent: boolean;
+        }[];
+      };
+      refund_credits_atomic: {
+        Args: {
+          p_user_id: string;
+          p_reference_id: string;
+          p_original_type: string;
+          p_description: string;
+          p_meta?: Json;
+        };
+        Returns: {
+          success: boolean;
+          error_code: string | null;
+          current_credits: number;
+          refunded_credits: number;
+          transaction_id: string | null;
+          idempotent: boolean;
         }[];
       };
     };

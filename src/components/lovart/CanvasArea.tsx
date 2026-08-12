@@ -121,6 +121,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     videoGenerateAudio?: boolean;
     videoMultiShot?: boolean;
     videoCameraFixed?: boolean;
+    videoQualityMode?: 'std' | 'pro';
     x: number;
     y: number;
     content?: string;

@@ -1,9 +1,12 @@
 import OpenAI from 'openai';
 import { GoogleGenAI, Modality } from '@google/genai';
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
-import { consumeCredits, getImageCreditCost, refundCredits } from '@/lib/credits';
-import { getImageModelDefinition, type ImageModelId } from '@/lib/image-models';
+import { consumeCredits, refundCredits } from '@/lib/credits';
+import { getImageModelDefinition, isImageModelId, type ImageModelId } from '@/lib/image-models';
+import { resolveImageUpstreamModel } from '@/lib/image-model-routing';
+import { isImagePriceUnavailableError, quoteImageCredits, type ImagePriceQuote } from '@/lib/image-pricing';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = ImageModelId;
@@ -63,6 +66,7 @@ interface GeminiChatCompletion {
 }
 
 interface GenerateImagePayload {
+  requestId?: string;
   prompt: string;
   referenceImage?: string;
   referenceImages?: string[];
@@ -168,58 +172,6 @@ function normalizeReferenceImages(referenceImages?: string[], referenceImage?: s
 
   const single = normalizeReferenceImage(referenceImage);
   return single ? [single] : [];
-}
-
-function getProxyModel(payload: GenerateImagePayload) {
-  const resolution = payload.resolution || '1K';
-  const modelVariant = payload.modelVariant || 'pro';
-  const definition = getImageModelDefinition(modelVariant);
-
-  if (payload.modelVariant === 'gpt-image-2-official') {
-    return process.env.GEMINI_PROXY_GPT_IMAGE_2_OFFICIAL_MODEL || 'gpt-image-2';
-  }
-
-  if (payload.modelVariant === 'gpt-image-2') {
-    return process.env.GEMINI_PROXY_GPT_IMAGE_2_MODEL || 'gpt-image-2-all';
-  }
-
-  if (payload.modelVariant === 'gpt-image-1.5') {
-    return process.env.GEMINI_PROXY_GPT_IMAGE_1_5_MODEL || definition.proxyModel;
-  }
-
-  if (payload.modelVariant === 'gpt-image-1') {
-    return process.env.GEMINI_PROXY_GPT_IMAGE_1_MODEL || definition.proxyModel;
-  }
-
-  if (payload.modelVariant === 'standard' || payload.modelVariant === 'nano-banana-2') {
-    if (resolution === '2K') {
-      return process.env.GEMINI_PROXY_STANDARD_MODEL_2K || process.env.GEMINI_PROXY_STANDARD_MODEL_HD || 'nano-banana-hd';
-    }
-
-    if (resolution === '4K') {
-      return process.env.GEMINI_PROXY_STANDARD_MODEL_4K || 'gemini-3.1-flash-image-preview-4k';
-    }
-
-    return process.env.GEMINI_PROXY_STANDARD_MODEL || 'nano-banana';
-  }
-
-  if (payload.modelVariant === 'nano-banana') {
-    return process.env.GEMINI_PROXY_NANO_BANANA_MODEL || definition.proxyModel;
-  }
-
-  if (payload.modelVariant === 'pro' || payload.modelVariant === 'nano-banana-pro') {
-    if (resolution === '2K') {
-      return process.env.GEMINI_PROXY_PRO_MODEL_2K || 'nano-banana-pro-2k';
-    }
-
-    if (resolution === '4K') {
-      return process.env.GEMINI_PROXY_PRO_MODEL_4K || 'nano-banana-pro-4k';
-    }
-
-    return process.env.GEMINI_PROXY_PRO_MODEL || process.env.GEMINI_PROXY_MODEL || 'nano-banana-pro';
-  }
-
-  return definition.proxyModel;
 }
 
 const GPT_IMAGE_2_DEFAULT_ASPECT_RATIOS: SupportedAspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
@@ -711,7 +663,10 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 
   content.push({ type: 'text', text: finalPrompt });
 
-  const proxyModel = getProxyModel(payload);
+  const proxyModel = resolveImageUpstreamModel({
+    modelId: payload.modelVariant || 'pro',
+    resolution: payload.resolution || '1K',
+  });
 
   let lastError: unknown = null;
 
@@ -1079,6 +1034,8 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 
 export async function POST(request: NextRequest) {
   let chargedUserId: string | null = null;
+  let chargeReferenceId: string | null = null;
+  let chargedQuote: ImagePriceQuote | null = null;
   let creditsConsumed = false;
   let chargedAmount = 0;
 
@@ -1103,12 +1060,42 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
-    chargedAmount = getImageCreditCost(modelVariant, resolution);
+    if (!isImageModelId(modelVariant) || !['1K', '2K', '4K'].includes(resolution)) {
+      return NextResponse.json({ error: '图片模型或分辨率无效' }, { status: 400 });
+    }
+
+    const requestId = typeof body.requestId === 'string'
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.requestId)
+      ? body.requestId
+      : randomUUID();
+    chargeReferenceId = requestId;
+    const normalizedReferences = normalizeReferenceImages(referenceImages, referenceImage);
+    const upstreamModel = resolveImageUpstreamModel({ modelId: modelVariant, resolution });
+    const priceQuote = quoteImageCredits({
+      modelId: modelVariant,
+      upstreamModel,
+      resolution,
+      referenceCount: normalizedReferences.length,
+    });
+    chargedQuote = priceQuote;
+    chargedAmount = priceQuote.credits;
     const creditResult = await consumeCredits({
       userId: user.id,
       amount: chargedAmount,
       type: 'generate_image',
       description: `生成图片 (${modelVariant}/${resolution})`,
+      referenceId: requestId,
+      referenceType: 'image_generation',
+      meta: {
+        modelId: modelVariant,
+        upstreamModel,
+        resolution,
+        referenceCount: normalizedReferences.length,
+        comflyCost: priceQuote.comflyCost,
+        priceVersion: priceQuote.priceVersion,
+        markupRate: priceQuote.markupRate,
+        breakdown: priceQuote.breakdown,
+      },
     });
 
     if (!creditResult.ok) {
@@ -1124,6 +1111,7 @@ export async function POST(request: NextRequest) {
     creditsConsumed = true;
 
     const payload: GenerateImagePayload = {
+      requestId,
       prompt,
       referenceImage,
       referenceImages,
@@ -1137,29 +1125,36 @@ export async function POST(request: NextRequest) {
 
     const provider = getProvider();
     const modelDefinition = getImageModelDefinition(modelVariant);
+    const billing = {
+      requestId,
+      chargedCredits: priceQuote.credits,
+      comflyCost: priceQuote.comflyCost,
+      upstreamModel: priceQuote.upstreamModel,
+      priceVersion: priceQuote.priceVersion,
+    };
 
     if (provider === 'proxy') {
       const result = await generateViaProxy(payload);
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, billing });
     }
 
     if (provider === 'official') {
       if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
         const result = await generateViaProxy(payload);
-        return NextResponse.json(result);
+        return NextResponse.json({ ...result, billing });
       }
       const result = await generateViaOfficial(payload);
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, billing });
     }
 
     if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
       const result = await generateViaProxy(payload);
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, billing });
     }
 
     try {
       const result = await generateViaOfficial(payload);
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, billing });
     } catch (officialError) {
       console.warn('Official Gemini failed, fallback to proxy:', officialError);
       const result = await generateViaProxy(payload);
@@ -1169,6 +1164,7 @@ export async function POST(request: NextRequest) {
         providerFallbackUsed: true,
         fallbackFrom: 'official',
         fallbackReason: officialError instanceof Error ? officialError.message : String(officialError),
+        billing,
       });
     }
   } catch (error: unknown) {
@@ -1176,17 +1172,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    if (creditsConsumed && chargedUserId) {
+    if (creditsConsumed && chargedUserId && chargeReferenceId) {
       try {
         await refundCredits({
           userId: chargedUserId,
           amount: chargedAmount,
-          type: 'manual_adjust',
+          type: 'refund',
           description: '图片生成失败，自动退回积分',
+          referenceId: chargeReferenceId,
+          originalType: 'generate_image',
+          meta: chargedQuote ? {
+            modelId: chargedQuote.modelId,
+            upstreamModel: chargedQuote.upstreamModel,
+            resolution: chargedQuote.resolution,
+            priceVersion: chargedQuote.priceVersion,
+          } : {},
         });
       } catch (refundError) {
         console.error('Failed to refund credits after image generation error:', refundError);
       }
+    }
+
+    if (isImagePriceUnavailableError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: 422 },
+      );
     }
 
     console.error('[generate-image] final error:', error);

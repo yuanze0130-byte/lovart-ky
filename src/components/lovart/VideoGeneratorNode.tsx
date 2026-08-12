@@ -11,7 +11,10 @@ import {
   normalizeVideoGenerationConfig,
   type VideoAspectRatio,
   type VideoAudioMode,
+  type VideoQualityMode,
 } from '@/lib/video-models';
+import { authedFetch } from '@/lib/authed-fetch';
+import type { VideoPriceQuote } from '@/lib/video-pricing';
 
 interface VideoGeneratorNodeProps {
   element: CanvasElement;
@@ -83,13 +86,17 @@ export function VideoGeneratorNode({
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [priceQuote, setPriceQuote] = useState<VideoPriceQuote | null>(null);
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [isPriceLoading, setIsPriceLoading] = useState(true);
   const runTokenRef = useRef(0);
+  const requestIdRef = useRef<string | null>(null);
 
   useEffect(() => setLocalPrompt(element.prompt || ''), [element.prompt]);
   useEffect(() => () => { runTokenRef.current += 1; }, []);
 
   const legacyModel = element.videoModelMode === 'fast' ? 'jimeng-cli-seedance2.0fast' : DEFAULT_VIDEO_MODEL_ID;
-  const config = normalizeVideoGenerationConfig({
+  const config = useMemo(() => normalizeVideoGenerationConfig({
     modelId: element.videoModelId || legacyModel,
     aspectRatio: element.videoAspectRatio || element.storyboardAspectRatio || '16:9',
     duration: element.videoDuration || element.storyboardDurationSec || 8,
@@ -100,10 +107,39 @@ export function VideoGeneratorNode({
     generateAudio: element.videoGenerateAudio === true,
     multiShot: element.videoMultiShot === true,
     cameraFixed: element.videoCameraFixed === true,
-  });
+    qualityMode: element.videoQualityMode || 'pro',
+  }), [element.storyboardAspectRatio, element.storyboardDurationSec, element.videoAspectRatio, element.videoAudioMode, element.videoCameraFixed, element.videoDuration, element.videoGenerateAudio, element.videoHd, element.videoModelId, element.videoMultiShot, element.videoQualityMode, element.videoResolution, element.videoUseStartEndFrames, legacyModel]);
   const definition = getVideoModelDefinition(config.modelId);
   const effectivePrompt = connectedPrompt.trim() || localPrompt.trim();
   const connectedCount = referenceImages.length + (firstFrame ? 1 : 0) + (lastFrame ? 1 : 0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setIsPriceLoading(true);
+    setPriceError(null);
+    setPriceQuote(null);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await authedFetch('/api/video-price-quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(config),
+          signal: controller.signal,
+        });
+        const data = await response.json() as { ok?: boolean; quote?: VideoPriceQuote; error?: string };
+        if (!response.ok || !data.quote) throw new Error(data.error || '无法计算视频价格');
+        setPriceQuote(data.quote);
+      } catch (caught) {
+        if (!controller.signal.aborted) setPriceError(caught instanceof Error ? caught.message : '无法计算视频价格');
+      } finally {
+        if (!controller.signal.aborted) setIsPriceLoading(false);
+      }
+    }, 250);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [config]);
 
   const groupedModels = useMemo(() => {
     const groups = new Map<string, typeof VIDEO_MODELS[number][]>();
@@ -124,12 +160,13 @@ export function VideoGeneratorNode({
       videoGenerateAudio: false,
       videoMultiShot: false,
       videoCameraFixed: false,
+      videoQualityMode: next.qualityMode,
       videoModelMode: next.modelId.includes('fast') ? 'fast' : 'standard',
     });
   };
 
   const generate = async () => {
-    if (!effectivePrompt || isGenerating) return;
+    if (!effectivePrompt || isGenerating || !priceQuote || isPriceLoading) return;
     const runToken = ++runTokenRef.current;
     setIsGenerating(true);
     setProgress(0);
@@ -137,11 +174,13 @@ export function VideoGeneratorNode({
     onConfigChange({ prompt: localPrompt, generationMetadata: { ...(element.generationMetadata || {}), taskStatus: 'queued', model: config.modelId } });
     try {
       const result = await startVideoGeneration({
+        requestId: requestIdRef.current || (requestIdRef.current = crypto.randomUUID()),
         prompt: effectivePrompt,
         modelId: config.modelId,
         aspectRatio: config.aspectRatio,
         duration: config.duration,
         resolution: config.resolution,
+        qualityMode: config.qualityMode,
         hd: config.hd,
         useStartEndFrames: config.useStartEndFrames,
         audioMode: config.audioMode,
@@ -164,11 +203,15 @@ export function VideoGeneratorNode({
         if (isVideoGenerationFailed(status.status)) throw new Error(status.error || '视频生成失败');
         if (isVideoGenerationReady(status) && status.videoUrl) {
           await onComplete?.(status.videoUrl);
+          requestIdRef.current = null;
           return;
         }
       }
     } catch (caught) {
-      if (runToken === runTokenRef.current) setError(caught instanceof Error ? caught.message : '视频生成失败');
+      if (runToken === runTokenRef.current) {
+        requestIdRef.current = null;
+        setError(caught instanceof Error ? caught.message : '视频生成失败');
+      }
     } finally {
       if (runToken === runTokenRef.current) setIsGenerating(false);
     }
@@ -223,13 +266,15 @@ export function VideoGeneratorNode({
           {definition.supportsAudioMode && <SelectControl className="w-24" title="音频" value={config.audioMode} options={[{ value: 'none', label: '无音频' }, { value: 'auto', label: '自动配音' }, { value: 'custom', label: '自定义音频' }]} onChange={(value) => onConfigChange({ videoAudioMode: value as VideoAudioMode })} />}
           {definition.supportsMultiShot && <ToggleChip checked={config.multiShot} label="多镜头" onChange={(checked) => onConfigChange({ videoMultiShot: checked })} />}
           {definition.supportsCameraFixed && <ToggleChip checked={config.cameraFixed} label="固定镜头" onChange={(checked) => onConfigChange({ videoCameraFixed: checked })} />}
+          {definition.qualityModes && <SelectControl className="w-20" title="质量" value={config.qualityMode} options={definition.qualityModes.map((mode) => ({ value: mode, label: mode === 'pro' ? 'Pro' : 'Std' }))} onChange={(value) => onConfigChange({ videoQualityMode: value as VideoQualityMode })} />}
         </div>
 
         {error && <div className="line-clamp-2 text-[10px] text-red-500">{error}</div>}
+        {priceError && <div className="line-clamp-2 rounded-lg bg-amber-50 px-2 py-1.5 text-[10px] text-amber-700 dark:bg-amber-400/10 dark:text-amber-300">{priceError}，该规格暂未开放计费</div>}
         <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 text-[10px] text-slate-500"><span className="font-medium text-slate-700 dark:text-slate-300">{definition.label}</span>{isGenerating ? ` · ${progress}%` : ` · ${definition.hint}`}</div>
-          <button type="button" disabled={!effectivePrompt || isGenerating} onClick={generate} onMouseDown={(event) => event.stopPropagation()} className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-black px-4 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black">
-            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}{isGenerating ? '生成中' : '生成'}
+          <div className="min-w-0 text-[10px] text-slate-500"><span className="font-medium text-slate-700 dark:text-slate-300">{definition.label}</span>{isGenerating ? ` · ${progress}%` : isPriceLoading ? ' · 正在计算价格' : priceQuote ? ` · 预计消耗 ${priceQuote.credits} 积分` : ' · 价格配置中'}</div>
+          <button type="button" disabled={!effectivePrompt || isGenerating || isPriceLoading || !priceQuote} onClick={generate} onMouseDown={(event) => event.stopPropagation()} className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-black px-4 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-black">
+            {isGenerating || isPriceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4 fill-current" />}{isGenerating ? '生成中' : isPriceLoading ? '计价中' : priceQuote ? `生成 · ${priceQuote.credits}积分` : '暂未开放'}
           </button>
         </div>
       </div>

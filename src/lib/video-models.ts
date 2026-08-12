@@ -2,6 +2,7 @@ export const VIDEO_ASPECT_RATIOS = ['auto', '1:1', '16:9', '9:16', '4:3', '3:4',
 
 export type VideoAspectRatio = (typeof VIDEO_ASPECT_RATIOS)[number];
 export type VideoAudioMode = 'none' | 'auto' | 'custom';
+export type VideoQualityMode = 'std' | 'pro';
 
 export interface VideoModelDefinition {
   id: string;
@@ -21,6 +22,7 @@ export interface VideoModelDefinition {
   supportsGenerateAudio?: boolean;
   supportsMultiShot?: boolean;
   supportsCameraFixed?: boolean;
+  qualityModes?: readonly VideoQualityMode[];
 }
 
 const COMMON_RATIOS = VIDEO_ASPECT_RATIOS;
@@ -67,7 +69,7 @@ export const VIDEO_MODELS = [
   model({ id: 'jimeng-cli-seedance2.0-mini', label: 'Seedance 2.0 Mini API', provider: 'Seedance', hint: 'API 轻量 2.0', ratios: COMMON_RATIOS, durations: FOUR_TO_FIFTEEN, resolutions: ['720p'], supportsReferenceImages: true, maxReferenceImages: 1, supportsStartEndFrames: true }),
   model({ id: 'kling-o1', label: 'Kling O1', provider: 'Kling', hint: '可灵统一视频模型', ratios: KLING_RATIOS, durations: FIVE_TEN, resolutions: ['720p', '1080p'], supportsReferenceImages: true, maxReferenceImages: 4, supportsStartEndFrames: true }),
   model({ id: 'kling-v3-omni', apiModel: 'kling-video-v3-omni', label: 'Kling 3.0 Omni', provider: 'Kling', hint: '多模态参考与音画生成', ratios: KLING_RATIOS, durations: FIVE_TEN, resolutions: ['720p', '1080p'], supportsReferenceImages: true, maxReferenceImages: 4, supportsStartEndFrames: true, supportsGenerateAudio: true }),
-  model({ id: 'kling-video-v2-5-turbo', label: 'Kling v2.5 Turbo', provider: 'Kling', hint: '快速图生视频', ratios: KLING_RATIOS, durations: FIVE_TEN, resolutions: ['720p', '1080p'], supportsReferenceImages: true, maxReferenceImages: 1 }),
+  model({ id: 'kling-video-v2-5-turbo', label: 'Kling v2.5 Turbo', provider: 'Kling', hint: '快速图生视频', ratios: KLING_RATIOS, durations: FIVE_TEN, resolutions: ['720p', '1080p'], supportsReferenceImages: true, maxReferenceImages: 1, qualityModes: ['std', 'pro'] }),
   model({ id: 'kling-video-v2-6', label: 'Kling v2.6', provider: 'Kling', hint: '音画同步视频', ratios: KLING_RATIOS, durations: FIVE_TEN, resolutions: ['720p', '1080p'], supportsReferenceImages: true, maxReferenceImages: 1, supportsGenerateAudio: true }),
   model({ id: 'kling-video-v3', label: 'Kling 3.0', provider: 'Kling', hint: '新一代可灵视频', ratios: KLING_RATIOS, durations: [3, 5, 10, 15], resolutions: ['720p', '1080p'], supportsReferenceImages: true, maxReferenceImages: 4, supportsStartEndFrames: true, supportsGenerateAudio: true }),
   model({ id: 'kling-video-v2-5-turbo-fal', label: 'Kling v2.5 Turbo - Fal', provider: 'Kling', hint: 'Fal 快速通道', ratios: KLING_RATIOS, durations: FIVE_TEN, resolutions: ['720p'], supportsReferenceImages: true, maxReferenceImages: 1 }),
@@ -85,7 +87,7 @@ export type VideoModelId = (typeof VIDEO_MODELS)[number]['id'];
 
 const VIDEO_MODEL_MAP = new Map<string, VideoModelDefinition>(VIDEO_MODELS.map((entry) => [entry.id, entry]));
 
-export const DEFAULT_VIDEO_MODEL_ID: VideoModelId = 'jimeng-cli-seedance2.0';
+export const DEFAULT_VIDEO_MODEL_ID: VideoModelId = 'doubao-seedance-2-0-260128';
 
 export function getVideoModelDefinition(modelId?: string | null): VideoModelDefinition {
   return VIDEO_MODEL_MAP.get(modelId || '') || VIDEO_MODEL_MAP.get(DEFAULT_VIDEO_MODEL_ID)!;
@@ -102,6 +104,7 @@ export interface VideoGenerationConfig {
   generateAudio: boolean;
   multiShot: boolean;
   cameraFixed: boolean;
+  qualityMode: VideoQualityMode;
 }
 
 export function normalizeVideoGenerationConfig(input: Partial<VideoGenerationConfig>): VideoGenerationConfig {
@@ -127,5 +130,8 @@ export function normalizeVideoGenerationConfig(input: Partial<VideoGenerationCon
     generateAudio: Boolean(definition.supportsGenerateAudio && input.generateAudio),
     multiShot: Boolean(definition.supportsMultiShot && input.multiShot),
     cameraFixed: Boolean(definition.supportsCameraFixed && input.cameraFixed),
+    qualityMode: definition.qualityModes?.includes(input.qualityMode as VideoQualityMode)
+      ? input.qualityMode as VideoQualityMode
+      : 'pro',
   };
 }

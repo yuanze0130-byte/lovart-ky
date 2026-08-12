@@ -10,6 +10,7 @@ export function DashboardSidebar() {
     const isHomePage = pathname === '/' || pathname === '/lovart';
     const isProjectsPage = pathname === '/projects' || pathname === '/lovart/projects';
     const isUserPage = pathname === '/user' || pathname === '/lovart/user';
+    const isHelpPage = pathname === '/help' || pathname === '/lovart/help';
 
     return (
         <aside className="fixed left-8 top-1/3 flex flex-col items-center gap-4 z-50">
@@ -57,12 +58,17 @@ export function DashboardSidebar() {
                 >
                     <User size={20} />
                 </Link>
-                <button 
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-black transition-all"
+                <Link
+                    href="/help"
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                        isHelpPage
+                            ? 'bg-gray-100 text-black'
+                            : 'text-gray-500 hover:bg-gray-100 hover:text-black'
+                    }`}
                     title="帮助"
                 >
                     <Info size={20} />
-                </button>
+                </Link>
             </nav>
         </aside>
     );
