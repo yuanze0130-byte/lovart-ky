@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
+import { uploadCanvasAssetBlob } from '@/lib/canvas-asset-upload';
 import { loadImageModelPreferences } from '@/lib/image-model-preferences';
 import { getNodeDefaultState } from '@/lib/node-definitions';
 
@@ -74,8 +75,18 @@ export function useCanvasElements({
 
   const handleAddVideo = useCallback(
     (file: File) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
+      const addVideo = async () => {
+        let content: string;
+        try {
+          content = await uploadCanvasAssetBlob(file, file.name || 'canvas-video');
+        } catch {
+          content = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(reader.error || new Error('无法读取视频'));
+            reader.readAsDataURL(file);
+          });
+        }
         appendElement({
           id: uuidv4(),
           type: 'video',
@@ -83,10 +94,10 @@ export function useCanvasElements({
           y: 100 - pan.y + elements.length * 20,
           width: 400,
           height: 300,
-          content: e.target?.result as string,
+          content,
         });
       };
-      reader.readAsDataURL(file);
+      void addVideo();
     },
     [appendElement, elements.length, pan.x, pan.y]
   );

@@ -16,14 +16,9 @@ function isInlineAsset(value: unknown) {
   return typeof value === 'string' && /^data:(?:image|video)\/[\w.+-]+;base64,/i.test(value);
 }
 
-export async function uploadInlineCanvasAsset(asset: string) {
-  if (!isInlineAsset(asset)) return asset;
-
-  const blobResponse = await fetch(asset);
-  if (!blobResponse.ok) throw new Error('无法读取画布素材');
-
+export async function uploadCanvasAssetBlob(blob: Blob, fileName = 'canvas-asset') {
   const formData = new FormData();
-  formData.set('file', await blobResponse.blob(), 'canvas-asset');
+  formData.set('file', blob, fileName);
 
   const response = await authedFetch('/api/canvas-assets', {
     method: 'POST',
@@ -36,6 +31,14 @@ export async function uploadInlineCanvasAsset(asset: string) {
   }
 
   return result.url;
+}
+
+export async function uploadInlineCanvasAsset(asset: string) {
+  if (!isInlineAsset(asset)) return asset;
+
+  const blobResponse = await fetch(asset);
+  if (!blobResponse.ok) throw new Error('无法读取画布素材');
+  return uploadCanvasAssetBlob(await blobResponse.blob());
 }
 
 export const uploadInlineCanvasImage = uploadInlineCanvasAsset;

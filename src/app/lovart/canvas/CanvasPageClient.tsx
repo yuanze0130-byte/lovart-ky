@@ -22,6 +22,7 @@ import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
 import { useProjectPersistence } from '@/hooks/useProjectPersistence';
 import { useCanvasElements } from '@/hooks/useCanvasElements';
+import { useCanvasMediaOptimization } from '@/hooks/useCanvasMediaOptimization';
 import { useProjectAssets, type ProjectAsset, type StoryboardItem, type StoryboardAspectRatio, type StoryboardLayoutMode, type StoryboardVideoSize, inferStoryboardAspectRatio, normalizeStoryboardItems, getStoryboardAspectMeta, inferStoryboardAspectRatioFromVideoSize, getStoryboardRenderProfile, formatStoryboardMeta, getStoryboardBoardMode, getStoryboardSequenceHint, getStoryboardFrameDeltaLabel, summarizeProductionBoard } from '@/hooks/useProjectAssets';
 import { useCanvasGeneration, requestImageGeneration, type Resolution, type AspectRatio } from '@/hooks/useCanvasGeneration';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
@@ -269,6 +270,14 @@ function LovartCanvasContent() {
         setElements,
         setSelectedIds,
         setActiveTool,
+    });
+
+    useCanvasMediaOptimization({
+        elements,
+        setElements,
+        pan,
+        scale,
+        enabled: !isHydrating,
     });
 
     const selectedRhaiElements = useMemo(() => {
@@ -989,6 +998,8 @@ function LovartCanvasContent() {
                 originalWidth: displaySize.originalWidth,
                 originalHeight: displaySize.originalHeight,
                 content: item.content,
+                previewUrl: item.previewUrl,
+                thumbnailUrl: item.thumbnailUrl,
                 prompt: item.prompt,
                 generationMetadata: item.metadata,
             });
@@ -1002,6 +1013,7 @@ function LovartCanvasContent() {
             width: 400,
             height: 300,
             content: item.content,
+            posterUrl: item.posterUrl,
             prompt: item.prompt,
             generationMetadata: item.metadata,
         });

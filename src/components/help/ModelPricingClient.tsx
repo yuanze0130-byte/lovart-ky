@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   CircleHelp,
   Coins,
-  ExternalLink,
   ImageIcon,
   Search,
   ShieldCheck,
@@ -219,15 +218,6 @@ export default function ModelPricingClient({ catalog }: { catalog: ModelPricingC
               <p className="mt-3 text-sm leading-6 text-slate-300">
                 上游模型会调整价格或规格。Doodleverse 更新价格版本后，本页与生成器报价会同步变化，已经完成的历史任务不会补扣。
               </p>
-              <a
-                href="https://ai.comfly.org/en/models"
-                target="_blank"
-                rel="noreferrer"
-                className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-slate-100"
-              >
-                查看上游模型价格
-                <ExternalLink size={14} />
-              </a>
               <div className="mt-6 border-t border-white/10 pt-5 text-[11px] leading-5 text-slate-400">
                 图片价格版本：{catalog.imagePriceVersion}<br />
                 视频价格版本：{catalog.videoPriceVersion}

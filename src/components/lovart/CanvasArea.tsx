@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-img-element -- The canvas renders user-provided/generated image data directly. */
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Download, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
@@ -13,6 +12,7 @@ import { VideoFramesNode } from './VideoFramesNode';
 import { VideoBreakdownNode } from './VideoBreakdownNode';
 import { ScriptWriterNode } from './ScriptWriterNode';
 import { VideoGeneratorNode } from './VideoGeneratorNode';
+import { CanvasImageMedia, CanvasVideoMedia } from './CanvasMedia';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -125,6 +125,9 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     x: number;
     y: number;
     content?: string;
+    previewUrl?: string;
+    thumbnailUrl?: string;
+    posterUrl?: string;
     width?: number;
     height?: number;
     originalWidth?: number;
@@ -1101,6 +1104,8 @@ export function CanvasArea({
     }, []);
 
     const selectedElement = elements.find((el) => selectedIds.includes(el.id));
+    const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+    const isLowDetail = scale < 0.5;
     const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
     const elementById = useMemo(() => new Map(elements.map((element) => [element.id, element])), [elements]);
     const connectedContentsIndex = useMemo(() => buildConnectedNodeContentsIndex(elements), [elements]);
@@ -1157,6 +1162,18 @@ export function CanvasArea({
         },
         [elementById, elements, featureSettings.hideConnectors, isElementInViewport]
     );
+
+    useEffect(() => {
+        if (!activeVideoId) return;
+        if (isLowDetail || !selectedIds.includes(activeVideoId) || !elements.some((element) => element.id === activeVideoId)) {
+            setActiveVideoId(null);
+        }
+    }, [activeVideoId, elements, isLowDetail, selectedIds]);
+
+    const handleActivateVideo = useCallback((elementId: string) => {
+        onSelect([elementId]);
+        setActiveVideoId(elementId);
+    }, [onSelect]);
 
     const renderPath = (points: { x: number; y: number }[]) => {
         if (!points || points.length === 0) return '';
@@ -1717,7 +1734,7 @@ export function CanvasArea({
             <div
                 ref={containerRef}
                 className={`w-full h-full origin-top-left ${isPanning ? '' : 'transition-transform duration-200 ease-out'}`}
-                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})` }}
+                style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`, willChange: isPanning ? 'transform' : undefined }}
             >
                 {featureSettings.grid && (
                     <div
@@ -1757,7 +1774,7 @@ export function CanvasArea({
                                         strokeOpacity={featureSettings.connectorOpacity / 100}
                                         strokeDasharray={featureSettings.flowAnimation ? '12 8' : connector.connectorStyle === 'dashed' ? '8 4' : '0'}
                                         markerEnd="url(#arrowhead)"
-                                        className={`pointer-events-none ${featureSettings.flowAnimation ? 'canvas-flow-connector' : ''}`}
+                                        className={`pointer-events-none ${featureSettings.flowAnimation && !isLowDetail ? 'canvas-flow-connector' : ''}`}
                                     />
                                 </g>
                             );
@@ -1789,7 +1806,7 @@ export function CanvasArea({
                             <div
                                 key={el.id}
                                 data-canvas-element="true"
-                                className={`absolute group rounded-xl transition-[box-shadow,transform] ${featureSettings.tilt3d ? 'canvas-tilt-node' : ''} ${featureSettings.marquee && selectedIds.includes(el.id) ? 'canvas-marquee-node' : ''} ${featureSettings.generationAnimation && isGenerating && (el.type === 'image-generator' || el.type === 'video-generator') ? 'canvas-generation-animation' : ''} ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''} ${connectionDraft
+                                className={`absolute group rounded-xl transition-[box-shadow,transform] ${featureSettings.tilt3d && !isLowDetail ? 'canvas-tilt-node' : ''} ${featureSettings.marquee && !isLowDetail && selectedIds.includes(el.id) ? 'canvas-marquee-node' : ''} ${featureSettings.generationAnimation && !isLowDetail && isGenerating && (el.type === 'image-generator' || el.type === 'video-generator') ? 'canvas-generation-animation' : ''} ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''} ${connectionDraft
                                     && connectionDraft.sourceNodeId !== el.id
                                     && SMART_CONNECTION_TARGET_TYPES.has(el.type)
                                     && getPreferredCompatibleInputPort(el, connectionDraft.sourcePort)
@@ -1810,7 +1827,7 @@ export function CanvasArea({
                                 }}
                                 onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
                             >
-                                {getNodePorts(el).map((port) => {
+                                {!isLowDetail && getNodePorts(el).map((port) => {
                                     const sidePorts = getNodePorts(el).filter((candidate) => candidate.direction === port.direction);
                                     const index = sidePorts.findIndex((candidate) => candidate.id === port.id);
                                     const compatible = port.direction === 'input' && connectionDraft
@@ -2348,11 +2365,11 @@ export function CanvasArea({
                                         ? metadata.generatorRunCount
                                         : undefined;
 
-                                    if (isPanorama) {
+                                    if (isPanorama && !isLowDetail) {
                                         return (
                                             <div className="relative h-full w-full overflow-hidden rounded-2xl border border-sky-300/80 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_rgba(15,23,42,0.95)_66%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_48px_rgba(2,6,23,0.32)] dark:border-sky-400/25">
                                                 <PanoramaViewer
-                                                    src={el.content}
+                                                    src={el.previewUrl || el.content}
                                                     alt="Panorama"
                                                     badge={(
                                                         <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
@@ -2392,7 +2409,12 @@ export function CanvasArea({
 
                                     return (
                                         <div className="relative w-full h-full overflow-hidden rounded-lg bg-slate-950">
-                                            <img src={el.content} alt="Upload" loading="lazy" decoding="async" className="w-full h-full object-contain pointer-events-none select-none rounded-lg" />
+                                            <CanvasImageMedia
+                                                source={el.content}
+                                                previewUrl={el.previewUrl}
+                                                thumbnailUrl={el.thumbnailUrl}
+                                                lowDetail={isLowDetail}
+                                            />
                                             {layoutLabel && (
                                                 <div className="pointer-events-none absolute left-2.5 top-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-white/18 bg-slate-950/68 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md">
                                                     {layoutRole && <span className="text-white/55">{layoutRole}</span>}
@@ -2438,7 +2460,13 @@ export function CanvasArea({
                                     if (!hasStoryboardMeta) {
                                         return (
                                             <div className="relative w-full h-full rounded-lg overflow-hidden">
-                                                <video src={el.content} className="w-full h-full object-cover select-none" controls loop playsInline preload="metadata" onClick={(e) => e.stopPropagation()} />
+                                                <CanvasVideoMedia
+                                                    elementId={el.id}
+                                                    source={el.content}
+                                                    posterUrl={el.posterUrl}
+                                                    active={!isLowDetail && activeVideoId === el.id}
+                                                    onActivate={handleActivateVideo}
+                                                />
                                             </div>
                                         );
                                     }
@@ -2567,7 +2595,13 @@ export function CanvasArea({
                                                     </div>
                                                 </div>
                                                 <div className="relative flex-1 overflow-hidden rounded-2xl border border-blue-200/80 bg-black/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] dark:border-white/10">
-                                                    <video src={el.content} className="h-full w-full object-cover select-none" controls loop playsInline preload="metadata" onClick={(e) => e.stopPropagation()} />
+                                                    <CanvasVideoMedia
+                                                        elementId={el.id}
+                                                        source={el.content}
+                                                        posterUrl={el.posterUrl}
+                                                        active={!isLowDetail && activeVideoId === el.id}
+                                                        onActivate={handleActivateVideo}
+                                                    />
                                                     <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/68 via-black/18 to-transparent p-2.5 text-white">
                                                         <div className="mb-1 flex items-center justify-between gap-1.5">
                                                             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">

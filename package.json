@@ -14,6 +14,7 @@
     "test:canvas-tools": "node scripts/test-canvas-tools.mjs",
     "test:ai-tool-guards": "node scripts/test-ai-tool-request-guards.mjs",
     "test:canvas-asset-import": "node scripts/test-canvas-asset-import.mjs",
+    "test:canvas-media": "node scripts/test-canvas-media-optimization.mjs",
     "test:prompt-library": "node scripts/test-prompt-library.mjs",
     "test:image-models": "node scripts/test-image-models.mjs",
     "test:image-pricing": "node scripts/test-image-pricing.mjs",

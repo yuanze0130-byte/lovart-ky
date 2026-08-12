@@ -8,6 +8,9 @@ export interface GenerationHistoryItem {
   id: string;
   kind: 'image' | 'video';
   content: string;
+  previewUrl?: string;
+  thumbnailUrl?: string;
+  posterUrl?: string;
   prompt?: string;
   model?: string;
   createdAt: string;
@@ -16,6 +19,11 @@ export interface GenerationHistoryItem {
   favorite?: boolean;
   metadata?: GenerationMetadata;
 }
+
+export type GenerationHistoryMediaPatch = Pick<
+  GenerationHistoryItem,
+  'content' | 'previewUrl' | 'thumbnailUrl' | 'posterUrl' | 'width' | 'height'
+>;
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -38,6 +46,25 @@ export async function addGenerationHistoryItem(item: GenerationHistoryItem) {
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, 'readwrite');
     transaction.objectStore(STORE_NAME).put(item);
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+  database.close();
+  window.dispatchEvent(new CustomEvent('lovart-generation-history-changed'));
+}
+
+export async function updateGenerationHistoryMedia(id: string, patch: Partial<GenerationHistoryMediaPatch>) {
+  if (typeof indexedDB === 'undefined') return;
+  const database = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = database.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(id);
+    request.onsuccess = () => {
+      const item = request.result as GenerationHistoryItem | undefined;
+      if (item) store.put({ ...item, ...patch });
+    };
+    request.onerror = () => reject(request.error);
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
   });

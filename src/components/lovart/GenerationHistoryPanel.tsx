@@ -1,7 +1,7 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- History thumbnails are generated data URLs. */
-import { ImagePlus, Search, Star, Trash2, X } from 'lucide-react';
+import { ImagePlus, Play, Search, Star, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { deleteGenerationHistoryItem, listGenerationHistoryItems, setGenerationHistoryFavorite, type GenerationHistoryItem } from '@/lib/generation-history';
 
@@ -43,7 +43,32 @@ export function GenerationHistoryPanel({ onClose, onInsert }: GenerationHistoryP
       <div className="grid flex-1 grid-cols-2 gap-3 overflow-y-auto p-3">
         {filtered.map((item) => (
           <div key={item.id} className="group relative overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5">
-            <div className="aspect-square bg-slate-950">{item.kind === 'image' ? <img src={item.content} alt="历史图片" className="h-full w-full object-contain" /> : <video src={item.content} className="h-full w-full object-cover" />}</div>
+            <div className="relative aspect-square bg-slate-950">
+              {item.kind === 'image' ? (
+                <img
+                  src={item.thumbnailUrl || item.previewUrl || item.content}
+                  alt="历史图片"
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-contain"
+                />
+              ) : item.posterUrl ? (
+                <img
+                  src={item.posterUrl}
+                  alt="历史视频封面"
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="h-full w-full bg-[radial-gradient(circle_at_center,rgba(71,85,105,0.55),rgba(2,6,23,0.96))]" />
+              )}
+              {item.kind === 'video' && (
+                <span className="pointer-events-none absolute left-1/2 top-1/2 flex h-10 w-10 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/25 bg-black/55 text-white shadow-xl">
+                  <Play size={17} fill="currentColor" className="ml-0.5" />
+                </span>
+              )}
+            </div>
             <div className="p-2"><div className="line-clamp-2 text-[11px] text-gray-700 dark:text-gray-200">{item.prompt || '未记录提示词'}</div><div className="mt-1 truncate text-[10px] text-gray-400">{item.model || item.kind} · {new Date(item.createdAt).toLocaleString()}</div></div>
             <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
               <button type="button" onClick={() => void setGenerationHistoryFavorite(item.id, !item.favorite)} className={`flex h-8 w-8 items-center justify-center rounded-lg bg-white/92 shadow ${item.favorite ? 'text-amber-500' : 'text-gray-500'}`} title={item.favorite ? '取消收藏' : '收藏'}><Star size={14} fill={item.favorite ? 'currentColor' : 'none'} /></button>

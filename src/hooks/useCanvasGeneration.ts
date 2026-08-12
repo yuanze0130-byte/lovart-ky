@@ -8,6 +8,7 @@ import { resolveConnectedInputs } from '@/lib/canvas-connections';
 import { isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { addGenerationHistoryItem } from '@/lib/generation-history';
 import { importRemoteCanvasVideo } from '@/lib/canvas-asset-upload';
+import { optimizeCanvasImageAsset } from '@/lib/canvas-media-optimization';
 import { uploadReferenceImages } from '@/lib/reference-image-upload';
 
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
@@ -652,9 +653,16 @@ export function useCanvasGeneration({
         } = result;
 
         if (imageData) {
-          const dimensions = await getImageDimensions(imageData);
+          const optimized = await optimizeCanvasImageAsset(imageData).catch((error) => {
+            console.warn('[canvas-media] 生成图片预览优化失败，继续使用原始图片', error);
+            return undefined;
+          });
+          const persistedImage = optimized?.content || imageData;
+          const dimensions = optimized
+            ? { width: optimized.originalWidth, height: optimized.originalHeight }
+            : await getImageDimensions(imageData);
           const displaySize = getSmartDisplaySize(dimensions);
-          void onThumbnailGenerated?.(imageData);
+          void onThumbnailGenerated?.(optimized?.thumbnailUrl || optimized?.previewUrl || persistedImage);
 
           console.log('[generate-image] result', {
             requestedAspectRatio,
@@ -675,21 +683,27 @@ export function useCanvasGeneration({
             const generatorElement = elements.find((el) => el.id === generatorElementId);
             if (!generatorElement) return;
 
-            const imageResult: GeneratedImageResult = { ...result, imageData };
+            const imageResult: GeneratedImageResult = { ...result, imageData: persistedImage };
             const resultId = uuidv4();
             const connectorId = uuidv4();
-            const resultElement = createGeneratedImageResultElement({
-              generatorElement,
-              result: imageResult,
-              displaySize,
-              resultId,
-              connectorId,
-            });
+            const resultElement: CanvasElement = {
+              ...createGeneratedImageResultElement({
+                generatorElement,
+                result: imageResult,
+                displaySize,
+                resultId,
+                connectorId,
+              }),
+              previewUrl: optimized?.previewUrl,
+              thumbnailUrl: optimized?.thumbnailUrl,
+            };
             const connectorElement = createGeneratedImageConnector(generatorElement, resultId, connectorId);
             void addGenerationHistoryItem({
               id: resultId,
               kind: 'image',
-              content: imageData,
+              content: persistedImage,
+              previewUrl: optimized?.previewUrl,
+              thumbnailUrl: optimized?.thumbnailUrl,
               prompt: finalPrompt,
               model: returnedModel || returnedModelVariant,
               createdAt: new Date().toISOString(),
@@ -761,14 +775,18 @@ export function useCanvasGeneration({
                 taskCompletedAt: returnedTaskCompletedAt,
                 taskPayload: returnedTaskPayload as GenerationMetadata['taskPayload'],
               },
-              content: imageData,
+              content: persistedImage,
+              previewUrl: optimized?.previewUrl,
+              thumbnailUrl: optimized?.thumbnailUrl,
             };
             setElements((prev) => [...prev, newElement]);
             setSelectedIds([newElement.id]);
             void addGenerationHistoryItem({
               id: newElement.id,
               kind: 'image',
-              content: imageData,
+              content: persistedImage,
+              previewUrl: optimized?.previewUrl,
+              thumbnailUrl: optimized?.thumbnailUrl,
               prompt: finalPrompt,
               model: returnedModel || returnedModelVariant,
               createdAt: new Date().toISOString(),
