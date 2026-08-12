@@ -3,7 +3,7 @@
 
 create extension if not exists pgcrypto;
 
-alter table public.user_credits alter column credits set default 30;
+alter table public.user_credits alter column credits set default 20;
 
 alter table public.credit_transactions
   add column if not exists action text not null default 'manual_adjust',
@@ -92,7 +92,7 @@ begin
   end if;
 
   insert into public.user_credits (user_id, credits)
-  values (p_user_id, 30)
+  values (p_user_id, 20)
   on conflict (user_id) do nothing;
 
   select credits into v_balance
