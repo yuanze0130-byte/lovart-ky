@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { submitUpscaleTask } from '@/lib/upscale';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
-import { consumeCredits, getUpscaleCreditCost } from '@/lib/credits';
+import { getUpscaleCreditCost } from '@/lib/credits';
+import { randomUUID } from 'node:crypto';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
+import { estimatedCostMicrosFromCredits, isAiSafetyError, runMeteredAiOperation } from '@/lib/ai-safety';
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
+    enforceUserRateLimit(user.id, 'upscale', { limit: 6, windowMs: 60_000 });
 
-    const { image, scale } = await request.json();
+    const { image, scale } = await readLimitedJson(request, 24 * 1024 * 1024) as { image?: unknown; scale?: unknown };
     const upscaleScale = typeof scale === 'number' ? scale : Number(scale || 2);
 
     if (!image || typeof image !== 'string') {
@@ -18,28 +22,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Scale must be a positive number' }, { status: 400 });
     }
 
-    const creditResult = await consumeCredits({
+    const creditCost = getUpscaleCreditCost(upscaleScale);
+    const requestId = randomUUID();
+    const { result, billing } = await runMeteredAiOperation({
+      requestId,
       userId: user.id,
-      amount: getUpscaleCreditCost(upscaleScale),
-      type: 'upscale',
+      scope: 'upscale',
+      creditCost,
+      estimatedCostMicros: estimatedCostMicrosFromCredits(creditCost),
+      creditType: 'upscale',
       description: `AI 超分 (${upscaleScale}x)`,
+      referenceType: 'upscale',
+      run: () => submitUpscaleTask(image, upscaleScale),
     });
-
-    if (!creditResult.ok) {
-      return NextResponse.json(
-        {
-          error: '积分不足',
-          details: `当前积分 ${creditResult.currentCredits}，超分需要 ${creditResult.requiredCredits} 积分`,
-        },
-        { status: 402 }
-      );
-    }
-
-    const result = await submitUpscaleTask(image, upscaleScale);
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, billing });
   } catch (error: unknown) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiSafetyError(error) || isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(

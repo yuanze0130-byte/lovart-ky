@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { consumeCredits, getVideoCreditCost, refundCredits } from '@/lib/credits';
+import { randomUUID } from 'node:crypto';
+import { getVideoCreditCost } from '@/lib/credits';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { normalizeGenerationJobStatus } from '@/lib/generation-jobs';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
+import { estimatedCostMicrosFromCredits, isAiSafetyError, runMeteredAiOperation } from '@/lib/ai-safety';
 
 type MotionModel = 'kling-2.6' | 'kling-3.0';
 type MotionMode = 'std' | 'pro' | '4k';
@@ -83,13 +86,10 @@ function buildPayload(input: {
 }
 
 export async function POST(request: NextRequest) {
-  let chargedUserId: string | null = null;
-  let chargedAmount = 0;
-  let charged = false;
   try {
     const user = await requireUser(request);
-    chargedUserId = user.id;
-    const body = await request.json() as {
+    enforceUserRateLimit(user.id, 'motion-transfer', { limit: 4, windowMs: 60_000 });
+    const body = await readLimitedJson(request, 64 * 1024) as {
       imageUrl?: string;
       videoUrl?: string;
       prompt?: string;
@@ -112,79 +112,79 @@ export async function POST(request: NextRequest) {
     const path = process.env.MOTION_TRANSFER_API_PATH || '/v2/videos/generations';
     if (!apiKey) throw new Error('VIDEO_API_KEY or GEMINI_API_KEY not configured');
 
-    chargedAmount = getVideoCreditCost(mode === 'std' ? 'fast' : 'standard');
-    const credit = await consumeCredits({
-      userId: user.id,
-      amount: chargedAmount,
-      type: 'generate_video',
-      description: `动作迁移 (${model}/${mode})`,
-    });
-    if (!credit.ok) {
-      return NextResponse.json({
-        error: '积分不足',
-        details: `当前积分 ${credit.currentCredits}，动作迁移需 ${credit.requiredCredits} 积分`,
-      }, { status: 402 });
-    }
-    charged = true;
-
+    const chargedAmount = getVideoCreditCost(mode === 'std' ? 'fast' : 'standard');
+    const requestId = randomUUID();
     const effectiveModel = resolveModel(model, mode);
-    const payload = buildPayload({
-      imageUrl: absoluteAssetUrl(body.imageUrl, request.nextUrl.origin),
-      videoUrl: absoluteAssetUrl(body.videoUrl, request.nextUrl.origin),
-      prompt: body.prompt?.trim() || '',
-      model: effectiveModel,
-      mode,
-      keepAudio: body.keepAudio !== false,
-      orientation,
-      watermark: body.watermark === true,
-    });
-    const endpoint = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const rawText = await response.text();
-    let result: Record<string, unknown> = {};
-    try { result = rawText ? JSON.parse(rawText) as Record<string, unknown> : {}; } catch { result = {}; }
-    if (!response.ok) {
-      throw new Error(`上游动作迁移接口错误 (${response.status}): ${stringifyErrorPayload(result.error || result.message || rawText)}`);
-    }
+    const { result: motionResult, billing } = await runMeteredAiOperation({
+      requestId,
+      userId: user.id,
+      scope: 'motion-transfer',
+      creditCost: chargedAmount,
+      estimatedCostMicros: estimatedCostMicrosFromCredits(chargedAmount),
+      creditType: 'generate_video',
+      description: `动作迁移 (${model}/${mode})`,
+      referenceType: 'motion_transfer',
+      meta: { model: effectiveModel, mode },
+      run: async () => {
+        const payload = buildPayload({
+          imageUrl: absoluteAssetUrl(body.imageUrl!, request.nextUrl.origin),
+          videoUrl: absoluteAssetUrl(body.videoUrl!, request.nextUrl.origin),
+          prompt: body.prompt?.trim() || '',
+          model: effectiveModel,
+          mode,
+          keepAudio: body.keepAudio !== false,
+          orientation,
+          watermark: body.watermark === true,
+        });
+        const endpoint = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: request.signal,
+        });
+        const rawText = await response.text();
+        let result: Record<string, unknown> = {};
+        try { result = rawText ? JSON.parse(rawText) as Record<string, unknown> : {}; } catch { result = {}; }
+        if (!response.ok) {
+          throw new Error(`上游动作迁移接口错误 (${response.status}): ${stringifyErrorPayload(result.error || result.message || rawText)}`);
+        }
 
-    const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : {};
-    const output = result.output && typeof result.output === 'object' && !Array.isArray(result.output) ? result.output as Record<string, unknown> : {};
-    const urls = Array.isArray(result.urls) ? result.urls : [];
-    const outputUrls = Array.isArray(output.urls) ? output.urls : [];
-    const taskId = firstString(result.task_id, result.taskId, result.id, data.task_id, data.id) || '';
-    const videoUrl = firstString(
-      result.video_url,
-      result.videoUrl,
-      result.url,
-      typeof result.output === 'string' ? result.output : undefined,
-      output.video_url,
-      output.url,
-      urls[0],
-      outputUrls[0],
-      typeof data.output === 'string' ? data.output : undefined,
-    ) || '';
-    if (!taskId && !videoUrl) throw new Error(`上游未返回任务 ID 或视频地址: ${rawText.slice(0, 500)}`);
-
-    return NextResponse.json({
-      taskId: taskId || undefined,
-      videoUrl: videoUrl || undefined,
-      status: result.status || data.status,
-      jobStatus: normalizeGenerationJobStatus(String(result.status || data.status || (videoUrl ? 'succeeded' : 'queued'))),
-      model: effectiveModel,
-      mode,
+        const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : {};
+        const output = result.output && typeof result.output === 'object' && !Array.isArray(result.output) ? result.output as Record<string, unknown> : {};
+        const urls = Array.isArray(result.urls) ? result.urls : [];
+        const outputUrls = Array.isArray(output.urls) ? output.urls : [];
+        const taskId = firstString(result.task_id, result.taskId, result.id, data.task_id, data.id) || '';
+        const videoUrl = firstString(
+          result.video_url,
+          result.videoUrl,
+          result.url,
+          typeof result.output === 'string' ? result.output : undefined,
+          output.video_url,
+          output.url,
+          urls[0],
+          outputUrls[0],
+          typeof data.output === 'string' ? data.output : undefined,
+        ) || '';
+        if (!taskId && !videoUrl) throw new Error(`上游未返回任务 ID 或视频地址: ${rawText.slice(0, 500)}`);
+        return {
+          taskId: taskId || undefined,
+          videoUrl: videoUrl || undefined,
+          status: result.status || data.status,
+          jobStatus: normalizeGenerationJobStatus(String(result.status || data.status || (videoUrl ? 'succeeded' : 'queued'))),
+          model: effectiveModel,
+          mode,
+        };
+      },
     });
+    return NextResponse.json({ ...motionResult, billing });
   } catch (error) {
     if (isNotAuthenticatedError(error)) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
-    if (charged && chargedUserId) {
-      try {
-        await refundCredits({ userId: chargedUserId, amount: chargedAmount, type: 'manual_adjust', description: '动作迁移失败，自动退回积分' });
-      } catch (refundError) {
-        console.error('Failed to refund motion transfer credits:', refundError);
-      }
+    if (isAiSafetyError(error) || isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
     return NextResponse.json({ error: '动作迁移启动失败', details: error instanceof Error ? error.message : '未知错误' }, { status: 500 });
   }

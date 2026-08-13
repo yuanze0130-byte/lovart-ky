@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError } from '@/lib/require-user';
 import { createAdminServiceRoleClient, requireAdminUser, resolveTargetUser } from '@/lib/admin-auth';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
+
+export async function GET(request: NextRequest) {
+  try {
+    await requireAdminUser(request);
+    return NextResponse.json({ isAdmin: true });
+  } catch (error) {
+    if (isNotAuthenticatedError(error)) return NextResponse.json({ isAdmin: false }, { status: 401 });
+    return NextResponse.json({ isAdmin: false }, { status: 403 });
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
     const currentUser = await requireAdminUser(request);
+    enforceUserRateLimit(currentUser.id, 'admin-credit-adjust', { limit: 20, windowMs: 60_000 });
 
-    const body = await request.json();
+    const body = await readLimitedJson(request, 8 * 1024) as Record<string, unknown>;
     const identifier = String(body.identifier || '').trim();
     const credits = Number(body.credits);
     const note = String(body.note || '').trim();
@@ -62,6 +74,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
     const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
 

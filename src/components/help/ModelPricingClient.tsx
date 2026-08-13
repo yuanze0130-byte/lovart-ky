@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { DashboardSidebar } from '@/components/lovart/DashboardSidebar';
 import type { ModelPricingCatalog, PricingMediaType } from '@/lib/model-pricing-catalog';
+import { AI_TOOL_CREDIT_COSTS } from '@/lib/ai-tool-pricing';
 
 type MediaFilter = 'all' | PricingMediaType;
 
@@ -188,6 +189,29 @@ export default function ModelPricingClient({ catalog }: { catalog: ModelPricingC
           ) : (
             <div className="mt-5 rounded-3xl border border-dashed border-slate-300 bg-white py-16 text-center text-sm text-slate-500">没有找到匹配的模型</div>
           )}
+        </section>
+
+        <section className="pt-14">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">Canvas AI</p>
+            <h2 className="mt-2 text-2xl font-semibold tracking-tight">画布 AI 工具积分</h2>
+            <p className="mt-2 text-sm text-slate-500">只有实际调用上游 AI 时扣分；本地抽帧、表格编辑和普通画布操作不扣分。</p>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            {[
+              ['Agent 创意对话', AI_TOOL_CREDIT_COSTS.agentChat, '仅创意问答扣分；Agent 发起图片或视频任务时按对应模型另行计费。'],
+              ['剧本创作', AI_TOOL_CREDIT_COSTS.scriptWriting, '生成结构化片名、角色、场次和分镜建议。'],
+              ['视频拆解', AI_TOOL_CREDIT_COSTS.videoBreakdown, '上传关键帧进行镜头、运镜、画面与旁白分析。'],
+            ].map(([title, credits, description]) => (
+              <div key={title} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <h3 className="font-semibold text-slate-950">{title}</h3>
+                  <span className="rounded-full bg-violet-50 px-3 py-1 text-sm font-semibold text-violet-700">{credits} 积分/次</span>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-slate-600">{description}</p>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section id="billing" className="pt-14">

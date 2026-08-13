@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
-import { ensureUserCredits } from '@/lib/credits';
+import { ensureCreditsWithSignupProtection } from '@/lib/signup-bonus';
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
-    const credits = await ensureUserCredits(user.id);
+    const { credits, signupBonus } = await ensureCreditsWithSignupProtection(request, user);
 
     return NextResponse.json({
       success: true,
       credits,
+      signupBonus,
     });
   } catch (error) {
     if (isNotAuthenticatedError(error)) {

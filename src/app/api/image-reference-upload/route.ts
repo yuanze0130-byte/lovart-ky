@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 
 const DEFAULT_BUCKET = 'video-references';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
@@ -35,7 +36,8 @@ function getImageExtension(contentType: string) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
-    const body = (await request.json()) as {
+    enforceUserRateLimit(user.id, 'image-reference-ticket', { limit: 30, windowMs: 60_000 });
+    const body = await readLimitedJson(request, 4 * 1024) as {
       action?: 'create' | 'sign';
       contentType?: string;
       path?: string;
@@ -44,7 +46,7 @@ export async function POST(request: NextRequest) {
     const supabase = getStorageClient();
 
     if (body.action === 'sign') {
-      if (!body.path || !body.path.startsWith(`${user.id}/`)) {
+      if (!body.path || !new RegExp(`^${user.id}/[0-9a-f-]{36}\\.(?:png|jpg|webp|gif|avif)$`, 'i').test(body.path)) {
         return NextResponse.json({ error: 'Invalid reference image path' }, { status: 400 });
       }
 
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     const contentType = body.contentType?.toLowerCase() || 'image/jpeg';
-    if (!contentType.startsWith('image/')) {
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'].includes(contentType)) {
       return NextResponse.json({ error: 'Only image uploads are supported' }, { status: 400 });
     }
 
@@ -81,6 +83,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
 
     const message = error instanceof Error ? error.message : 'Unknown error';

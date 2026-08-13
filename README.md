@@ -85,7 +85,8 @@ npm run start
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `ADMIN_EMAILS`
-- `NEXT_PUBLIC_ADMIN_EMAILS`
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY`：Cloudflare Turnstile 站点密钥
+- `NEXT_PUBLIC_AUTH_EMAIL_MODE`：Supabase 邮件登录模式，模板配置完成后设为 `otp`
 - `CANVAS_ASSET_DIR`：画布图片持久化目录，生产环境应位于代码目录之外
 - `CANVAS_ASSET_MAX_BYTES`：单张图片上传上限，默认 20 MB
 - `GEMINI_PROVIDER`

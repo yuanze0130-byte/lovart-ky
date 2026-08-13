@@ -6,6 +6,7 @@ import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/l
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import { getVideoModelDefinition, normalizeVideoGenerationConfig, type VideoAspectRatio, type VideoAudioMode, type VideoQualityMode } from '@/lib/video-models';
 import { isVideoPriceUnavailableError, quoteVideoCredits, type VideoPriceQuote } from '@/lib/video-pricing';
+import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 
 type VideoModelMode = 'standard' | 'fast';
 
@@ -98,6 +99,9 @@ export async function POST(request: NextRequest) {
   let chargedAmount = 0;
   let requestId: string | null = null;
   let quote: VideoPriceQuote | null = null;
+  let budgetReserved = false;
+  let upstreamStarted = false;
+  let releaseExecution: (() => void) | null = null;
 
   try {
     const user = await requireUser(request);
@@ -147,6 +151,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '相同请求正在处理中', code: 'VIDEO_REQUEST_IN_PROGRESS', requestId }, { status: 409 });
     }
 
+    await reserveAiBudget({
+      requestId,
+      userId: user.id,
+      scope: 'generate-video',
+      estimatedCostMicros: quote.costMicros,
+    });
+    budgetReserved = true;
+    releaseExecution = acquireAiExecution({ requestId, userId: user.id, scope: 'generate-video' });
+
     const { error: jobInsertError } = await supabase.from('video_generation_jobs').insert({
       request_id: requestId,
       user_id: user.id,
@@ -185,6 +198,8 @@ export async function POST(request: NextRequest) {
     });
     if (!creditResult.ok) {
       await supabase.from('video_generation_jobs').delete().eq('request_id', requestId).eq('user_id', user.id);
+      await finalizeAiBudget(requestId, 'released');
+      budgetReserved = false;
       return NextResponse.json({ error: '积分不足', details: `当前积分 ${creditResult.currentCredits}，生成视频需要 ${creditResult.requiredCredits} 积分` }, { status: 402 });
     }
     creditsConsumed = true;
@@ -225,6 +240,7 @@ export async function POST(request: NextRequest) {
     };
 
     await supabase.from('video_generation_jobs').update({ status: 'starting', updated_at: new Date().toISOString() }).eq('request_id', requestId);
+    upstreamStarted = true;
     const response = await fetch(`${baseUrl}/v2/videos/generations`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -245,6 +261,10 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     }).eq('request_id', requestId).eq('user_id', user.id);
     if (taskUpdateError) console.error('Failed to attach upstream video task to billing job:', taskUpdateError);
+    await finalizeAiBudget(requestId, 'completed').catch((error) => {
+      console.error('[generate-video] 无法完成成本预留记录', error);
+    });
+    budgetReserved = false;
 
     return NextResponse.json({
       requestId,
@@ -288,10 +308,24 @@ export async function POST(request: NextRequest) {
         console.error('Failed to refund credits after video generation error:', refundError);
       }
     }
+    if (budgetReserved && requestId) {
+      await finalizeAiBudget(requestId, upstreamStarted ? 'completed' : 'released').catch((finalizeError) => {
+        console.error('[generate-video] 无法释放成本预留记录', finalizeError);
+      });
+      budgetReserved = false;
+    }
+    if (isAiSafetyError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
+    }
     if (isAiToolRequestError(error)) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined });
     }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: 'Failed to generate video', details: message, requestId, priceVersion: quote?.priceVersion }, { status: 500 });
+  } finally {
+    releaseExecution?.();
   }
 }

@@ -1,11 +1,12 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ArrowDownRight, Bell, Calendar, Coins, Gift, LogOut, Save, Search, Shield, User as UserIcon } from 'lucide-react';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserCredits } from '@/hooks/useUserCredits';
+import { authedFetch } from '@/lib/authed-fetch';
 
 export default function UserPage() {
   const { user, session, signOut } = useAuth();
@@ -17,12 +18,21 @@ export default function UserPage() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminResult, setAdminResult] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  const adminEmails = useMemo(
-    () => (process.env.NEXT_PUBLIC_ADMIN_EMAILS || '').split(',').map((item) => item.trim().toLowerCase()).filter(Boolean),
-    [],
-  );
-  const isAdmin = Boolean(user?.email && adminEmails.includes(user.email.toLowerCase()));
+  useEffect(() => {
+    let active = true;
+    if (!user) {
+      setIsAdmin(false);
+      return () => { active = false; };
+    }
+    void authedFetch('/api/admin/credits').then((response) => {
+      if (active) setIsAdmin(response.ok);
+    }).catch(() => {
+      if (active) setIsAdmin(false);
+    });
+    return () => { active = false; };
+  }, [user]);
 
   const formatDate = (value?: string) => value
     ? new Date(value).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })

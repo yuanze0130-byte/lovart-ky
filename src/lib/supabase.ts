@@ -101,6 +101,54 @@ export interface Database {
         };
         Relationships: [];
       };
+      signup_bonus_claims: {
+        Row: {
+          user_id: string;
+          email_hash: string;
+          ip_hash: string;
+          credits: number;
+          claimed_at: string;
+        };
+        Insert: {
+          user_id: string;
+          email_hash: string;
+          ip_hash: string;
+          credits: number;
+          claimed_at?: string;
+        };
+        Update: {
+          email_hash?: string;
+          ip_hash?: string;
+          credits?: number;
+          claimed_at?: string;
+        };
+        Relationships: [];
+      };
+      ai_cost_reservations: {
+        Row: {
+          request_id: string;
+          user_id: string;
+          scope: string;
+          estimated_cost_micros: number;
+          status: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          request_id: string;
+          user_id: string;
+          scope: string;
+          estimated_cost_micros: number;
+          status?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       video_generation_jobs: {
         Row: {
           request_id: string;
@@ -594,6 +642,45 @@ export interface Database {
           transaction_id: string | null;
           idempotent: boolean;
         }[];
+      };
+      claim_signup_bonus_atomic: {
+        Args: {
+          p_user_id: string;
+          p_email_hash: string;
+          p_ip_hash: string;
+          p_amount: number;
+          p_daily_ip_limit: number;
+        };
+        Returns: {
+          success: boolean;
+          error_code: string | null;
+          credits_added: number;
+          current_credits: number;
+          idempotent: boolean;
+        }[];
+      };
+      reserve_ai_cost_atomic: {
+        Args: {
+          p_request_id: string;
+          p_user_id: string;
+          p_scope: string;
+          p_estimated_cost_micros: number;
+          p_daily_limit_micros: number;
+        };
+        Returns: {
+          success: boolean;
+          error_code: string | null;
+          used_cost_micros: number;
+          remaining_cost_micros: number;
+          idempotent: boolean;
+        }[];
+      };
+      finalize_ai_cost_reservation: {
+        Args: {
+          p_request_id: string;
+          p_status: string;
+        };
+        Returns: boolean;
       };
     };
     Enums: Record<string, never>;

@@ -32,17 +32,28 @@ export function getUpscaleCreditCost(scale: number = 2) {
   return CREDIT_COSTS.upscale[2];
 }
 
-type CreditAction =
+export type CreditAction =
   | 'generate_image'
   | 'generate_video'
   | 'remove_background'
   | 'reverse_prompt'
   | 'upscale'
   | 'signup_bonus'
+  | 'agent_chat'
+  | 'script_writing'
+  | 'video_breakdown'
   | 'manual_adjust'
   | 'redeem_code'
   | 'recharge'
   | 'refund';
+
+export interface SignupBonusClaimResult {
+  ok: boolean;
+  errorCode: string | null;
+  creditsAdded: number;
+  currentCredits: number;
+  idempotent: boolean;
+}
 
 export async function ensureUserCredits(userId: string): Promise<UserCreditsRow> {
   const supabase = createServiceRoleSupabaseClient();
@@ -61,7 +72,7 @@ export async function ensureUserCredits(userId: string): Promise<UserCreditsRow>
   const { data: inserted, error: insertError } = await supabase
     .from('user_credits')
     .upsert(
-      { user_id: userId, credits: DEFAULT_SIGNUP_CREDITS },
+      { user_id: userId, credits: 0 },
       { onConflict: 'user_id', ignoreDuplicates: true }
     )
     .select()
@@ -71,16 +82,7 @@ export async function ensureUserCredits(userId: string): Promise<UserCreditsRow>
     throw insertError;
   }
 
-  if (inserted) {
-    await logCreditTransaction({
-      userId,
-      amount: DEFAULT_SIGNUP_CREDITS,
-      type: 'signup_bonus',
-      description: `新用户赠送 ${DEFAULT_SIGNUP_CREDITS} 积分`,
-    });
-
-    return inserted as UserCreditsRow;
-  }
+  if (inserted) return inserted as UserCreditsRow;
 
   const { data: fetched, error: fetchError } = await supabase
     .from('user_credits')
@@ -93,6 +95,32 @@ export async function ensureUserCredits(userId: string): Promise<UserCreditsRow>
   }
 
   return fetched as UserCreditsRow;
+}
+
+export async function claimSignupBonus(params: {
+  userId: string;
+  emailHash: string;
+  ipHash: string;
+  dailyIpLimit: number;
+}): Promise<SignupBonusClaimResult> {
+  const supabase = createServiceRoleSupabaseClient();
+  const { data, error } = await supabase.rpc('claim_signup_bonus_atomic', {
+    p_user_id: params.userId,
+    p_email_hash: params.emailHash,
+    p_ip_hash: params.ipHash,
+    p_amount: DEFAULT_SIGNUP_CREDITS,
+    p_daily_ip_limit: params.dailyIpLimit,
+  });
+  if (error) throw error;
+  const result = data?.[0];
+  if (!result) throw new Error('SIGNUP_BONUS_RESULT_MISSING');
+  return {
+    ok: result.success,
+    errorCode: result.error_code,
+    creditsAdded: result.credits_added,
+    currentCredits: result.current_credits,
+    idempotent: result.idempotent,
+  };
 }
 
 export async function getUserCredits(userId: string) {

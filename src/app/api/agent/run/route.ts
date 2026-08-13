@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import OpenAI from 'openai';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import type { AgentMode, AgentRunRequest, AgentRunResponse } from '@/lib/agent/actions';
 import { classifyAgentIntent } from '@/lib/agent/intent';
 import { parseAgentCommand } from '@/lib/agent/parseAgentCommand';
 import { executeAgentAction } from '@/lib/agent/executeAgentAction';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
+import { isAiSafetyError, runMeteredAiOperation } from '@/lib/ai-safety';
+import { AI_TOOL_CREDIT_COSTS, AI_TOOL_ESTIMATED_COST_MICROS } from '@/lib/ai-tool-pricing';
 
 const CHAT_SYSTEM_PROMPTS: Record<AgentMode, string> = {
   design: "You are a professional design agent. Return a JSON object only. The JSON must include: summary (string), reply (string), and plan (object). plan may include: layout (string), sections (array of {title,body}), createTextNodes (array of {content,x,y,fontSize}), createImageGenerator (boolean), createVideoGenerator (boolean), recommendedTitle (string). Keep coordinates simple and canvas-friendly. When suggesting image generation, default to a single image unless the user explicitly asks for multiple outputs.",
@@ -13,7 +17,7 @@ const CHAT_SYSTEM_PROMPTS: Record<AgentMode, string> = {
   research: "You are a creative research agent. Return a JSON object only. The JSON must include: summary (string), reply (string), and plan (object). plan may include: layout (string), sections (array of {title,body}), createTextNodes (array of {content,x,y,fontSize}), createImageGenerator (boolean), createVideoGenerator (boolean), recommendedTitle (string). Focus on references, style keywords, competitor directions, and inspiration cues. When suggesting image generation, default to a single image unless the user explicitly asks for multiple outputs.",
 };
 
-async function runAgentChat(message: string, mode?: string) {
+async function runAgentChat(message: string, mode: string | undefined, signal: AbortSignal) {
   const apiKey = process.env.XAI_API_KEY;
   const baseURL = process.env.XAI_BASE_URL || 'https://ai.t8star.cn/v1';
 
@@ -41,7 +45,7 @@ async function runAgentChat(message: string, mode?: string) {
         content: `Mode: ${resolvedMode}\n\nUser goal: ${message}`,
       },
     ],
-  });
+  }, { signal });
 
   const rawContent = completion.choices?.[0]?.message?.content ?? '{"reply":"未收到回复","summary":"未收到回复","plan":{}}';
 
@@ -67,9 +71,10 @@ async function runAgentChat(message: string, mode?: string) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
-    const body = (await request.json()) as AgentRunRequest;
+    enforceUserRateLimit(user.id, 'agent-run', { limit: 12, windowMs: 60_000 });
+    const body = await readLimitedJson(request, 512 * 1024) as AgentRunRequest;
 
-    if (!body?.message || typeof body.message !== 'string') {
+    if (!body?.message || typeof body.message !== 'string' || body.message.length > 5_000) {
       return NextResponse.json<AgentRunResponse>({ ok: false, error: 'Missing agent message' }, { status: 400 });
     }
 
@@ -78,10 +83,23 @@ export async function POST(request: NextRequest) {
     }
 
     if (classifyAgentIntent({ message: body.message, context: body.context }) === 'chat') {
-      const chat = await runAgentChat(body.message, body.mode);
+      const requestId = randomUUID();
+      const { result: chat, billing } = await runMeteredAiOperation({
+        requestId,
+        userId: user.id,
+        scope: 'agent-chat',
+        creditCost: AI_TOOL_CREDIT_COSTS.agentChat,
+        estimatedCostMicros: AI_TOOL_ESTIMATED_COST_MICROS.agentChat,
+        creditType: 'agent_chat',
+        description: 'Agent 创意对话',
+        referenceType: 'agent_chat',
+        meta: { model: process.env.XAI_MODEL || 'gpt-4o', mode: body.mode || 'design' },
+        run: () => runAgentChat(body.message, body.mode, request.signal),
+      });
       return NextResponse.json<AgentRunResponse>({
         ok: true,
         chat,
+        billing,
       });
     }
 
@@ -106,6 +124,15 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json<AgentRunResponse>({ ok: false, error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiSafetyError(error) || isAiToolRequestError(error)) {
+      return NextResponse.json<AgentRunResponse>(
+        { ok: false, error: error.message },
+        {
+          status: error.status,
+          headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined,
+        },
+      );
     }
     return NextResponse.json<AgentRunResponse>(
       {

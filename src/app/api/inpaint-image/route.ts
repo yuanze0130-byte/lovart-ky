@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 
 export async function POST(request: NextRequest) {
   try {
-    await requireUser(request);
-    const { image, mask, prompt, modelVariant = 'nano-banana-pro' } = await request.json() as {
+    const user = await requireUser(request);
+    enforceUserRateLimit(user.id, 'inpaint-image', { limit: 6, windowMs: 60_000 });
+    const { image, mask, prompt, modelVariant = 'nano-banana-pro' } = await readLimitedJson(request, 28 * 1024 * 1024) as {
       image?: string;
       mask?: string;
       prompt?: string;
@@ -51,6 +53,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
     return NextResponse.json({
       error: 'Inpaint failed',

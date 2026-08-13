@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
-import { ensureUserCredits } from '@/lib/credits';
+import { ensureCreditsWithSignupProtection } from '@/lib/signup-bonus';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import type { CreditTransactionRow } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
   try {
     const user = await requireUser(request);
-    const creditRow = await ensureUserCredits(user.id);
+    const { credits: creditRow, signupBonus } = await ensureCreditsWithSignupProtection(request, user);
     const supabase = createServiceRoleSupabaseClient();
 
     const { data: txData, error: txError } = await supabase
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
       creditRow,
       transactions: (txData || []) as CreditTransactionRow[],
       redemptions: redemptionData || [],
+      signupBonus,
     });
   } catch (error) {
     if (isNotAuthenticatedError(error)) {

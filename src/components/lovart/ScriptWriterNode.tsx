@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { CanvasElement, ScriptScene } from './CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
 import { tableToMarkdown } from '@/lib/table-editor';
+import { AI_TOOL_CREDIT_COSTS } from '@/lib/ai-tool-pricing';
 
 interface ScriptWriterNodeProps {
   connectedBrief?: string;
@@ -170,7 +171,7 @@ export function ScriptWriterNode({ connectedBrief, brief, genre, durationMinutes
       {error && <div className="mt-2 rounded-lg border border-amber-300/20 bg-amber-500/10 px-2.5 py-2 text-[10px] leading-4 text-amber-100">{error}</div>}
       <button type="button" onClick={() => void run()} disabled={isWriting || !(connectedBrief?.trim() || brief.trim())} className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-medium text-black hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40">
         {isWriting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-        {isWriting ? '正在创作剧本...' : scenes.length > 0 ? '重新创作' : '开始剧本创作'}
+        {isWriting ? '正在创作剧本...' : scenes.length > 0 ? `重新创作 · ${AI_TOOL_CREDIT_COSTS.scriptWriting}积分` : `开始剧本创作 · ${AI_TOOL_CREDIT_COSTS.scriptWriting}积分`}
       </button>
     </div>
   );

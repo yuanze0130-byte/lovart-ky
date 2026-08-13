@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'crypto';
-import { mkdir, rename, stat, writeFile } from 'fs/promises';
+import { mkdir, readdir, rename, stat, writeFile } from 'fs/promises';
 import path from 'path';
 
 const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const DEFAULT_USER_STORAGE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 const DEFAULT_ASSET_ROOT = path.join(/* turbopackIgnore: true */ process.cwd(), '.local-data', 'canvas-assets');
 
 export type CanvasAssetKind = 'image' | 'video';
@@ -30,6 +31,26 @@ function getMaxImageBytes() {
 function getMaxVideoBytes() {
   const configured = Number(process.env.CANVAS_VIDEO_ASSET_MAX_BYTES);
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MAX_VIDEO_BYTES;
+}
+
+function getUserStorageMaxBytes() {
+  const configured = Number(process.env.CANVAS_USER_STORAGE_MAX_BYTES);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_USER_STORAGE_MAX_BYTES;
+}
+
+async function getDirectoryBytes(directory: string) {
+  let entries;
+  try {
+    entries = await readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (isMissingFile(error)) return 0;
+    throw error;
+  }
+  const sizes = await Promise.all(entries.filter((entry) => entry.isFile() && !entry.name.startsWith('.')).map(async (entry) => {
+    const file = await stat(path.join(directory, entry.name));
+    return file.size;
+  }));
+  return sizes.reduce((total, size) => total + size, 0);
 }
 
 function hasBytes(bytes: Uint8Array, offset: number, expected: number[]) {
@@ -105,8 +126,20 @@ export async function saveCanvasAsset(userId: string, bytes: Uint8Array) {
 
   try {
     await stat(targetPath);
+    return {
+      contentType: asset.contentType,
+      kind: asset.kind,
+      fileName,
+      size: bytes.byteLength,
+      url: `/media/canvas/${userId}/${fileName}`,
+    };
   } catch (error) {
     if (!isMissingFile(error)) throw error;
+
+    const currentBytes = await getDirectoryBytes(userDirectory);
+    if (currentBytes + bytes.byteLength > getUserStorageMaxBytes()) {
+      throw new Error('个人画布存储空间已满，请删除不再使用的素材后重试');
+    }
 
     const temporaryPath = path.join(userDirectory, `.${fileName}.${randomUUID()}.tmp`);
     await writeFile(temporaryPath, bytes, { mode: 0o644, flag: 'wx' });

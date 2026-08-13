@@ -7,6 +7,7 @@ import { authedFetch } from '@/lib/authed-fetch';
 import { importRemoteCanvasVideo } from '@/lib/canvas-asset-upload';
 import { extractVideoFrames } from '@/lib/video-frame-extraction';
 import { tableToMarkdown } from '@/lib/table-editor';
+import { AI_TOOL_CREDIT_COSTS } from '@/lib/ai-tool-pricing';
 
 interface VideoBreakdownNodeProps {
   sourceVideo?: string;
@@ -164,7 +165,7 @@ export function VideoBreakdownNode({ sourceVideo, connectedPrompt, prompt, rows,
       {error && <div className="mt-2 rounded-lg border border-amber-300/20 bg-amber-500/10 px-2.5 py-2 text-[10px] leading-4 text-amber-100">{error}</div>}
       <button type="button" onClick={() => void run()} disabled={isAnalyzing} className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs font-medium text-black hover:bg-white/90 disabled:opacity-40">
         {isAnalyzing ? <Loader2 size={14} className="animate-spin" /> : <ScanSearch size={14} />}
-        {isAnalyzing ? '正在抽帧并分析...' : rows.length > 0 ? '重新拆解' : '开始视频拆解'}
+        {isAnalyzing ? '正在抽帧并分析...' : rows.length > 0 ? `重新拆解 · ${AI_TOOL_CREDIT_COSTS.videoBreakdown}积分` : `开始视频拆解 · ${AI_TOOL_CREDIT_COSTS.videoBreakdown}积分`}
       </button>
     </div>
   );

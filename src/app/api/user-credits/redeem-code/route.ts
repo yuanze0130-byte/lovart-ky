@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 
 type RedeemResultRow = {
   success: boolean;
@@ -83,7 +84,8 @@ function getErrorDetails(error: unknown) {
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
-    const body = await request.json();
+    enforceUserRateLimit(user.id, 'redeem-code', { limit: 8, windowMs: 60_000 });
+    const body = await readLimitedJson(request, 4 * 1024) as Record<string, unknown>;
     const rawCode = String(body.code || '');
     const normalizedCode = normalizeRedeemCode(rawCode);
 
@@ -125,6 +127,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
 
     return NextResponse.json({

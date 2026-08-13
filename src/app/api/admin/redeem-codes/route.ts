@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError } from '@/lib/require-user';
 import { createAdminServiceRoleClient, requireAdminUser } from '@/lib/admin-auth';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 
 type RedeemCodeImportInput = {
   code_hash?: string;
@@ -14,7 +15,8 @@ function normalizeCode(input: string) {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminUser(request);
+    const user = await requireAdminUser(request);
+    enforceUserRateLimit(user.id, 'admin-redeem-list', { limit: 30, windowMs: 60_000 });
     const supabase = createAdminServiceRoleClient();
 
     const { data: batches, error: batchError } = await supabase
@@ -64,15 +66,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminUser(request);
+    const user = await requireAdminUser(request);
+    enforceUserRateLimit(user.id, 'admin-redeem-create', { limit: 6, windowMs: 60_000 });
     const supabase = createAdminServiceRoleClient();
-    const body = await request.json();
+    const body = await readLimitedJson(request, 2 * 1024 * 1024) as Record<string, unknown>;
 
     const name = String(body.name || '').trim();
     const creditAmount = Number(body.creditAmount);
     const channel = String(body.channel || '').trim() || null;
     const expiresAt = body.expiresAt ? String(body.expiresAt) : null;
-    const codes: RedeemCodeImportInput[] = Array.isArray(body.codes) ? body.codes as RedeemCodeImportInput[] : [];
+    const codes: RedeemCodeImportInput[] = Array.isArray(body.codes) ? body.codes.slice(0, 10_000) as RedeemCodeImportInput[] : [];
 
     if (!name) {
       return NextResponse.json({ error: '批次名称不能为空' }, { status: 400 });
@@ -131,6 +134,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
     if (error instanceof Error && error.message === 'FORBIDDEN') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

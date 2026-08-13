@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser(request);
-    const body = await request.json() as { projectId?: string; thumbnail?: string };
+    enforceUserRateLimit(user.id, 'project-thumbnail', { limit: 20, windowMs: 60_000 });
+    const body = await readLimitedJson(request, 2 * 1024 * 1024) as { projectId?: string; thumbnail?: string };
     const { projectId, thumbnail } = body;
 
     if (!projectId || !thumbnail) {
@@ -39,6 +41,12 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
     return NextResponse.json(
       {

@@ -7,6 +7,8 @@ import { consumeCredits, refundCredits } from '@/lib/credits';
 import { getImageModelDefinition, isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { resolveImageUpstreamModel } from '@/lib/image-model-routing';
 import { isImagePriceUnavailableError, quoteImageCredits, type ImagePriceQuote } from '@/lib/image-pricing';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
+import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = ImageModelId;
@@ -1038,12 +1040,16 @@ export async function POST(request: NextRequest) {
   let chargedQuote: ImagePriceQuote | null = null;
   let creditsConsumed = false;
   let chargedAmount = 0;
+  let budgetReserved = false;
+  let upstreamStarted = false;
+  let releaseExecution: (() => void) | null = null;
 
   try {
     const user = await requireUser(request);
     chargedUserId = user.id;
+    enforceUserRateLimit(user.id, 'generate-image', { limit: 6, windowMs: 60_000 });
 
-    const body = (await request.json()) as GenerateImagePayload;
+    const body = await readLimitedJson(request, 28 * 1024 * 1024) as GenerateImagePayload;
     const {
       prompt,
       referenceImage,
@@ -1056,8 +1062,8 @@ export async function POST(request: NextRequest) {
       relight,
     } = body;
 
-    if (!prompt || typeof prompt !== 'string') {
-      return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
+    if (!prompt || typeof prompt !== 'string' || prompt.length > 10_000) {
+      return NextResponse.json({ error: '提示词不能为空且不能超过 10000 个字符' }, { status: 400 });
     }
 
     if (!isImageModelId(modelVariant) || !['1K', '2K', '4K'].includes(resolution)) {
@@ -1079,6 +1085,14 @@ export async function POST(request: NextRequest) {
     });
     chargedQuote = priceQuote;
     chargedAmount = priceQuote.credits;
+    await reserveAiBudget({
+      requestId,
+      userId: user.id,
+      scope: 'generate-image',
+      estimatedCostMicros: priceQuote.costUnits,
+    });
+    budgetReserved = true;
+    releaseExecution = acquireAiExecution({ requestId, userId: user.id, scope: 'generate-image' });
     const creditResult = await consumeCredits({
       userId: user.id,
       amount: chargedAmount,
@@ -1099,12 +1113,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!creditResult.ok) {
+      await finalizeAiBudget(requestId, 'released');
+      budgetReserved = false;
       return NextResponse.json(
         {
           error: '积分不足',
           details: `当前积分 ${creditResult.currentCredits}，生成图片需 ${creditResult.requiredCredits} 积分`,
         },
         { status: 402 }
+      );
+    }
+    if (creditResult.idempotent) {
+      budgetReserved = false;
+      return NextResponse.json(
+        { error: '该图片请求已经处理过，请重新发起生成', code: 'IMAGE_REQUEST_ALREADY_USED' },
+        { status: 409 },
       );
     }
 
@@ -1132,39 +1155,46 @@ export async function POST(request: NextRequest) {
       upstreamModel: priceQuote.upstreamModel,
       priceVersion: priceQuote.priceVersion,
     };
+    const respondWithResult = async (result: Record<string, unknown>) => {
+      await finalizeAiBudget(requestId, 'completed').catch((error) => {
+        console.error('[generate-image] 无法完成成本预留记录', error);
+      });
+      budgetReserved = false;
+      return NextResponse.json({ ...result, billing });
+    };
+    upstreamStarted = true;
 
     if (provider === 'proxy') {
       const result = await generateViaProxy(payload);
-      return NextResponse.json({ ...result, billing });
+      return respondWithResult(result);
     }
 
     if (provider === 'official') {
       if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
         const result = await generateViaProxy(payload);
-        return NextResponse.json({ ...result, billing });
+        return respondWithResult(result);
       }
       const result = await generateViaOfficial(payload);
-      return NextResponse.json({ ...result, billing });
+      return respondWithResult(result);
     }
 
     if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
       const result = await generateViaProxy(payload);
-      return NextResponse.json({ ...result, billing });
+      return respondWithResult(result);
     }
 
     try {
       const result = await generateViaOfficial(payload);
-      return NextResponse.json({ ...result, billing });
+      return respondWithResult(result);
     } catch (officialError) {
       console.warn('Official Gemini failed, fallback to proxy:', officialError);
       const result = await generateViaProxy(payload);
-      return NextResponse.json({
+      return respondWithResult({
         ...result,
         providerMode: 'auto',
         providerFallbackUsed: true,
         fallbackFrom: 'official',
         fallbackReason: officialError instanceof Error ? officialError.message : String(officialError),
-        billing,
       });
     }
   } catch (error: unknown) {
@@ -1193,6 +1223,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    if (budgetReserved && chargeReferenceId) {
+      await finalizeAiBudget(chargeReferenceId, upstreamStarted ? 'completed' : 'released').catch((finalizeError) => {
+        console.error('[generate-image] 无法释放成本预留记录', finalizeError);
+      });
+      budgetReserved = false;
+    }
+
+    if (isAiSafetyError(error) || isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
+    }
+
     if (isImagePriceUnavailableError(error)) {
       return NextResponse.json(
         { error: error.message, code: error.code },
@@ -1210,5 +1254,7 @@ export async function POST(request: NextRequest) {
       },
       { status: 500 }
     );
+  } finally {
+    releaseExecution?.();
   }
 }

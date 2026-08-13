@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import type { AnnotationObject, AnnotationPoint } from '@/lib/object-annotation';
 import { detectObjectWithProvider } from '@/lib/object-detection-provider';
-import { consumeCredits, CREDIT_COSTS, refundCredits } from '@/lib/credits';
+import { CREDIT_COSTS, refundCredits } from '@/lib/credits';
+import { randomUUID } from 'node:crypto';
+import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
+import { estimatedCostMicrosFromCredits, isAiSafetyError, runMeteredAiOperation } from '@/lib/ai-safety';
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(value, max));
@@ -24,13 +27,11 @@ function createFallbackObject(click: AnnotationPoint, imageWidth: number, imageH
 }
 
 export async function POST(request: NextRequest) {
-  let chargedUserId: string | null = null;
-  let creditsConsumed = false;
   try {
     const user = await requireUser(request);
-    chargedUserId = user.id;
+    enforceUserRateLimit(user.id, 'detect-object', { limit: 10, windowMs: 60_000 });
 
-    const { image, imageWidth, imageHeight, click } = await request.json() as {
+    const { image, imageWidth, imageHeight, click } = await readLimitedJson(request, 24 * 1024 * 1024) as {
       image?: string;
       imageWidth?: number;
       imageHeight?: number;
@@ -57,55 +58,41 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const creditResult = await consumeCredits({
-      userId: user.id,
-      amount: CREDIT_COSTS.detectObject,
-      type: 'manual_adjust',
-      description: '对象标记识别',
-    });
-
-    if (!creditResult.ok) {
-      return NextResponse.json(
-        {
-          error: '积分不足',
-          details: `当前积分 ${creditResult.currentCredits}，标记编辑需 ${creditResult.requiredCredits} 积分`,
-        },
-        { status: 402 }
-      );
-    }
-
-    creditsConsumed = true;
-
+    const requestId = randomUUID();
     try {
-      const result = await detectObjectWithProvider({
-        image,
-        imageWidth: width,
-        imageHeight: height,
-        click,
-        fallback,
+      const { result, billing } = await runMeteredAiOperation({
+        requestId,
+        userId: user.id,
+        scope: 'detect-object',
+        creditCost: CREDIT_COSTS.detectObject,
+        estimatedCostMicros: estimatedCostMicrosFromCredits(CREDIT_COSTS.detectObject),
+        creditType: 'manual_adjust',
+        description: '对象标记识别',
+        referenceType: 'object_detection',
+        run: () => detectObjectWithProvider({
+          image,
+          imageWidth: width,
+          imageHeight: height,
+          click,
+          fallback,
+        }),
       });
 
       if (result.provider === 'fallback' || result.provider === 'stub' || result.provider === 'sam-placeholder') {
         await refundCredits({
           userId: user.id,
           amount: CREDIT_COSTS.detectObject,
-          type: 'manual_adjust',
+          type: 'refund',
           description: '对象标记识别回退退款',
+          referenceId: requestId,
+          originalType: 'manual_adjust',
         });
-        creditsConsumed = false;
       }
 
-      return NextResponse.json(result);
+      return NextResponse.json({ ...result, billing });
     } catch (modelError) {
+      if (isAiSafetyError(modelError) || isAiToolRequestError(modelError)) throw modelError;
       console.warn('Object detection failed, using fallback:', modelError);
-
-      await refundCredits({
-        userId: user.id,
-        amount: CREDIT_COSTS.detectObject,
-        type: 'manual_adjust',
-        description: '对象标记识别失败退款',
-      });
-      creditsConsumed = false;
 
       return NextResponse.json({
         object: fallback,
@@ -117,13 +104,11 @@ export async function POST(request: NextRequest) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
-    if (chargedUserId && creditsConsumed) {
-      await refundCredits({
-        userId: chargedUserId,
-        amount: CREDIT_COSTS.detectObject,
-        type: 'manual_adjust',
-        description: '标记编辑失败退款',
-      });
+    if (isAiSafetyError(error) || isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
     }
     return NextResponse.json(
       {

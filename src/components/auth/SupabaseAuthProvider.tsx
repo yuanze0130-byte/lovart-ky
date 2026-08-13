@@ -8,7 +8,8 @@ interface AuthContextValue {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signInWithOtp: (email: string) => Promise<void>;
+  sendEmailLogin: (email: string, captchaToken?: string, useEmailOtp?: boolean) => Promise<void>;
+  verifyEmailOtp: (email: string, token: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -60,12 +61,25 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       user,
       session,
       loading,
-      signInWithOtp: async (email: string) => {
+      sendEmailLogin: async (email: string, captchaToken?: string, useEmailOtp = false) => {
         if (!supabase) throw new Error('Supabase Auth 环境变量未配置');
         const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/lovart` : undefined;
         const { error } = await supabase.auth.signInWithOtp({
           email,
-          options: { emailRedirectTo: redirectTo },
+          options: {
+            shouldCreateUser: true,
+            captchaToken,
+            emailRedirectTo: useEmailOtp ? undefined : redirectTo,
+          },
+        });
+        if (error) throw error;
+      },
+      verifyEmailOtp: async (email: string, token: string) => {
+        if (!supabase) throw new Error('Supabase Auth 环境变量未配置');
+        const { error } = await supabase.auth.verifyOtp({
+          email,
+          token,
+          type: 'email',
         });
         if (error) throw error;
       },

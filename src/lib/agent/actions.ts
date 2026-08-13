@@ -243,5 +243,6 @@ export type AgentRunResponse = {
   action?: AgentAction;
   result?: AgentActionResult;
   chat?: AgentChatResult;
+  billing?: { requestId: string; chargedCredits: number };
   error?: string;
 };
