@@ -181,11 +181,11 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
               resetKey={captchaResetKey}
               onTokenChange={handleCaptchaTokenChange}
             />
-          ) : (
+          ) : process.env.NODE_ENV !== 'production' ? (
             <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
               <ShieldCheck size={15} />公测保护尚未配置，请管理员设置 Turnstile。
             </div>
-          )}
+          ) : null}
 
           {message && <p className="text-sm text-green-600">{message}</p>}
           {error && <p className="text-sm text-red-600">{error}</p>}
