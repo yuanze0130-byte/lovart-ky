@@ -345,10 +345,11 @@ export default function LovartDashboard() {
                             </div>
 
                             {user && credits !== null && (
-                                <div className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5">
+                                <Link href="/user#recharge" aria-label={`当前 ${credits.toLocaleString()} 积分，前往充值`} className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5 transition-colors hover:bg-gray-800">
+                                    <Plus size={12} />
                                     <span className="text-sm">✨</span>
                                     <span>{credits.toLocaleString()}</span>
-                                </div>
+                                </Link>
                             )}
 
                             {!user ? (

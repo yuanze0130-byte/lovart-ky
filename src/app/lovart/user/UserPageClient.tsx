@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { ArrowDownRight, Bell, Calendar, Coins, Gift, LogOut, Save, Search, Shield, User as UserIcon } from 'lucide-react';
+import { ArrowDownRight, Bell, Calendar, Coins, ExternalLink, Gift, LogOut, Plus, Save, Search, Shield, ShoppingCart, TicketCheck, User as UserIcon } from 'lucide-react';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserCredits } from '@/hooks/useUserCredits';
@@ -10,8 +10,11 @@ import { authedFetch } from '@/lib/authed-fetch';
 
 export default function UserPage() {
   const { user, session, signOut } = useAuth();
-  const { credits, transactions, isLoading } = useUserCredits();
+  const { credits, transactions, isLoading, isRedeeming, redeemCode } = useUserCredits();
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [redeemValue, setRedeemValue] = useState('');
+  const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
+  const [redeemError, setRedeemError] = useState<string | null>(null);
   const [adminIdentifier, setAdminIdentifier] = useState('');
   const [adminCredits, setAdminCredits] = useState('80');
   const [adminNote, setAdminNote] = useState('');
@@ -66,6 +69,24 @@ export default function UserPage() {
     }
   };
 
+  const handleRedeemCode = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const code = redeemValue.trim();
+    if (!code) {
+      setRedeemError('请输入购买后获得的积分卡密。');
+      return;
+    }
+    setRedeemSuccess(null);
+    setRedeemError(null);
+    try {
+      const result = await redeemCode(code) as { creditsAdded?: number; currentCredits?: number };
+      setRedeemValue('');
+      setRedeemSuccess(`兑换成功，已到账 ${result.creditsAdded ?? 0} 积分，当前余额 ${result.currentCredits ?? 0} 积分。`);
+    } catch (error) {
+      setRedeemError(error instanceof Error ? error.message : '卡密兑换失败，请核对后重试。');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-[#0f1115] dark:text-gray-100">
       <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6 dark:border-white/10 dark:bg-black/30">
@@ -77,7 +98,7 @@ export default function UserPage() {
           <button type="button" className="relative grid h-9 w-9 place-items-center rounded-md hover:bg-gray-100 dark:hover:bg-white/10" title="通知">
             <Bell size={18} /><span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-red-500" />
           </button>
-          {user && credits !== null && <div className="rounded-full bg-black px-3 py-1.5 text-xs font-medium text-white">{credits.toLocaleString()} 积分</div>}
+          {user && credits !== null && <a href="#recharge" className="inline-flex items-center gap-1 rounded-full bg-black px-3 py-1.5 text-xs font-medium text-white transition hover:bg-gray-800" aria-label={`当前 ${credits.toLocaleString()} 积分，前往充值`}><Plus size={12} />{credits.toLocaleString()} 积分</a>}
           {!user ? (
             <button type="button" onClick={() => setShowLoginModal(true)} className="rounded-md bg-black px-4 py-2 text-sm font-medium text-white">登录</button>
           ) : (
@@ -114,6 +135,36 @@ export default function UserPage() {
                   <div className="mt-3 text-xl font-bold">{formatDate(user.created_at)}</div>
                 </div>
               </div>
+            </section>
+
+            <section id="recharge" className="scroll-mt-6 rounded-lg border border-gray-200 bg-white p-6 dark:border-white/10 dark:bg-white/5">
+              <div className="mb-5">
+                <div className="flex items-center gap-2"><Coins size={20} /><h2 className="font-semibold">积分充值与兑换</h2></div>
+                <p className="mt-1 text-sm text-gray-500">购买积分卡密后回到这里兑换，积分会立即加入当前账户。</p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5 dark:border-violet-400/20 dark:from-violet-500/10 dark:to-transparent">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><div className="text-sm font-medium text-violet-700 dark:text-violet-300">标准积分包</div><div className="mt-2 text-3xl font-bold">500 <span className="text-base font-medium">积分</span></div></div>
+                    <div className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-violet-700 shadow-sm dark:bg-white/10 dark:text-violet-200">¥50</div>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-gray-500">支付成功后自动发放卡密。建议在购买页填写有效邮箱，方便同时接收卡密。</p>
+                  <a href="https://pay.ldxp.cn/item/v0rkqv" target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 dark:bg-white dark:text-black dark:hover:bg-gray-200">
+                    <ShoppingCart size={16} />购买 500 积分<ExternalLink size={14} />
+                  </a>
+                </div>
+                <form onSubmit={handleRedeemCode} className="rounded-xl border border-gray-200 bg-gray-50 p-5 dark:border-white/10 dark:bg-white/5">
+                  <div className="flex items-center gap-2 text-sm font-semibold"><TicketCheck size={18} />输入卡密兑换</div>
+                  <label htmlFor="redeem-code" className="mt-4 block text-xs font-medium text-gray-500">积分卡密</label>
+                  <input id="redeem-code" value={redeemValue} onChange={(event) => setRedeemValue(event.target.value)} autoComplete="off" spellCheck={false} placeholder="粘贴购买后获得的卡密" className="mt-1.5 w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100 dark:border-white/10 dark:bg-black/20 dark:focus:ring-violet-500/20" />
+                  <button type="submit" disabled={isRedeeming || !redeemValue.trim()} className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/15 dark:bg-white/10 dark:hover:bg-white/15">
+                    {isRedeeming ? '正在兑换...' : '立即兑换'}
+                  </button>
+                  {redeemSuccess && <p role="status" className="mt-3 text-sm text-green-600">{redeemSuccess}</p>}
+                  {redeemError && <p role="alert" className="mt-3 text-sm text-red-600">{redeemError}</p>}
+                </form>
+              </div>
+              <p className="mt-4 text-xs text-gray-400">购买页由第三方平台提供，仅用于购买卡密；积分需在 Doodleverse 当前账户中兑换到账。</p>
             </section>
 
             {isAdmin && (

@@ -23,6 +23,9 @@ const [
   hardeningSql,
   nginxConfig,
   packageJson,
+  userPage,
+  dashboard,
+  projectsPage,
 ] = await Promise.all([
   read('src/components/auth/LoginModal.tsx'),
   read('src/components/auth/SupabaseAuthProvider.tsx'),
@@ -41,6 +44,9 @@ const [
   read('sql/public-beta-database-hardening.sql'),
   read('deploy/nginx/lovart-ky.conf'),
   read('package.json'),
+  read('src/app/lovart/user/UserPageClient.tsx'),
+  read('src/app/lovart/LovartDashboardClient.tsx'),
+  read('src/app/lovart/projects/ProjectsPageClient.tsx'),
 ]);
 
 assert.match(login, /TurnstileWidget/);
@@ -87,5 +93,12 @@ assert.match(nginxConfig, /client_max_body_size 65m/);
 assert.match(nginxConfig, /limit_req_zone[\s\S]*rate=20r\/s/);
 assert.match(nginxConfig, /limit_conn doodleverse_connections 30/);
 assert.match(packageJson, /"start": "next start -H 127\.0\.0\.1"/);
+assert.match(userPage, /https:\/\/pay\.ldxp\.cn\/item\/v0rkqv/);
+assert.match(userPage, /id="recharge"/);
+assert.match(userPage, /redeemCode\(code\)/);
+assert.match(userPage, /500 <span[^>]*>积分/);
+assert.match(userPage, /¥50/);
+assert.match(dashboard, /href="\/user#recharge"/);
+assert.match(projectsPage, /href="\/user#recharge"/);
 
 console.log('Public beta guard tests passed.');
