@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "lint": "eslint",
     "test:qdmy": "node scripts/test-qdmy-project.mjs",
     "test:connections": "node scripts/test-canvas-connections.mjs",
@@ -15,13 +15,18 @@
     "test:ai-tool-guards": "node scripts/test-ai-tool-request-guards.mjs",
     "test:canvas-asset-import": "node scripts/test-canvas-asset-import.mjs",
     "test:canvas-media": "node scripts/test-canvas-media-optimization.mjs",
+    "test:canvas-render": "node scripts/test-canvas-render-performance.mjs",
+    "test:canvas-db-guards": "node scripts/test-canvas-database-guards.mjs",
+    "test:http-byte-range": "node scripts/test-http-byte-range.mjs",
     "test:public-beta": "node scripts/test-public-beta-guards.mjs",
     "test:prompt-library": "node scripts/test-prompt-library.mjs",
     "test:image-models": "node scripts/test-image-models.mjs",
     "test:image-pricing": "node scripts/test-image-pricing.mjs",
     "test:video-models": "node scripts/test-video-models.mjs",
     "test:video-pricing": "node scripts/test-video-pricing.mjs",
+    "test:video-billing-safety": "node scripts/test-video-billing-safety.mjs",
     "test:generation-jobs": "node scripts/test-generation-jobs.mjs",
+    "test:async-generation-security": "node scripts/test-async-generation-security.mjs",
     "migrate:canvas-assets": "node scripts/migrate-canvas-assets.mjs"
   },
   "dependencies": {

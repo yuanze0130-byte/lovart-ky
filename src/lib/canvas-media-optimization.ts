@@ -42,15 +42,6 @@ async function fetchAssetBlob(source: string) {
   return response.blob();
 }
 
-function blobToDataUrl(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ''));
-    reader.onerror = () => reject(reader.error || new Error('无法生成素材预览'));
-    reader.readAsDataURL(blob);
-  });
-}
-
 function canvasToBlob(canvas: HTMLCanvasElement, quality: number) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -123,14 +114,6 @@ async function createImageVariants(blob: Blob) {
   }
 }
 
-async function uploadOrInline(blob: Blob, fileName: string) {
-  try {
-    return await uploadCanvasAssetBlob(blob, fileName);
-  } catch {
-    return blobToDataUrl(blob);
-  }
-}
-
 export async function optimizeCanvasImageAsset(source: string): Promise<OptimizedImageAsset> {
   const inlineSource = source.startsWith('data:');
   const blobSource = source.startsWith('blob:');
@@ -145,12 +128,12 @@ export async function optimizeCanvasImageAsset(source: string): Promise<Optimize
   const sourceBlob = await fetchAssetBlob(content);
   const variants = await createImageVariants(sourceBlob);
   const originalPromise = inlineSource || blobSource
-    ? uploadCanvasAssetBlob(sourceBlob, 'canvas-original').catch(() => source)
+    ? uploadCanvasAssetBlob(sourceBlob, 'canvas-original')
     : Promise.resolve(content);
   const [persistedContent, previewUrl, thumbnailUrl] = await Promise.all([
     originalPromise,
-    uploadOrInline(variants.preview, 'canvas-preview.webp'),
-    uploadOrInline(variants.thumbnail, 'canvas-thumbnail.webp'),
+    uploadCanvasAssetBlob(variants.preview, 'canvas-preview.webp'),
+    uploadCanvasAssetBlob(variants.thumbnail, 'canvas-thumbnail.webp'),
   ]);
   return {
     content: persistedContent,
@@ -223,17 +206,20 @@ async function createVideoPoster(source: string) {
 
 export async function optimizeCanvasVideoAsset(source: string): Promise<OptimizedVideoAsset> {
   let content = source;
-  try {
-    content = source.startsWith('blob:')
-      ? await uploadCanvasAssetBlob(await fetchAssetBlob(source), 'canvas-video')
-      : await importRemoteCanvasAsset(source, 'video');
-  } catch {
-    // Guest/local drafts can keep their inline source; the poster still reduces canvas decoding work.
+  if (source.startsWith('data:') || source.startsWith('blob:')) {
+    content = await uploadCanvasAssetBlob(await fetchAssetBlob(source), 'canvas-video');
+  } else {
+    try {
+      content = await importRemoteCanvasAsset(source, 'video');
+    } catch {
+      // Existing remote videos may remain usable even when they cannot be imported.
+      content = source;
+    }
   }
   const poster = await createVideoPoster(content);
   return {
     content,
-    posterUrl: await uploadOrInline(poster.blob, 'canvas-video-poster.webp'),
+    posterUrl: await uploadCanvasAssetBlob(poster.blob, 'canvas-video-poster.webp'),
     originalWidth: poster.width,
     originalHeight: poster.height,
   };

@@ -10,6 +10,7 @@ export async function callInternalJson<T>(request: NextRequest, path: string, bo
       Authorization: request.headers.get('Authorization') || '',
     },
     body: JSON.stringify(body),
+    signal: request.signal,
   });
 
   const data = await response.json().catch(() => ({}));

@@ -15,10 +15,17 @@ export interface UpscaleTaskSubmissionResult {
   taskStatus?: string | null;
 }
 
-async function fetchAsDataUrl(url: string) {
-  const response = await fetch(url);
+export class UpscaleUpstreamResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UpscaleUpstreamResponseError';
+  }
+}
+
+async function fetchAsDataUrl(url: string, signal?: AbortSignal) {
+  const response = await fetch(url, { signal });
   if (!response.ok) {
-    throw new Error(`Failed to fetch source image: ${response.status}`);
+    throw new UpscaleUpstreamResponseError(`Failed to fetch source image: ${response.status}`);
   }
 
   const contentType = response.headers.get('content-type') || 'image/png';
@@ -27,7 +34,12 @@ async function fetchAsDataUrl(url: string) {
   return `data:${contentType};base64,${base64}`;
 }
 
-async function submitUpscaleTaskWithRunningHub(source: string, scale: number): Promise<UpscaleTaskSubmissionResult> {
+async function submitUpscaleTaskWithRunningHub(
+  source: string,
+  scale: number,
+  signal?: AbortSignal,
+  onSubmissionStart?: () => void,
+): Promise<UpscaleTaskSubmissionResult> {
   const apiKey = process.env.RUNNINGHUB_API_KEY;
   const webappId = process.env.RUNNINGHUB_UPSCALE_WEBAPP_ID;
   const inputNodeId = process.env.RUNNINGHUB_UPSCALE_INPUT_NODE_ID;
@@ -41,13 +53,15 @@ async function submitUpscaleTaskWithRunningHub(source: string, scale: number): P
   if (!inputNodeId) throw new Error('RUNNINGHUB_UPSCALE_INPUT_NODE_ID is not configured');
   if (!scaleNodeId) throw new Error('RUNNINGHUB_UPSCALE_SCALE_NODE_ID is not configured');
 
-  const file = await sourceToFile(source, 'upscale-input.png');
-  const uploaded = await uploadFileToRunningHub(apiKey, file);
+  const file = await sourceToFile(source, 'upscale-input.png', signal);
+  const uploaded = await uploadFileToRunningHub(apiKey, file, signal);
 
   if (!uploaded.fileName) {
-    throw new Error('RunningHub upload did not return fileName');
+    throw new UpscaleUpstreamResponseError('RunningHub upload did not return fileName');
   }
 
+  signal?.throwIfAborted();
+  onSubmissionStart?.();
   const submitResult = await submitRunningHubTask(
     apiKey,
     webappId,
@@ -63,11 +77,12 @@ async function submitUpscaleTaskWithRunningHub(source: string, scale: number): P
         fieldValue: String(scale),
       },
     ],
-    instanceType
+    instanceType,
+    signal,
   );
 
   if (!submitResult.taskId) {
-    throw new Error('RunningHub did not return taskId');
+    throw new UpscaleUpstreamResponseError('RunningHub did not return taskId');
   }
 
   return {
@@ -76,7 +91,7 @@ async function submitUpscaleTaskWithRunningHub(source: string, scale: number): P
   };
 }
 
-export async function queryUpscaleTask(taskId: string): Promise<UpscaleResult & { status: string }> {
+export async function queryUpscaleTask(taskId: string, signal?: AbortSignal): Promise<UpscaleResult & { status: string; error?: string }> {
   const provider = process.env.UPSCALE_PROVIDER || 'stub';
 
   if (provider !== 'runninghub') {
@@ -86,10 +101,14 @@ export async function queryUpscaleTask(taskId: string): Promise<UpscaleResult & 
   const apiKey = process.env.RUNNINGHUB_API_KEY;
   if (!apiKey) throw new Error('RUNNINGHUB_API_KEY is not configured');
 
-  const result: RunningHubQueryResult = await queryRunningHubTask(apiKey, taskId);
+  const result: RunningHubQueryResult = await queryRunningHubTask(apiKey, taskId, signal);
 
   if (result.status === 'FAILED') {
-    throw new Error(result.errorMessage || result.errorCode || 'RunningHub task failed');
+    return {
+      status: result.status,
+      imageData: '',
+      error: result.errorMessage || result.errorCode || 'RunningHub task failed',
+    };
   }
 
   if (result.status !== 'SUCCESS') {
@@ -101,7 +120,11 @@ export async function queryUpscaleTask(taskId: string): Promise<UpscaleResult & 
 
   const output = result.results[0];
   if (!output?.fileUrl) {
-    throw new Error('RunningHub task completed but no output image was returned');
+    return {
+      status: 'FAILED',
+      imageData: '',
+      error: 'RunningHub task completed but no output image was returned',
+    };
   }
 
   return {
@@ -110,16 +133,21 @@ export async function queryUpscaleTask(taskId: string): Promise<UpscaleResult & 
   };
 }
 
-export async function submitUpscaleTask(source: string, scale: number): Promise<UpscaleTaskSubmissionResult | UpscaleResult> {
+export async function submitUpscaleTask(
+  source: string,
+  scale: number,
+  signal?: AbortSignal,
+  onSubmissionStart?: () => void,
+): Promise<UpscaleTaskSubmissionResult | UpscaleResult> {
   const provider = process.env.UPSCALE_PROVIDER || 'stub';
 
   if (provider === 'stub') {
-    const imageData = source.startsWith('data:') ? source : await fetchAsDataUrl(source);
+    const imageData = source.startsWith('data:') ? source : await fetchAsDataUrl(source, signal);
     return { imageData };
   }
 
   if (provider === 'runninghub') {
-    return submitUpscaleTaskWithRunningHub(source, scale);
+    return submitUpscaleTaskWithRunningHub(source, scale, signal, onSubmissionStart);
   }
 
   throw new Error(`UPSCALE_PROVIDER \"${provider}\" is not implemented yet`);

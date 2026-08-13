@@ -192,10 +192,113 @@ begin
 end;
 $$;
 
+create or replace function public.settle_video_generation_job_atomic(
+  p_request_id text,
+  p_user_id text,
+  p_terminal_status text,
+  p_task_id text default null,
+  p_failure_reason text default null,
+  p_meta jsonb default '{}'::jsonb
+)
+returns table (
+  success boolean,
+  error_code text,
+  job_status text,
+  refunded_credits integer,
+  task_id text,
+  idempotent boolean
+)
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+declare
+  v_job public.video_generation_jobs%rowtype;
+  v_refund record;
+  v_refunded integer := 0;
+  v_task_id text;
+begin
+  if p_request_id is null or p_request_id = ''
+    or p_user_id is null or p_user_id = ''
+    or p_terminal_status not in ('succeeded', 'failed', 'cancelled', 'outcome_unknown') then
+    raise exception 'INVALID_VIDEO_JOB_SETTLEMENT';
+  end if;
+
+  select * into v_job
+  from public.video_generation_jobs
+  where request_id = p_request_id
+    and user_id = p_user_id
+  for update;
+
+  if not found then
+    return query select false, 'VIDEO_JOB_NOT_FOUND'::text, null::text, 0, null::text, false;
+    return;
+  end if;
+
+  if p_task_id is not null and p_task_id <> ''
+    and v_job.task_id is not null and v_job.task_id <> p_task_id then
+    return query select false, 'VIDEO_TASK_ID_CONFLICT'::text, v_job.status, v_job.refunded_credits, v_job.task_id, false;
+    return;
+  end if;
+  v_task_id := coalesce(v_job.task_id, nullif(p_task_id, ''));
+
+  -- outcome_unknown is deliberately recoverable: a later owned status check can
+  -- move it to a definitive terminal state once an upstream task id is known.
+  if v_job.status in ('succeeded', 'failed', 'cancelled', 'refunded') then
+    if v_job.status = p_terminal_status
+      or (v_job.status = 'refunded' and p_terminal_status in ('failed', 'cancelled')) then
+      return query select true, null::text, v_job.status, v_job.refunded_credits, v_task_id, true;
+    end if;
+    return query select false, 'VIDEO_JOB_TERMINAL_CONFLICT'::text, v_job.status, v_job.refunded_credits, v_task_id, true;
+    return;
+  end if;
+
+  if p_terminal_status in ('failed', 'cancelled') then
+    select * into v_refund
+    from public.refund_credits_atomic(
+      p_user_id,
+      p_request_id,
+      'generate_video',
+      'Video task failed; credits refunded automatically',
+      coalesce(p_meta, '{}'::jsonb) || jsonb_build_object(
+        'taskId', v_task_id,
+        'providerStatus', p_terminal_status,
+        'failureReason', left(coalesce(p_failure_reason, ''), 1000)
+      )
+    );
+
+    if not coalesce(v_refund.success, false) then
+      return query select false, coalesce(v_refund.error_code, 'VIDEO_JOB_REFUND_FAILED'), v_job.status, v_job.refunded_credits, v_task_id, false;
+      return;
+    end if;
+    v_refunded := coalesce(v_refund.refunded_credits, 0);
+  end if;
+
+  update public.video_generation_jobs
+  set task_id = v_task_id,
+      status = p_terminal_status,
+      refunded_credits = case
+        when p_terminal_status in ('failed', 'cancelled') then v_refunded
+        else refunded_credits
+      end,
+      failure_reason = case
+        when p_terminal_status = 'succeeded' then null
+        else left(p_failure_reason, 1000)
+      end,
+      updated_at = now()
+  where request_id = p_request_id
+    and user_id = p_user_id;
+
+  return query select true, null::text, p_terminal_status, v_refunded, v_task_id, false;
+end;
+$$;
+
 revoke all on function public.consume_credits_atomic(text, integer, text, text, text, text, jsonb) from public, anon, authenticated;
 revoke all on function public.refund_credits_atomic(text, text, text, text, jsonb) from public, anon, authenticated;
+revoke all on function public.settle_video_generation_job_atomic(text, text, text, text, text, jsonb) from public, anon, authenticated;
 grant execute on function public.consume_credits_atomic(text, integer, text, text, text, text, jsonb) to service_role;
 grant execute on function public.refund_credits_atomic(text, text, text, text, jsonb) to service_role;
+grant execute on function public.settle_video_generation_job_atomic(text, text, text, text, text, jsonb) to service_role;
 
 revoke all on function public.redeem_credit_code(text, text, inet, text) from public, anon, authenticated;
 grant execute on function public.redeem_credit_code(text, text, inet, text) to service_role;

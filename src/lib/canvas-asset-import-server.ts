@@ -2,10 +2,11 @@ import { lookup } from 'node:dns/promises';
 import https from 'node:https';
 import { isIP } from 'node:net';
 import {
-  detectCanvasAsset,
+  CanvasAssetStorageError,
   getCanvasAssetMaxBytes,
-  saveCanvasAsset,
+  saveCanvasAssetStream,
   type CanvasAssetKind,
+  type SavedCanvasAsset,
 } from '@/lib/canvas-asset-server';
 import {
   isPublicRemoteAssetAddress,
@@ -24,8 +25,8 @@ type ResolvedAddress = {
 };
 
 type DownloadResult =
-  | { bytes: Uint8Array; redirectUrl?: never }
-  | { bytes?: never; redirectUrl: URL };
+  | { asset: SavedCanvasAsset; redirectUrl?: never }
+  | { asset?: never; redirectUrl: URL };
 
 export class CanvasAssetImportError extends Error {
   readonly status: number;
@@ -101,9 +102,24 @@ async function resolvePublicAddress(url: URL, deadline: number): Promise<Resolve
   return addresses.find(({ family }) => family === 4) ?? addresses[0];
 }
 
+function parseContentLength(value: string | string[] | undefined) {
+  if (value === undefined) return undefined;
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (!/^\d+$/.test(rawValue)) {
+    throw new CanvasAssetImportError('远程素材大小声明无效', 502);
+  }
+  const contentLength = Number(rawValue);
+  if (!Number.isSafeInteger(contentLength)) {
+    throw new CanvasAssetImportError('远程素材大小声明无效', 502);
+  }
+  return contentLength;
+}
+
 function downloadFromAddress(
+  userId: string,
   url: URL,
   address: ResolvedAddress,
+  expectedKind: CanvasAssetKind,
   maxBytes: number,
   deadline: number,
   signal?: AbortSignal,
@@ -114,17 +130,19 @@ function downloadFromAddress(
     const finish = (result: DownloadResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
       resolve(result);
     };
     const fail = (error: unknown) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
       if (error instanceof CanvasAssetImportError || error instanceof RemoteAssetPolicyError) {
         reject(error);
+      } else if (error instanceof CanvasAssetStorageError) {
+        reject(new CanvasAssetImportError(error.message, error.status));
       } else {
         reject(new CanvasAssetImportError('远程素材下载失败', 502));
       }
@@ -167,27 +185,31 @@ function downloadFromAddress(
         return;
       }
 
-      const contentLength = Number(response.headers['content-length']);
-      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      let contentLength: number | undefined;
+      try {
+        contentLength = parseContentLength(response.headers['content-length']);
+      } catch (error) {
+        response.destroy();
+        fail(error);
+        return;
+      }
+      if (contentLength !== undefined && contentLength > maxBytes) {
         response.destroy();
         fail(new CanvasAssetImportError('远程素材超过服务器允许的大小', 413));
         return;
       }
 
-      const chunks: Buffer[] = [];
-      let totalBytes = 0;
-      response.on('data', (chunk: Buffer) => {
-        totalBytes += chunk.byteLength;
-        if (totalBytes > maxBytes) {
+      void saveCanvasAssetStream(
+        userId,
+        response as AsyncIterable<Uint8Array>,
+        { declaredBytes: contentLength, expectedKind, signal },
+      ).then(
+        (asset) => finish({ asset }),
+        (error) => {
           response.destroy();
-          fail(new CanvasAssetImportError('远程素材超过服务器允许的大小', 413));
-          return;
-        }
-        chunks.push(chunk);
-      });
-      response.on('aborted', () => fail(new CanvasAssetImportError('远程素材下载中断', 502)));
-      response.on('error', fail);
-      response.on('end', () => finish({ bytes: new Uint8Array(Buffer.concat(chunks, totalBytes)) }));
+          fail(error);
+        },
+      );
     });
 
     const timer = setTimeout(() => {
@@ -195,6 +217,7 @@ function downloadFromAddress(
       request.destroy(error);
       fail(error);
     }, remainingTime(deadline));
+
     const onAbort = () => {
       const error = canceledError();
       request.destroy(error);
@@ -221,7 +244,15 @@ export async function importRemoteCanvasAsset(
     if (signal?.aborted) throw canceledError();
     const address = await resolvePublicAddress(url, deadline);
     if (signal?.aborted) throw canceledError();
-    const result = await downloadFromAddress(url, address, maxBytes, deadline, signal);
+    const result = await downloadFromAddress(
+      userId,
+      url,
+      address,
+      expectedKind,
+      maxBytes,
+      deadline,
+      signal,
+    );
     if (result.redirectUrl) {
       if (redirectCount === MAX_REMOTE_ASSET_REDIRECTS) {
         throw new CanvasAssetImportError('远程素材重定向次数过多', 502);
@@ -230,21 +261,7 @@ export async function importRemoteCanvasAsset(
       continue;
     }
 
-    if (result.bytes.byteLength === 0) {
-      throw new CanvasAssetImportError('远程素材文件为空', 422);
-    }
-    const asset = detectCanvasAsset(result.bytes);
-    if (!asset) {
-      throw new CanvasAssetImportError('远程地址未返回支持的图片或视频素材', 415);
-    }
-    if (asset.kind !== expectedKind) {
-      throw new CanvasAssetImportError(
-        expectedKind === 'video' ? '远程地址未返回视频素材' : '远程地址未返回图片素材',
-        415,
-      );
-    }
-
-    return saveCanvasAsset(userId, result.bytes);
+    return result.asset;
   }
 
   throw new CanvasAssetImportError('远程素材重定向次数过多', 502);

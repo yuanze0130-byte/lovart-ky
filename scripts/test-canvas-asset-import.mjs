@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
@@ -22,6 +22,7 @@ async function compile(sourceName, outputName) {
 
 try {
   const policy = await compile('canvas-asset-remote-policy.ts', 'canvas-asset-remote-policy.mjs');
+  const assetServer = await compile('canvas-asset-server.ts', 'canvas-asset-server.mjs');
   const importServerSource = await readFile(
     path.join(root, 'src', 'lib', 'canvas-asset-import-server.ts'),
     'utf8',
@@ -31,11 +32,18 @@ try {
     'utf8',
   );
   const clientSource = await readFile(path.join(root, 'src', 'lib', 'canvas-asset-upload.ts'), 'utf8');
+  const uploadRouteSource = await readFile(
+    path.join(root, 'src', 'app', 'api', 'canvas-assets', 'route.ts'),
+    'utf8',
+  );
   const {
     isPublicRemoteAssetAddress,
     parseRemoteCanvasAssetUrl,
     RemoteAssetPolicyError,
   } = await import(`${pathToFileURL(policy.outputPath).href}?v=${Date.now()}`);
+  const { CanvasAssetStorageError, saveCanvasAssetStream } = await import(
+    `${pathToFileURL(assetServer.outputPath).href}?v=${Date.now()}`
+  );
 
   assert.equal(isPublicRemoteAssetAddress('8.8.8.8'), true);
   assert.equal(isPublicRemoteAssetAddress('2606:4700:4700::1111'), true);
@@ -72,10 +80,88 @@ try {
   assert.match(importServerSource, /lookup\(hostname, \{ all: true, verbatim: true \}\)/);
   assert.match(importServerSource, /hostname: address\.address/);
   assert.match(importServerSource, /MAX_REMOTE_ASSET_REDIRECTS = 3/);
-  assert.match(importServerSource, /totalBytes > maxBytes/);
+  assert.match(importServerSource, /saveCanvasAssetStream/);
+  assert.doesNotMatch(importServerSource, /Buffer\.concat|const chunks:/);
   assert.match(routeSource, /requireUser\(request\)/);
   assert.match(routeSource, /importRemoteCanvasAsset\(user\.id, url, kind, request\.signal\)/);
   assert.match(clientSource, /export function importRemoteCanvasVideo/);
+  assert.match(clientSource, /body: blob/);
+  assert.match(clientSource, /value\.startsWith\('blob:'\)/);
+  assert.doesNotMatch(clientSource, /new FormData\(\)/);
+  assert.match(uploadRouteSource, /saveCanvasAssetStream\(userId, request\.body/);
+
+  const assetRoot = path.join(tempDir, 'assets');
+  process.env.CANVAS_ASSET_DIR = assetRoot;
+  process.env.CANVAS_ASSET_MAX_BYTES = '64';
+  process.env.CANVAS_VIDEO_ASSET_MAX_BYTES = '96';
+  process.env.CANVAS_ASSET_MAX_CONCURRENT_WRITES = '2';
+  process.env.CANVAS_ASSET_MAX_CONCURRENT_WRITES_PER_USER = '1';
+  const userId = '11111111-1111-4111-8111-111111111111';
+  const pngBytes = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44,
+  ]);
+  async function* chunked(bytes, chunkSize = 3) {
+    for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+      yield bytes.subarray(offset, offset + chunkSize);
+    }
+  }
+
+  const saved = await saveCanvasAssetStream(userId, chunked(pngBytes), {
+    declaredBytes: pngBytes.byteLength,
+    expectedKind: 'image',
+  });
+  assert.equal(saved.kind, 'image');
+  assert.equal((await stat(path.join(assetRoot, userId, saved.fileName))).size, pngBytes.byteLength);
+
+  await assert.rejects(
+    saveCanvasAssetStream(userId, chunked(pngBytes), {
+      declaredBytes: pngBytes.byteLength + 1,
+      expectedKind: 'image',
+    }),
+    (error) => error instanceof CanvasAssetStorageError && error.status === 400,
+  );
+  await assert.rejects(
+    saveCanvasAssetStream(userId, chunked(pngBytes), {
+      declaredBytes: pngBytes.byteLength,
+      expectedKind: 'video',
+    }),
+    (error) => error instanceof CanvasAssetStorageError && error.status === 415,
+  );
+  assert.deepEqual(
+    (await readdir(path.join(assetRoot, userId))).filter((name) => name.endsWith('.tmp')),
+    [],
+  );
+
+  const serializedUserId = '22222222-2222-4222-8222-222222222222';
+  let releaseFirst;
+  const firstMayFinish = new Promise((resolve) => { releaseFirst = resolve; });
+  let firstStarted = false;
+  let secondStarted = false;
+  async function* delayedAsset(marker, gate) {
+    marker();
+    yield pngBytes.subarray(0, 12);
+    if (gate) await gate;
+    yield pngBytes.subarray(12);
+  }
+
+  const firstWrite = saveCanvasAssetStream(
+    serializedUserId,
+    delayedAsset(() => { firstStarted = true; }, firstMayFinish),
+    { declaredBytes: pngBytes.byteLength, expectedKind: 'image' },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  const secondWrite = saveCanvasAssetStream(
+    serializedUserId,
+    delayedAsset(() => { secondStarted = true; }),
+    { declaredBytes: pngBytes.byteLength, expectedKind: 'image' },
+  );
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.equal(firstStarted, true);
+  assert.equal(secondStarted, false, 'per-user write limit should serialize disk writes');
+  releaseFirst();
+  await Promise.all([firstWrite, secondWrite]);
+  assert.equal(secondStarted, true);
 
   console.log('Canvas remote asset import policy tests passed.');
 } finally {

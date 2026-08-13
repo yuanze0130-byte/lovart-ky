@@ -3,6 +3,7 @@ import { stat } from 'fs/promises';
 import { Readable } from 'stream';
 import { NextResponse } from 'next/server';
 import { getCanvasAssetContentType, getCanvasAssetFile } from '@/lib/canvas-asset-server';
+import { parseSingleHttpByteRange } from '@/lib/http-byte-range';
 
 export async function GET(
   request: Request,
@@ -24,13 +25,11 @@ export async function GET(
     };
 
     if (range && contentType.startsWith('video/')) {
-      const match = /^bytes=(\d*)-(\d*)$/i.exec(range.trim());
-      if (!match) return new NextResponse(null, { status: 416, headers: { 'Content-Range': `bytes */${fileStat.size}` } });
-      const start = match[1] ? Number(match[1]) : 0;
-      const end = match[2] ? Math.min(Number(match[2]), fileStat.size - 1) : fileStat.size - 1;
-      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start > end || start >= fileStat.size) {
+      const parsedRange = parseSingleHttpByteRange(range, fileStat.size);
+      if (!parsedRange) {
         return new NextResponse(null, { status: 416, headers: { 'Content-Range': `bytes */${fileStat.size}` } });
       }
+      const { start, end } = parsedRange;
       const stream = Readable.toWeb(createReadStream(/* turbopackIgnore: true */ filePath, { start, end })) as ReadableStream;
       return new NextResponse(stream, {
         status: 206,

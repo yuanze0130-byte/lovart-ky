@@ -199,6 +199,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      async_generation_jobs: {
+        Row: {
+          request_id: string;
+          user_id: string;
+          kind: string;
+          task_id: string | null;
+          credit_type: string;
+          charged_credits: number;
+          refunded_credits: number;
+          status: string;
+          output_url: string | null;
+          failure_reason: string | null;
+          meta: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          request_id: string;
+          user_id: string;
+          kind: string;
+          task_id?: string | null;
+          credit_type: string;
+          charged_credits: number;
+          refunded_credits?: number;
+          status?: string;
+          output_url?: string | null;
+          failure_reason?: string | null;
+          meta?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          task_id?: string | null;
+          refunded_credits?: number;
+          status?: string;
+          output_url?: string | null;
+          failure_reason?: string | null;
+          meta?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       redeem_code_batches: {
         Row: {
           id: string;
@@ -682,6 +724,43 @@ export interface Database {
         };
         Returns: boolean;
       };
+      settle_async_generation_job_atomic: {
+        Args: {
+          p_request_id: string;
+          p_user_id: string;
+          p_kind: string;
+          p_terminal_status: string;
+          p_output_url?: string | null;
+          p_failure_reason?: string | null;
+          p_meta?: Json;
+          p_refund?: boolean;
+        };
+        Returns: {
+          success: boolean;
+          error_code: string | null;
+          status: string | null;
+          refunded_credits: number;
+          idempotent: boolean;
+        }[];
+      };
+      settle_video_generation_job_atomic: {
+        Args: {
+          p_request_id: string;
+          p_user_id: string;
+          p_terminal_status: string;
+          p_task_id?: string | null;
+          p_failure_reason?: string | null;
+          p_meta?: Json;
+        };
+        Returns: {
+          success: boolean;
+          error_code: string | null;
+          job_status: string | null;
+          refunded_credits: number;
+          task_id: string | null;
+          idempotent: boolean;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -689,6 +768,7 @@ export interface Database {
 }
 
 export type ProjectRow = Database['public']['Tables']['projects']['Row'];
+export type AsyncGenerationJobRow = Database['public']['Tables']['async_generation_jobs']['Row'];
 export type ProjectInsert = Database['public']['Tables']['projects']['Insert'];
 export type ProjectUpdate = Database['public']['Tables']['projects']['Update'];
 export type CanvasElementRow = Database['public']['Tables']['canvas_elements']['Row'];

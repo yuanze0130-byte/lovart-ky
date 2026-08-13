@@ -122,6 +122,7 @@ export async function runMeteredAiOperation<T>(params: {
   referenceType: string;
   meta?: Json;
   run: () => Promise<T>;
+  shouldRefundOnError?: (error: unknown) => boolean;
 }) {
   await reserveAiBudget(params);
   let releaseExecution: (() => void) | null = null;
@@ -156,7 +157,7 @@ export async function runMeteredAiOperation<T>(params: {
       billing: { requestId: params.requestId, chargedCredits: params.creditCost },
     };
   } catch (error) {
-    if (creditsConsumed) {
+    if (creditsConsumed && (params.shouldRefundOnError?.(error) ?? true)) {
       await refundCredits({
         userId: params.userId,
         amount: params.creditCost,

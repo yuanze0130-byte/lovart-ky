@@ -13,16 +13,23 @@ type AssetUploadResponse = {
 export type RemoteCanvasAssetKind = 'image' | 'video';
 
 function isInlineAsset(value: unknown) {
-  return typeof value === 'string' && /^data:(?:image|video)\/[\w.+-]+;base64,/i.test(value);
+  return typeof value === 'string' && (
+    /^data:(?:image|video)\/[\w.+-]+;base64,/i.test(value)
+    || value.startsWith('blob:')
+  );
 }
 
-export async function uploadCanvasAssetBlob(blob: Blob, fileName = 'canvas-asset') {
-  const formData = new FormData();
-  formData.set('file', blob, fileName);
-
+export async function uploadCanvasAssetBlob(
+  blob: Blob,
+  fileName = 'canvas-asset',
+  signal?: AbortSignal,
+) {
+  void fileName; // Kept for source compatibility; content hashes determine stored file names.
   const response = await authedFetch('/api/canvas-assets', {
     method: 'POST',
-    body: formData,
+    headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+    body: blob,
+    signal,
   });
   const result = (await response.json().catch(() => ({}))) as AssetUploadResponse;
 
@@ -33,12 +40,12 @@ export async function uploadCanvasAssetBlob(blob: Blob, fileName = 'canvas-asset
   return result.url;
 }
 
-export async function uploadInlineCanvasAsset(asset: string) {
+export async function uploadInlineCanvasAsset(asset: string, signal?: AbortSignal) {
   if (!isInlineAsset(asset)) return asset;
 
-  const blobResponse = await fetch(asset);
+  const blobResponse = await fetch(asset, { signal });
   if (!blobResponse.ok) throw new Error('无法读取画布素材');
-  return uploadCanvasAssetBlob(await blobResponse.blob());
+  return uploadCanvasAssetBlob(await blobResponse.blob(), 'canvas-asset', signal);
 }
 
 export const uploadInlineCanvasImage = uploadInlineCanvasAsset;
@@ -48,7 +55,7 @@ export async function importRemoteCanvasAsset(
   kind: RemoteCanvasAssetKind = 'video',
   signal?: AbortSignal,
 ) {
-  if (isInlineAsset(remoteUrl)) return uploadInlineCanvasAsset(remoteUrl);
+  if (isInlineAsset(remoteUrl)) return uploadInlineCanvasAsset(remoteUrl, signal);
   if (remoteUrl.startsWith('/media/canvas/')) return remoteUrl;
   if (typeof window !== 'undefined') {
     try {

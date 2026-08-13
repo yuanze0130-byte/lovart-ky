@@ -47,14 +47,23 @@ try {
     path.join(root, 'src', 'hooks', 'useCanvasMediaOptimization.ts'),
     'utf8',
   );
-  assert.match(canvasAreaSource, /const isLowDetail = scale < 0\.5/);
+  assert.match(canvasAreaSource, /const isLowDetail = scale < 0\.75/);
   assert.match(canvasAreaSource, /!isLowDetail && getNodePorts\(el\)\.map/);
   assert.match(canvasAreaSource, /activeVideoId === el\.id/);
   assert.match(canvasMediaSource, /if \(active\) \{[\s\S]*?<video/);
   assert.match(canvasMediaSource, /posterUrl \? \([\s\S]*?<img/);
   assert.doesNotMatch(historySource, /<video/);
-  assert.match(optimizationHookSource, /isMediaNearViewport\(element, panX, panY, scale\)/);
+  assert.match(optimizationHookSource, /isMediaNearViewport\(element, panX, panY, scale, viewportWidth, viewportHeight\)/);
   assert.match(optimizationHookSource, /runningKeysRef\.current\.size > 0/);
+  assert.match(optimizationHookSource, /MEDIA_OPTIMIZATION_MAX_ATTEMPTS = 3/);
+  assert.match(optimizationHookSource, /MEDIA_OPTIMIZATION_RETRY_BASE_MS = 15_000/);
+  assert.match(optimizationHookSource, /MEDIA_FINGERPRINT_SAMPLES = 64/);
+  assert.doesNotMatch(optimizationHookSource, /`\$\{element\.id\}:\$\{element\.content\}`/);
+  assert.doesNotMatch(optimizationHookSource, /source\.slice/);
+  assert.match(optimizationHookSource, /elementsRef\.current\.some/);
+  assert.doesNotMatch(source, /blobToDataUrl|uploadOrInline/);
+  assert.doesNotMatch(source, /uploadCanvasAssetBlob\([^\n]+\)\.catch\(\(\) => source\)/);
+  assert.match(source, /source\.startsWith\('data:'\) \|\| source\.startsWith\('blob:'\)/);
 
   console.log('Canvas media optimization tests passed.');
 } finally {

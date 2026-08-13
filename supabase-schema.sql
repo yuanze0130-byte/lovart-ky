@@ -82,6 +82,41 @@ CREATE TABLE IF NOT EXISTS redeem_code_redemptions (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Server-only ownership and settlement ledger for asynchronous AI tasks.
+CREATE TABLE IF NOT EXISTS async_generation_jobs (
+  request_id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('upscale', 'motion_transfer')),
+  task_id TEXT,
+  credit_type TEXT NOT NULL,
+  charged_credits INTEGER NOT NULL CHECK (charged_credits > 0),
+  refunded_credits INTEGER NOT NULL DEFAULT 0
+    CHECK (refunded_credits >= 0 AND refunded_credits <= charged_credits),
+  status TEXT NOT NULL DEFAULT 'created'
+    CHECK (status IN ('created', 'starting', 'queued', 'running', 'succeeded', 'failed', 'cancelled', 'outcome_unknown')),
+  output_url TEXT,
+  failure_reason TEXT,
+  meta JSONB NOT NULL DEFAULT '{}'::JSONB,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS async_generation_jobs_kind_task_idx
+  ON async_generation_jobs(kind, task_id)
+  WHERE task_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS async_generation_jobs_user_created_idx
+  ON async_generation_jobs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS async_generation_jobs_owner_task_idx
+  ON async_generation_jobs(user_id, kind, task_id)
+  WHERE task_id IS NOT NULL;
+
+ALTER TABLE async_generation_jobs ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE async_generation_jobs FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE async_generation_jobs TO service_role;
+
+-- Atomic terminal settlement (including refunds) is defined in
+-- sql/async-generation-jobs.sql after the shared credit ledger functions.
+
 -- Enable Row Level Security (RLS) on projects table
 ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
 

@@ -8,23 +8,50 @@ interface UseCanvasMediaOptimizationParams {
   setElements: Dispatch<SetStateAction<CanvasElement[]>>;
   pan: { x: number; y: number };
   scale: number;
+  viewportWidth?: number;
+  viewportHeight?: number;
   enabled?: boolean;
 }
 
 const OPTIMIZATION_OVERSCAN_PX = 300;
+const MEDIA_OPTIMIZATION_MAX_ATTEMPTS = 3;
+const MEDIA_OPTIMIZATION_RETRY_BASE_MS = 15_000;
+const MEDIA_FINGERPRINT_SAMPLES = 64;
+
+interface MediaOptimizationFailure {
+  attempts: number;
+  retryAt: number;
+}
+
+function getMediaOptimizationKey(element: CanvasElement) {
+  const source = element.content || '';
+  const stride = Math.max(1, Math.floor(source.length / MEDIA_FINGERPRINT_SAMPLES));
+  let fingerprint = 2_166_136_261;
+  for (let index = 0; index < source.length; index += stride) {
+    fingerprint = Math.imul(fingerprint ^ source.charCodeAt(index), 16_777_619);
+  }
+  if (source.length > 0) {
+    fingerprint = Math.imul(fingerprint ^ source.charCodeAt(source.length - 1), 16_777_619);
+  }
+  return `${element.id}:${source.length}:${fingerprint >>> 0}`;
+}
 
 function isMediaNearViewport(
   element: CanvasElement,
   panX: number,
   panY: number,
   scale: number,
+  viewportWidth?: number,
+  viewportHeight?: number,
 ) {
   if (typeof window === 'undefined') return false;
   const safeScale = Math.max(scale, 0.01);
+  const visibleWidth = viewportWidth && viewportWidth > 0 ? viewportWidth : window.innerWidth;
+  const visibleHeight = viewportHeight && viewportHeight > 0 ? viewportHeight : window.innerHeight;
   const left = (-panX - OPTIMIZATION_OVERSCAN_PX) / safeScale;
   const top = (-panY - OPTIMIZATION_OVERSCAN_PX) / safeScale;
-  const right = (-panX + window.innerWidth + OPTIMIZATION_OVERSCAN_PX) / safeScale;
-  const bottom = (-panY + window.innerHeight + OPTIMIZATION_OVERSCAN_PX) / safeScale;
+  const right = (-panX + visibleWidth + OPTIMIZATION_OVERSCAN_PX) / safeScale;
+  const bottom = (-panY + visibleHeight + OPTIMIZATION_OVERSCAN_PX) / safeScale;
   const width = element.width || (element.type === 'video' ? 400 : 480);
   const height = element.height || (element.type === 'video' ? 300 : 360);
   return element.x + width >= left
@@ -50,13 +77,17 @@ export function useCanvasMediaOptimization({
   setElements,
   pan,
   scale,
+  viewportWidth,
+  viewportHeight,
   enabled = true,
 }: UseCanvasMediaOptimizationParams) {
   const { x: panX, y: panY } = pan;
   const runningKeysRef = useRef(new Set<string>());
-  const failedKeysRef = useRef(new Set<string>());
+  const failedKeysRef = useRef(new Map<string, MediaOptimizationFailure>());
   const mountedRef = useRef(true);
+  const elementsRef = useRef(elements);
   const [queueTick, setQueueTick] = useState(0);
+  elementsRef.current = elements;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -68,15 +99,32 @@ export function useCanvasMediaOptimization({
   useEffect(() => {
     if (!enabled || typeof window === 'undefined') return;
     if (runningKeysRef.current.size > 0) return;
+    const now = Date.now();
+    let nextRetryAt = Number.POSITIVE_INFINITY;
     const candidate = elements.find((element) => {
-      if (!isMediaNearViewport(element, panX, panY, scale)) return false;
+      if (!isMediaNearViewport(element, panX, panY, scale, viewportWidth, viewportHeight)) return false;
       if (!needsImageOptimization(element) && !needsVideoOptimization(element)) return false;
-      const key = `${element.id}:${element.content}`;
-      return !runningKeysRef.current.has(key) && !failedKeysRef.current.has(key);
+      const key = getMediaOptimizationKey(element);
+      if (runningKeysRef.current.has(key)) return false;
+      const failure = failedKeysRef.current.get(key);
+      if (!failure) return true;
+      if (failure.attempts >= MEDIA_OPTIMIZATION_MAX_ATTEMPTS) return false;
+      if (failure.retryAt <= now) return true;
+      nextRetryAt = Math.min(nextRetryAt, failure.retryAt);
+      return false;
     });
-    if (!candidate?.content) return;
+    if (!candidate?.content) {
+      if (Number.isFinite(nextRetryAt)) {
+        const retryTimer = window.setTimeout(
+          () => setQueueTick((value) => value + 1),
+          Math.max(250, nextRetryAt - now),
+        );
+        return () => window.clearTimeout(retryTimer);
+      }
+      return;
+    }
 
-    const key = `${candidate.id}:${candidate.content}`;
+    const key = getMediaOptimizationKey(candidate);
     let started = false;
     const run = async () => {
       started = true;
@@ -85,6 +133,7 @@ export function useCanvasMediaOptimization({
         if (candidate.type === 'image') {
           const optimized = await optimizeCanvasImageAsset(candidate.content!);
           if (!mountedRef.current) return;
+          if (!elementsRef.current.some((element) => element.id === candidate.id && element.content === candidate.content)) return;
           setElements((current) => current.map((element) => (
             element.id === candidate.id && element.content === candidate.content
               ? { ...element, ...optimized }
@@ -100,6 +149,7 @@ export function useCanvasMediaOptimization({
         } else if (candidate.type === 'video') {
           const optimized = await optimizeCanvasVideoAsset(candidate.content!);
           if (!mountedRef.current) return;
+          if (!elementsRef.current.some((element) => element.id === candidate.id && element.content === candidate.content)) return;
           setElements((current) => current.map((element) => (
             element.id === candidate.id && element.content === candidate.content
               ? { ...element, ...optimized }
@@ -113,7 +163,11 @@ export function useCanvasMediaOptimization({
           });
         }
       } catch (error) {
-        failedKeysRef.current.add(key);
+        const attempts = (failedKeysRef.current.get(key)?.attempts || 0) + 1;
+        failedKeysRef.current.set(key, {
+          attempts,
+          retryAt: Date.now() + MEDIA_OPTIMIZATION_RETRY_BASE_MS * (2 ** (attempts - 1)),
+        });
         console.warn('[canvas-media] 素材预览优化失败，继续使用原始素材', error);
       } finally {
         runningKeysRef.current.delete(key);
@@ -135,5 +189,5 @@ export function useCanvasMediaOptimization({
         else window.clearTimeout(idleId);
       }
     };
-  }, [elements, enabled, panX, panY, queueTick, scale, setElements]);
+  }, [elements, enabled, panX, panY, queueTick, scale, setElements, viewportHeight, viewportWidth]);
 }

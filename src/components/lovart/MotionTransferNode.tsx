@@ -4,7 +4,6 @@ import { Check, Image as ImageIcon, Loader2, Video } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { CanvasElement } from './CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
-import { uploadInlineCanvasAsset } from '@/lib/canvas-asset-upload';
 
 type MotionModel = 'kling-2.6' | 'kling-3.0';
 type MotionMode = 'std' | 'pro' | '4k';
@@ -30,12 +29,77 @@ type MotionStartResponse = {
   status?: string;
   error?: string;
   details?: string;
+  requestId?: string;
+  recoverable?: boolean;
 };
 
 type MotionStatusResponse = MotionStartResponse & {
   jobStatus?: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   progress?: number;
 };
+
+type MotionRunInputs = {
+  sourceImage: string;
+  sourceVideo: string;
+  connectedPrompt?: string;
+  prompt: string;
+  model: MotionModel;
+  mode: MotionMode;
+  keepAudio: boolean;
+  orientation: MotionOrientation;
+  watermark: boolean;
+};
+
+type MotionRun = {
+  id: number;
+  controller: AbortController;
+  inputs: MotionRunInputs;
+};
+
+type CanvasAssetUploadResponse = {
+  error?: string;
+  url?: string;
+};
+
+const POLL_DELAY_MS = 3000;
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function hasSameRunInputs(left: MotionRunInputs, right: MotionRunInputs) {
+  return left.sourceImage === right.sourceImage
+    && left.sourceVideo === right.sourceVideo
+    && left.connectedPrompt === right.connectedPrompt
+    && left.prompt === right.prompt
+    && left.model === right.model
+    && left.mode === right.mode
+    && left.keepAudio === right.keepAudio
+    && left.orientation === right.orientation
+    && left.watermark === right.watermark;
+}
+
+async function uploadMotionAsset(asset: string, signal: AbortSignal) {
+  if (!/^data:(?:image|video)\/[\w.+-]+;base64,/i.test(asset)) return asset;
+
+  const blobResponse = await fetch(asset, { signal });
+  if (!blobResponse.ok) throw new Error('无法读取画布素材');
+
+  const blob = await blobResponse.blob();
+  const response = await authedFetch('/api/canvas-assets', {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type || 'application/octet-stream' },
+    body: blob,
+    signal,
+  });
+  const result = (await response.json().catch(() => ({}))) as CanvasAssetUploadResponse;
+
+  if (!response.ok || !result.url) {
+    throw new Error(result.error || '素材保存到服务器失败');
+  }
+
+  return result.url;
+}
 
 export function MotionTransferNode({
   sourceImage,
@@ -50,81 +114,181 @@ export function MotionTransferNode({
   onConfigChange,
   onComplete,
 }: MotionTransferNodeProps) {
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeRunRef = useRef<MotionRun | null>(null);
+  const nextRunIdRef = useRef(0);
+  const mountedRef = useRef(true);
+  const latestInputsRef = useRef<MotionRunInputs | null>(null);
+  const onCompleteRef = useRef(onComplete);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => () => {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-  }, []);
+  const latestInputs = sourceImage && sourceVideo
+    ? {
+        sourceImage,
+        sourceVideo,
+        connectedPrompt,
+        prompt,
+        model,
+        mode,
+        keepAudio,
+        orientation,
+        watermark,
+      }
+    : null;
+  latestInputsRef.current = latestInputs;
+  onCompleteRef.current = onComplete;
 
-  const finish = async (videoUrl: string) => {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+  const clearPollTimer = () => {
+    if (!pollTimerRef.current) return;
+    clearTimeout(pollTimerRef.current);
     pollTimerRef.current = null;
-    setProgress(100);
-    await onComplete?.(videoUrl);
+  };
+
+  const isCurrentRun = (run: MotionRun) => {
+    const currentInputs = latestInputsRef.current;
+    return mountedRef.current
+      && activeRunRef.current === run
+      && !run.controller.signal.aborted
+      && currentInputs !== null
+      && hasSameRunInputs(run.inputs, currentInputs);
+  };
+
+  const stopCurrentRun = (run: MotionRun) => {
+    if (!isCurrentRun(run)) return;
+    clearPollTimer();
+    activeRunRef.current = null;
     setIsGenerating(false);
   };
 
-  const pollStatus = (taskId: string) => {
-    pollTimerRef.current = setInterval(async () => {
-      try {
-        const response = await authedFetch(`/api/motion-transfer/status?taskId=${encodeURIComponent(taskId)}`);
-        const result = await response.json() as MotionStatusResponse;
-        if (!response.ok) throw new Error(result.details || result.error || '查询动作迁移状态失败');
-        setProgress(Math.max(0, Math.min(100, Number(result.progress) || 0)));
-        if (result.videoUrl) {
-          await finish(result.videoUrl);
-        } else if (result.jobStatus === 'failed' || result.jobStatus === 'cancelled') {
-          throw new Error(result.error || '动作迁移失败');
-        }
-      } catch (pollError) {
-        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-        pollTimerRef.current = null;
-        setError(pollError instanceof Error ? pollError.message : '动作迁移失败');
-        setIsGenerating(false);
-      }
-    }, 3000);
+  const failCurrentRun = (run: MotionRun, failure: unknown, fallback: string) => {
+    if (!isCurrentRun(run) || isAbortError(failure)) return;
+    run.controller.abort();
+    clearPollTimer();
+    activeRunRef.current = null;
+    setError(failure instanceof Error ? failure.message : fallback);
+    setIsGenerating(false);
+    setProgress(0);
   };
 
+  const finishCurrentRun = async (run: MotionRun, videoUrl: string) => {
+    if (!isCurrentRun(run)) return;
+    clearPollTimer();
+    setProgress(100);
+
+    await onCompleteRef.current?.(videoUrl);
+    if (!isCurrentRun(run)) return;
+    stopCurrentRun(run);
+  };
+
+  const pollStatus = async (run: MotionRun, taskId: string, requestId?: string) => {
+    if (!isCurrentRun(run)) return;
+
+    try {
+      const query = new URLSearchParams({ taskId });
+      if (requestId) query.set('requestId', requestId);
+      const response = await authedFetch(`/api/motion-transfer/status?${query.toString()}`, {
+        signal: run.controller.signal,
+      });
+      const result = await response.json() as MotionStatusResponse;
+      if (!isCurrentRun(run)) return;
+      if (!response.ok) throw new Error(result.details || result.error || '查询动作迁移状态失败');
+
+      setProgress(Math.max(0, Math.min(100, Number(result.progress) || 0)));
+      if (result.videoUrl) {
+        await finishCurrentRun(run, result.videoUrl);
+        return;
+      }
+      if (result.jobStatus === 'failed' || result.jobStatus === 'cancelled') {
+        throw new Error(result.error || '动作迁移失败');
+      }
+
+      if (!isCurrentRun(run)) return;
+      pollTimerRef.current = setTimeout(() => {
+        pollTimerRef.current = null;
+        void pollStatus(run, taskId, requestId);
+      }, POLL_DELAY_MS);
+    } catch (pollError) {
+      failCurrentRun(run, pollError, '动作迁移失败');
+    }
+  };
+
+  useEffect(() => {
+    const activeRun = activeRunRef.current;
+    if (!activeRun) return;
+
+    activeRun.controller.abort();
+    activeRunRef.current = null;
+    clearPollTimer();
+    setIsGenerating(false);
+    setProgress(0);
+    setError(null);
+  }, [sourceImage, sourceVideo, connectedPrompt, prompt, model, mode, keepAudio, orientation, watermark]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      activeRunRef.current?.controller.abort();
+      activeRunRef.current = null;
+      clearPollTimer();
+    };
+  }, []);
+
   const startTransfer = async () => {
-    if (!sourceImage || !sourceVideo || isGenerating) return;
+    const inputs = latestInputsRef.current;
+    if (!inputs || activeRunRef.current) return;
+
+    const run: MotionRun = {
+      id: ++nextRunIdRef.current,
+      controller: new AbortController(),
+      inputs,
+    };
+    activeRunRef.current = run;
     setError(null);
     setProgress(2);
     setIsGenerating(true);
+
     try {
       const [imageUrl, videoUrl] = await Promise.all([
-        uploadInlineCanvasAsset(sourceImage),
-        uploadInlineCanvasAsset(sourceVideo),
+        uploadMotionAsset(inputs.sourceImage, run.controller.signal),
+        uploadMotionAsset(inputs.sourceVideo, run.controller.signal),
       ]);
+      if (!isCurrentRun(run)) return;
+
       const response = await authedFetch('/api/motion-transfer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imageUrl,
           videoUrl,
-          prompt: connectedPrompt?.trim() || prompt.trim(),
-          model,
-          mode,
-          keepAudio,
-          orientation,
-          watermark,
+          prompt: inputs.connectedPrompt?.trim() || inputs.prompt.trim(),
+          model: inputs.model,
+          mode: inputs.mode,
+          keepAudio: inputs.keepAudio,
+          orientation: inputs.orientation,
+          watermark: inputs.watermark,
         }),
+        signal: run.controller.signal,
       });
       const result = await response.json() as MotionStartResponse;
-      if (!response.ok) throw new Error(result.details || result.error || '启动动作迁移失败');
+      const recoveryTaskId = response.headers.get('X-Doodleverse-Recoverable-Task-Id');
+      if (!isCurrentRun(run)) return;
+      if (!response.ok && !recoveryTaskId) throw new Error(result.details || result.error || '启动动作迁移失败');
       if (result.videoUrl) {
-        await finish(result.videoUrl);
+        await finishCurrentRun(run, result.videoUrl);
         return;
       }
-      if (!result.taskId) throw new Error('上游服务未返回任务 ID');
+      const taskId = result.taskId || recoveryTaskId;
+      if (!taskId) throw new Error('上游服务未返回任务 ID');
       setProgress(5);
-      pollStatus(result.taskId);
+      pollTimerRef.current = setTimeout(() => {
+        pollTimerRef.current = null;
+        void pollStatus(run, taskId, result.requestId);
+      }, POLL_DELAY_MS);
     } catch (startError) {
-      setError(startError instanceof Error ? startError.message : '启动动作迁移失败');
-      setIsGenerating(false);
-      setProgress(0);
+      failCurrentRun(run, startError, '启动动作迁移失败');
     }
   };
 
@@ -134,7 +298,15 @@ export function MotionTransferNode({
     : 'border-white/10 bg-white/[0.035] text-white/65 hover:bg-white/10 hover:text-white'}`;
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-[#1d1d20] p-3 text-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-white/10 bg-[#1d1d20] p-3 text-white shadow-2xl"
+      onMouseDown={(event) => {
+        const target = event.target as HTMLElement;
+        if (target.closest('button, textarea, input, select, a, [role="button"]')) {
+          event.stopPropagation();
+        }
+      }}
+    >
       <div className="mb-2 flex items-center justify-between">
         <div>
           <div className="text-xs font-semibold">动作迁移</div>

@@ -30,6 +30,7 @@ export type VideoGenerationStartResult = {
   chargedCredits?: number;
   priceVersion?: string;
   comflyEstimatedCost?: number;
+  recoverable?: boolean;
 };
 
 export type VideoGenerationStatusResult = {
@@ -102,6 +103,16 @@ export async function startVideoGeneration(input: {
   });
 
   const data = await response.json();
+
+  const recoverableTaskId = response.headers.get('X-Doodleverse-Recoverable-Task-Id');
+  if (!response.ok && recoverableTaskId) {
+    return {
+      ...data,
+      taskId: recoverableTaskId,
+      status: data.status || 'reconciling',
+      recoverable: true,
+    } as VideoGenerationStartResult;
+  }
 
   if (!response.ok || !data.taskId) {
     throw new Error(data.details || data.error || '启动视频生成失败');

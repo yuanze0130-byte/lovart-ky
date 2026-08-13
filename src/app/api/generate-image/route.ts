@@ -15,6 +15,39 @@ type ModelVariant = ImageModelId;
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9' | '9:21' | '2:1' | '1:2';
 type SupportedResolution = '1K' | '2K' | '4K';
+const GENERATION_DEBUG_LOGS_ENABLED = process.env.GENERATION_DEBUG_LOGS === 'true';
+
+function logGenerationDebug(event: string, details: Record<string, unknown>) {
+  if (!GENERATION_DEBUG_LOGS_ENABLED) return;
+  console.info(`[generate-image] ${event}`, details);
+}
+
+function getSafeErrorLogDetails(error: unknown) {
+  if (!error || typeof error !== 'object') return { name: typeof error };
+  const candidate = error as { name?: unknown; code?: unknown; status?: unknown };
+  return {
+    name: typeof candidate.name === 'string' ? candidate.name : 'Error',
+    code: typeof candidate.code === 'string' || typeof candidate.code === 'number' ? candidate.code : undefined,
+    status: typeof candidate.status === 'number' ? candidate.status : undefined,
+  };
+}
+
+class KnownUpstreamFailureError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'KnownUpstreamFailureError';
+  }
+}
+
+function isKnownUpstreamFailure(error: unknown) {
+  if (error instanceof KnownUpstreamFailureError) return true;
+  return Boolean(
+    error
+    && typeof error === 'object'
+    && typeof (error as { status?: unknown }).status === 'number'
+  );
+}
+
 type OfficialImageSizeValidationResult =
   | { ok: true; width: number; height: number; pixels: number }
   | { ok: false; reason: string };
@@ -224,27 +257,34 @@ const GPT_IMAGE_2_OFFICIAL_SIZE_MAP: Record<string, string> = {
   '1:2|4K': '1920x3840',
 };
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`${label} timed out after ${Math.round(timeoutMs / 1000)}s`));
-    }, timeoutMs);
-  });
-
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    if (timeoutId) clearTimeout(timeoutId);
-  }) as Promise<T>;
+function buildTimeoutSignal(timeoutMs: number, parentSignal?: AbortSignal) {
+  let timeoutSignal: AbortSignal;
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    timeoutSignal = AbortSignal.timeout(timeoutMs);
+  } else {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new Error(`Timed out after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+    timeoutSignal = controller.signal;
+  }
+  return parentSignal ? AbortSignal.any([parentSignal, timeoutSignal]) : timeoutSignal;
 }
 
-function buildTimeoutSignal(timeoutMs: number) {
-  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
-    return AbortSignal.timeout(timeoutMs);
-  }
-  const controller = new AbortController();
-  setTimeout(() => controller.abort(), timeoutMs);
-  return controller.signal;
+function waitForAbortableDelay(delayMs: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason instanceof Error ? signal.reason : new Error('Request cancelled'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason instanceof Error ? signal.reason : new Error('Request cancelled'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function normalizeAspectRatioForGptImage2(aspectRatio: SupportedAspectRatio | undefined) {
@@ -344,12 +384,12 @@ function extractImageFromGeminiResponse(response: GeminiOfficialResponse, baseRe
   throw new Error('No image data in Gemini response');
 }
 
-async function fetchImageUrlAsDataUrl(imageUrl: string) {
+async function fetchImageUrlAsDataUrl(imageUrl: string, signal?: AbortSignal) {
   const upstreamResponse = await fetch(imageUrl, {
-    signal: buildTimeoutSignal(DEFAULT_FETCH_IMAGE_TIMEOUT_MS),
+    signal: buildTimeoutSignal(DEFAULT_FETCH_IMAGE_TIMEOUT_MS, signal),
   });
   if (!upstreamResponse.ok) {
-    throw new Error(`Failed to fetch generated image URL (${upstreamResponse.status} ${upstreamResponse.statusText}): ${imageUrl}`);
+    throw new Error(`Failed to fetch generated image URL (${upstreamResponse.status} ${upstreamResponse.statusText})`);
   }
 
   const contentType = upstreamResponse.headers.get('content-type') || 'image/png';
@@ -358,9 +398,9 @@ async function fetchImageUrlAsDataUrl(imageUrl: string) {
   return `data:${contentType};base64,${base64Data}`;
 }
 
-async function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>) {
+async function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>, signal?: AbortSignal) {
   try {
-    console.log('[generate-image] proxy response summary:', {
+    logGenerationDebug('proxy response summary', {
       proxyTarget: baseResult.proxyTarget,
       providerMode: baseResult.providerMode,
       model: baseResult.model,
@@ -373,10 +413,6 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
         : typeof response?.choices?.[0]?.message?.content,
       hasParts: Array.isArray(response?.choices?.[0]?.message?.parts),
     });
-    console.log(
-      '[generate-image] proxy raw response preview:',
-      JSON.stringify(response, null, 2).slice(0, 5000)
-    );
   } catch {
     // ignore logging issues
   }
@@ -406,7 +442,7 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
   const directUrl = response.data?.[0]?.url || response.images?.[0]?.url;
   if (directUrl) {
     return {
-      imageData: await fetchImageUrlAsDataUrl(directUrl),
+      imageData: await fetchImageUrlAsDataUrl(directUrl, signal),
       textResponse: '',
       ...baseResult,
     };
@@ -420,7 +456,7 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
       const b64 = item?.b64_json || item?.image_base64;
       if (imageUrl) {
         return {
-          imageData: await fetchImageUrlAsDataUrl(imageUrl),
+          imageData: await fetchImageUrlAsDataUrl(imageUrl, signal),
           textResponse: '',
           ...baseResult,
         };
@@ -449,7 +485,7 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
     const urlMatch = messageContent.match(/https?:\/\/[^\s\)]+\.(jpg|jpeg|png|webp|gif)/i);
     if (urlMatch) {
       return {
-        imageData: await fetchImageUrlAsDataUrl(urlMatch[0]),
+        imageData: await fetchImageUrlAsDataUrl(urlMatch[0], signal),
         textResponse: '',
         ...baseResult,
       };
@@ -470,7 +506,7 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
   throw new Error('No image data in proxy response');
 }
 
-async function maybeTranslatePromptWithProxy(prompt: string) {
+async function maybeTranslatePromptWithProxy(prompt: string, signal: AbortSignal) {
   const hasChinese = /[\u4e00-\u9fff]/.test(prompt);
   const targets = getProxyTargets();
 
@@ -480,8 +516,7 @@ async function maybeTranslatePromptWithProxy(prompt: string) {
 
   try {
     const client = new OpenAI({ apiKey: targets[0].apiKey, baseURL: targets[0].baseURL });
-    const translateRes = await withTimeout(
-      client.chat.completions.create({
+    const translateRes = await client.chat.completions.create({
         model: process.env.GEMINI_PROXY_PROMPT_TRANSLATION_MODEL || 'gpt-4o',
         messages: [
           {
@@ -489,13 +524,11 @@ async function maybeTranslatePromptWithProxy(prompt: string) {
             content: `Translate the following image generation prompt to English. Only return the translated prompt, nothing else:\n${prompt}`,
           },
         ],
-      }),
-      DEFAULT_PROMPT_TRANSLATION_TIMEOUT_MS,
-      'Prompt translation'
-    );
+      }, { signal: buildTimeoutSignal(DEFAULT_PROMPT_TRANSLATION_TIMEOUT_MS, signal) });
     return translateRes.choices?.[0]?.message?.content?.trim() || prompt;
   } catch (error) {
-    console.warn('[generate-image] prompt translation skipped:', error instanceof Error ? error.message : String(error));
+    if (signal.aborted) throw error;
+    logGenerationDebug('prompt translation skipped', getSafeErrorLogDetails(error));
     return prompt;
   }
 }
@@ -504,6 +537,7 @@ async function pollGptImage2Task(params: {
   baseURL: string;
   apiKey: string;
   taskId: string;
+  signal: AbortSignal;
   timeoutMs?: number;
   intervalMs?: number;
 }) {
@@ -511,6 +545,7 @@ async function pollGptImage2Task(params: {
     baseURL,
     apiKey,
     taskId,
+    signal,
     timeoutMs = DEFAULT_GPT_IMAGE_2_POLL_TIMEOUT_MS,
     intervalMs = DEFAULT_GPT_IMAGE_2_POLL_INTERVAL_MS,
   } = params;
@@ -521,13 +556,14 @@ async function pollGptImage2Task(params: {
 
   while (Date.now() - startedAt < timeoutMs) {
     attemptCount += 1;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    await waitForAbortableDelay(intervalMs, signal);
 
     const statusResponse = await fetch(queryUrl, {
       headers: {
         Authorization: `Bearer ${apiKey}`,
       },
       cache: 'no-store',
+      signal,
     });
 
     const rawText = await statusResponse.text();
@@ -569,7 +605,7 @@ async function pollGptImage2Task(params: {
 
     if (status === 'FAILURE') {
       const failReason = typeof inner.fail_reason === 'string' ? inner.fail_reason : 'Unknown error';
-      throw new Error(`gpt-image-2 task failed: ${failReason}`);
+      throw new KnownUpstreamFailureError(`gpt-image-2 task failed: ${failReason}`);
     }
   }
 
@@ -625,7 +661,11 @@ function buildOfficialGptImage2FormData(params: {
   return formData;
 }
 
-async function generateViaProxy(payload: GenerateImagePayload) {
+async function generateViaProxy(
+  payload: GenerateImagePayload,
+  signal: AbortSignal,
+  onSubmissionStart: () => void,
+) {
   const targets = getProxyTargets();
 
   if (targets.length === 0) {
@@ -633,7 +673,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
   }
 
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
-  const translatedPrompt = await maybeTranslatePromptWithProxy(payload.prompt);
+  const translatedPrompt = await maybeTranslatePromptWithProxy(payload.prompt, signal);
   const normalizedAspectRatio = normalizeAspectRatioForGptImage2(payload.aspectRatio);
   const modelDefinition = getImageModelDefinition(payload.modelVariant || 'pro');
   const promptWithEditControls = payload.editMode === 'relight'
@@ -673,8 +713,14 @@ async function generateViaProxy(payload: GenerateImagePayload) {
   let lastError: unknown = null;
 
   for (const target of targets) {
+    let targetSubmissionStarted = false;
+    const markTargetSubmissionStarted = () => {
+      signal.throwIfAborted();
+      targetSubmissionStarted = true;
+      onSubmissionStart();
+    };
     try {
-      console.log('[generate-image] trying proxy target:', {
+      logGenerationDebug('trying proxy target', {
         target: target.label,
         baseURL: target.baseURL,
         model: proxyModel,
@@ -701,6 +747,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
 
       if (modelDefinition.transport === 'image-task') {
         const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/generations?async=true`;
+        markTargetSubmissionStarted();
         const imageResponse = await fetch(endpoint, {
           method: 'POST',
           headers: {
@@ -723,11 +770,12 @@ async function generateViaProxy(payload: GenerateImagePayload) {
                 }
               : {}),
           }),
+          signal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal),
         });
 
         const rawText = await imageResponse.text();
         if (!imageResponse.ok) {
-          throw new Error(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+          throw new KnownUpstreamFailureError(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
         }
 
         let submitPayload: Record<string, unknown>;
@@ -751,6 +799,7 @@ async function generateViaProxy(payload: GenerateImagePayload) {
           baseURL: target.baseURL,
           apiKey: target.apiKey,
           taskId,
+          signal,
         });
         response = taskResult.response;
         taskPayload = taskResult.taskPayload as Record<string, unknown>;
@@ -774,17 +823,19 @@ async function generateViaProxy(payload: GenerateImagePayload) {
           moderation: payload.officialOptions?.moderation,
         });
 
+        markTargetSubmissionStarted();
         const imageResponse = await fetch(endpoint, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${target.apiKey}`,
           },
           body: formData,
+          signal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal),
         });
 
         const rawText = await imageResponse.text();
         if (!imageResponse.ok) {
-          throw new Error(`gpt-image-2-official proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+          throw new KnownUpstreamFailureError(`gpt-image-2-official proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
         }
 
         let submitPayload: Record<string, unknown>;
@@ -808,20 +859,18 @@ async function generateViaProxy(payload: GenerateImagePayload) {
           baseURL: target.baseURL,
           apiKey: target.apiKey,
           taskId,
+          signal,
         });
         response = taskResult.response;
         taskPayload = taskResult.taskPayload as Record<string, unknown>;
         taskMetadata = taskResult.pollMetadata;
       } else {
         const client = new OpenAI({ apiKey: target.apiKey, baseURL: target.baseURL });
-        response = (await withTimeout(
-          client.chat.completions.create({
+        markTargetSubmissionStarted();
+        response = (await client.chat.completions.create({
             model: proxyModel,
             messages: [{ role: 'user', content }],
-          }),
-          DEFAULT_PROXY_IMAGE_TIMEOUT_MS,
-          `Proxy image generation (${target.label})`
-        )) as unknown as GeminiChatCompletion;
+          }, { signal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal) })) as unknown as GeminiChatCompletion;
       }
 
       const baseResult = {
@@ -841,13 +890,15 @@ async function generateViaProxy(payload: GenerateImagePayload) {
         ...(taskPayload ? { taskPayload } : {}),
       };
 
-      return extractImageFromProxyResponse(response, baseResult);
+      return extractImageFromProxyResponse(response, baseResult, signal);
     } catch (error) {
-      lastError = error;
+      if (signal.aborted || (targetSubmissionStarted && !isKnownUpstreamFailure(error))) throw error;
+      lastError = targetSubmissionStarted || isKnownUpstreamFailure(error)
+        ? error
+        : new KnownUpstreamFailureError(error instanceof Error ? error.message : 'Proxy preflight failed');
       console.warn('[generate-image] proxy target failed:', {
         target: target.label,
-        baseURL: target.baseURL,
-        error: error instanceof Error ? error.message : String(error),
+        ...getSafeErrorLogDetails(lastError),
       });
     }
   }
@@ -870,7 +921,9 @@ function buildGeminiGenerateUrl(baseUrl: string, model: string, apiVersion: stri
 async function generateViaGeminiRest(
   payload: GenerateImagePayload,
   parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>,
-  baseResult: Record<string, unknown>
+  baseResult: Record<string, unknown>,
+  signal: AbortSignal,
+  onSubmissionStart: () => void,
 ) {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image-preview';
@@ -886,14 +939,16 @@ async function generateViaGeminiRest(
     url.searchParams.set('key', apiKey);
   }
 
-  console.log('[generate-image] trying gemini REST target:', {
-    url: url.toString().replace(apiKey, '[redacted]'),
+  logGenerationDebug('trying gemini REST target', {
+    baseURL: url.origin,
     model,
     modelVariant: payload.modelVariant || 'pro',
     resolution: payload.resolution || '1K',
     aspectRatio: payload.aspectRatio || '1:1',
   });
 
+  signal.throwIfAborted();
+  onSubmissionStart();
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -915,13 +970,14 @@ async function generateViaGeminiRest(
         },
       },
     }),
+    signal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal),
   });
 
   const contentType = response.headers.get('content-type') || '';
   const responseText = await response.text();
 
   if (!response.ok) {
-    throw new Error(`Gemini REST failed (${response.status}): ${responseText.slice(0, 500)}`);
+    throw new KnownUpstreamFailureError(`Gemini REST failed (${response.status}): ${responseText.slice(0, 500)}`);
   }
 
   if (!contentType.includes('application/json')) {
@@ -935,7 +991,11 @@ async function generateViaGeminiRest(
   });
 }
 
-async function generateViaOfficial(payload: GenerateImagePayload) {
+async function generateViaOfficial(
+  payload: GenerateImagePayload,
+  signal: AbortSignal,
+  onSubmissionStart: () => void,
+) {
   const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
   const selectedModel = getImageModelDefinition(payload.modelVariant || 'pro');
   const model = process.env.GOOGLE_GEMINI_IMAGE_MODEL || selectedModel.proxyModel;
@@ -959,7 +1019,9 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 
   for (const reference of references) {
     if (reference.kind === 'url' && reference.url) {
-      const upstreamResponse = await fetch(reference.url);
+      const upstreamResponse = await fetch(reference.url, {
+        signal: buildTimeoutSignal(DEFAULT_FETCH_IMAGE_TIMEOUT_MS, signal),
+      });
       if (!upstreamResponse.ok) {
         throw new Error(`Failed to fetch reference image URL (${upstreamResponse.status} ${upstreamResponse.statusText}): ${reference.url}`);
       }
@@ -988,7 +1050,7 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
 
   parts.push({ text: finalPrompt });
 
-  console.log('[generate-image] trying gemini-compatible target:', {
+  logGenerationDebug('trying gemini-compatible target', {
     baseURL: geminiBaseUrl || 'google-default',
     model,
     modelVariant: payload.modelVariant || 'pro',
@@ -1011,9 +1073,11 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
   };
 
   if (geminiBaseUrl) {
-    return generateViaGeminiRest(payload, parts, baseResult);
+    return generateViaGeminiRest(payload, parts, baseResult, signal, onSubmissionStart);
   }
 
+  signal.throwIfAborted();
+  onSubmissionStart();
   const response = await ai.models.generateContent({
     model,
     contents: [
@@ -1028,6 +1092,7 @@ async function generateViaOfficial(payload: GenerateImagePayload) {
         aspectRatio: payload.aspectRatio || '1:1',
         imageSize: payload.resolution || '1K',
       },
+      abortSignal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal),
     },
   });
 
@@ -1162,33 +1227,36 @@ export async function POST(request: NextRequest) {
       budgetReserved = false;
       return NextResponse.json({ ...result, billing });
     };
-    upstreamStarted = true;
+    const markUpstreamSubmissionStarted = () => {
+      upstreamStarted = true;
+    };
 
     if (provider === 'proxy') {
-      const result = await generateViaProxy(payload);
+      const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     }
 
     if (provider === 'official') {
       if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-        const result = await generateViaProxy(payload);
+        const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
         return respondWithResult(result);
       }
-      const result = await generateViaOfficial(payload);
+      const result = await generateViaOfficial(payload, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     }
 
     if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-      const result = await generateViaProxy(payload);
+      const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     }
 
     try {
-      const result = await generateViaOfficial(payload);
+      const result = await generateViaOfficial(payload, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     } catch (officialError) {
-      console.warn('Official Gemini failed, fallback to proxy:', officialError);
-      const result = await generateViaProxy(payload);
+      if (request.signal.aborted || (upstreamStarted && !isKnownUpstreamFailure(officialError))) throw officialError;
+      console.warn('[generate-image] official provider failed; using proxy fallback', getSafeErrorLogDetails(officialError));
+      const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult({
         ...result,
         providerMode: 'auto',
@@ -1202,7 +1270,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    if (creditsConsumed && chargedUserId && chargeReferenceId) {
+    const upstreamOutcomeUnknown = upstreamStarted && !isKnownUpstreamFailure(error);
+
+    if (creditsConsumed && chargedUserId && chargeReferenceId && !upstreamOutcomeUnknown) {
       try {
         await refundCredits({
           userId: chargedUserId,
@@ -1244,7 +1314,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error('[generate-image] final error:', error);
+    if (upstreamOutcomeUnknown) {
+      console.error('[generate-image] upstream outcome unknown after cancellation or timeout', getSafeErrorLogDetails(error));
+      return NextResponse.json(
+        {
+          error: '图片任务已提交，但连接在结果返回前中断',
+          details: '为避免上游已经计费后重复退款，本次积分暂不自动退回。请保留请求编号并联系管理员核查。',
+          code: 'IMAGE_UPSTREAM_OUTCOME_UNKNOWN',
+          requestId: chargeReferenceId,
+        },
+        { status: 504 },
+      );
+    }
+
+    console.error('[generate-image] generation failed', getSafeErrorLogDetails(error));
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     return NextResponse.json(

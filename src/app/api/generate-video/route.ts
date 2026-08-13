@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
-import { consumeCredits, refundCredits } from '@/lib/credits';
+import { consumeCredits } from '@/lib/credits';
 import { normalizeGenerationJobStatus } from '@/lib/generation-jobs';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
@@ -9,6 +9,26 @@ import { isVideoPriceUnavailableError, quoteVideoCredits, type VideoPriceQuote }
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 
 type VideoModelMode = 'standard' | 'fast';
+type VideoTerminalStatus = 'succeeded' | 'failed' | 'cancelled' | 'outcome_unknown';
+
+class VideoUpstreamRejectedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'VideoUpstreamRejectedError';
+  }
+}
+
+class VideoUpstreamOutcomeUnknownError extends Error {
+  constructor(
+    message: string,
+    readonly code: 'VIDEO_UPSTREAM_OUTCOME_UNKNOWN' | 'VIDEO_TASK_BINDING_FAILED',
+    readonly status: 503 | 504,
+    readonly taskId?: string,
+  ) {
+    super(message);
+    this.name = 'VideoUpstreamOutcomeUnknownError';
+  }
+}
 
 interface GenerateVideoBody {
   requestId?: string;
@@ -36,6 +56,93 @@ interface GenerateVideoBody {
 function stringifyErrorPayload(value: unknown): string {
   if (typeof value === 'string') return value;
   try { return JSON.stringify(value); } catch { return String(value); }
+}
+
+function isAbortOrTransportError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  if (error.name === 'AbortError' || error.name === 'TimeoutError' || error instanceof TypeError) return true;
+  const code = String((error as Error & { code?: unknown }).code || '').toUpperCase();
+  return ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'].includes(code)
+    || /fetch failed|network|socket|connection reset|timed? ?out/i.test(error.message);
+}
+
+async function settleVideoJob(params: {
+  requestId: string;
+  userId: string;
+  status: VideoTerminalStatus;
+  taskId?: string | null;
+  failureReason?: string;
+  meta?: Record<string, string | number | boolean | null>;
+}) {
+  const supabase = createServiceRoleSupabaseClient();
+  const { data, error } = await supabase.rpc('settle_video_generation_job_atomic', {
+    p_request_id: params.requestId,
+    p_user_id: params.userId,
+    p_terminal_status: params.status,
+    p_task_id: params.taskId || null,
+    p_failure_reason: params.failureReason?.slice(0, 1_000) || null,
+    p_meta: params.meta || {},
+  });
+  if (error) throw error;
+  const result = data?.[0];
+  if (!result?.success && result?.error_code !== 'VIDEO_JOB_TERMINAL_CONFLICT') {
+    throw new Error(result?.error_code || 'VIDEO_JOB_SETTLEMENT_FAILED');
+  }
+  return result;
+}
+
+async function bindVideoTaskWithRetry(params: {
+  requestId: string;
+  userId: string;
+  taskId: string;
+  status: 'queued' | 'running';
+}) {
+  const supabase = createServiceRoleSupabaseClient();
+  let lastError: unknown = new Error('Video task binding failed');
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const { data, error } = await supabase
+      .from('video_generation_jobs')
+      .update({ task_id: params.taskId, status: params.status, updated_at: new Date().toISOString() })
+      .eq('request_id', params.requestId)
+      .eq('user_id', params.userId)
+      .is('task_id', null)
+      .select('task_id,status')
+      .maybeSingle();
+
+    if (!error && data?.task_id === params.taskId) return;
+    if (error) lastError = error;
+
+    const { data: existing, error: verifyError } = await supabase
+      .from('video_generation_jobs')
+      .select('task_id,status')
+      .eq('request_id', params.requestId)
+      .eq('user_id', params.userId)
+      .maybeSingle();
+    if (!verifyError && existing?.task_id === params.taskId) return;
+    if (!verifyError && existing?.task_id && existing.task_id !== params.taskId) {
+      throw new VideoUpstreamOutcomeUnknownError(
+        'Video request is already bound to a different upstream task',
+        'VIDEO_TASK_BINDING_FAILED',
+        503,
+        params.taskId,
+      );
+    }
+    if (verifyError) lastError = verifyError;
+    if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+  }
+
+  console.error('[generate-video] failed to persist upstream task id after retries', {
+    requestId: params.requestId,
+    taskId: params.taskId,
+    errorName: lastError instanceof Error ? lastError.name : typeof lastError,
+  });
+  throw new VideoUpstreamOutcomeUnknownError(
+    'Upstream accepted the video task, but its task ID could not be persisted after retries',
+    'VIDEO_TASK_BINDING_FAILED',
+    503,
+    params.taskId,
+  );
 }
 
 function inferRatioFromSize(size?: string): VideoAspectRatio {
@@ -78,6 +185,22 @@ function responseFromExistingJob(job: {
   price_version: string;
   estimated_comfly_cost_micros: number;
 }) {
+  if (job.status === 'outcome_unknown') {
+    const body = {
+      error: 'The upstream video outcome is awaiting reconciliation',
+      code: 'VIDEO_UPSTREAM_OUTCOME_UNKNOWN',
+      requestId: job.request_id,
+      taskId: job.task_id || undefined,
+      chargedCredits: job.charged_credits,
+      refundedCredits: 0,
+      recoverable: true,
+      idempotent: true,
+    };
+    return NextResponse.json(body, {
+      status: 409,
+      headers: job.task_id ? { 'X-Doodleverse-Recoverable-Task-Id': job.task_id } : undefined,
+    });
+  }
   if (!job.task_id) return null;
   return NextResponse.json({
     requestId: job.request_id,
@@ -101,6 +224,7 @@ export async function POST(request: NextRequest) {
   let quote: VideoPriceQuote | null = null;
   let budgetReserved = false;
   let upstreamStarted = false;
+  let knownTaskId: string | null = null;
   let releaseExecution: (() => void) | null = null;
 
   try {
@@ -239,28 +363,79 @@ export async function POST(request: NextRequest) {
       camera_fixed: definition.supportsCameraFixed ? config.cameraFixed : undefined,
     };
 
-    await supabase.from('video_generation_jobs').update({ status: 'starting', updated_at: new Date().toISOString() }).eq('request_id', requestId);
+    const { error: startingError } = await supabase
+      .from('video_generation_jobs')
+      .update({ status: 'starting', updated_at: new Date().toISOString() })
+      .eq('request_id', requestId)
+      .eq('user_id', user.id);
+    if (startingError) throw startingError;
+    if (request.signal.aborted) throw new DOMException('Request aborted before upstream submission', 'AbortError');
+
     upstreamStarted = true;
-    const response = await fetch(`${baseUrl}/v2/videos/generations`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: request.signal,
-    });
-    const rawText = await response.text();
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/v2/videos/generations`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: request.signal,
+      });
+    } catch (fetchError) {
+      if (isAbortOrTransportError(fetchError)) {
+        throw new VideoUpstreamOutcomeUnknownError(
+          'The upstream request was dispatched, but its response was interrupted',
+          'VIDEO_UPSTREAM_OUTCOME_UNKNOWN',
+          504,
+        );
+      }
+      throw fetchError;
+    }
+
+    if (!response.ok) {
+      let rejectedText = '';
+      try { rejectedText = await response.text(); } catch { /* HTTP status is already definitive. */ }
+      let rejectedData: { error?: unknown; message?: unknown } = {};
+      try { rejectedData = rejectedText ? JSON.parse(rejectedText) as typeof rejectedData : {}; } catch { rejectedData = {}; }
+      throw new VideoUpstreamRejectedError(
+        `Upstream video API rejected the task (${response.status}): ${stringifyErrorPayload(rejectedData.error || rejectedData.message || rejectedText)}`,
+      );
+    }
+
+    let rawText = '';
+    try {
+      rawText = await response.text();
+    } catch {
+      throw new VideoUpstreamOutcomeUnknownError(
+        'The upstream accepted the request, but its response body was interrupted',
+        'VIDEO_UPSTREAM_OUTCOME_UNKNOWN',
+        504,
+      );
+    }
     let data: { id?: string; task_id?: string; status?: string; error?: unknown; message?: unknown } = {};
     try { data = rawText ? JSON.parse(rawText) as typeof data : {}; } catch { data = {}; }
-    if (!response.ok) throw new Error(`上游视频接口错误 (${response.status}): ${stringifyErrorPayload(data.error || data.message || rawText)}`);
-
     const taskId = data.task_id || data.id;
-    if (!taskId) throw new Error(`上游接口未返回任务 ID: ${rawText.slice(0, 500)}`);
+    if (!taskId) {
+      throw new VideoUpstreamOutcomeUnknownError(
+        'The upstream returned success without a recoverable task ID',
+        'VIDEO_UPSTREAM_OUTCOME_UNKNOWN',
+        504,
+      );
+    }
+    knownTaskId = taskId;
     const taskStatus = data.status || 'queued';
-    const { error: taskUpdateError } = await supabase.from('video_generation_jobs').update({
-      task_id: taskId,
-      status: taskStatus,
-      updated_at: new Date().toISOString(),
-    }).eq('request_id', requestId).eq('user_id', user.id);
-    if (taskUpdateError) console.error('Failed to attach upstream video task to billing job:', taskUpdateError);
+    const normalizedTaskStatus = normalizeGenerationJobStatus(taskStatus);
+    await bindVideoTaskWithRetry({
+      requestId,
+      userId: user.id,
+      taskId,
+      status: normalizedTaskStatus === 'running' || normalizedTaskStatus === 'succeeded' ? 'running' : 'queued',
+    });
+    if (normalizedTaskStatus === 'failed' || normalizedTaskStatus === 'cancelled') {
+      throw new VideoUpstreamRejectedError(`Upstream video task entered terminal status: ${taskStatus}`);
+    }
+    if (normalizedTaskStatus === 'succeeded') {
+      await settleVideoJob({ requestId, userId: user.id, status: 'succeeded', taskId });
+    }
     await finalizeAiBudget(requestId, 'completed').catch((error) => {
       console.error('[generate-video] 无法完成成本预留记录', error);
     });
@@ -286,26 +461,32 @@ export async function POST(request: NextRequest) {
     if (isVideoPriceUnavailableError(error)) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 422 });
     }
+    const upstreamOutcomeUnknown = error instanceof VideoUpstreamOutcomeUnknownError
+      || (upstreamStarted && isAbortOrTransportError(error));
+    const recoverableTaskId = error instanceof VideoUpstreamOutcomeUnknownError
+      ? error.taskId || knownTaskId
+      : knownTaskId;
+
     if (creditsConsumed && chargedUserId && requestId) {
       try {
-        const refund = await refundCredits({
+        await settleVideoJob({
+          requestId,
           userId: chargedUserId,
-          amount: chargedAmount,
-          type: 'refund',
-          originalType: 'generate_video',
-          description: '视频任务启动失败，自动退回积分',
-          referenceId: requestId,
-          meta: { reason: error instanceof Error ? error.message : 'UNKNOWN_ERROR' },
+          status: upstreamOutcomeUnknown ? 'outcome_unknown' : 'failed',
+          taskId: recoverableTaskId,
+          failureReason: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
+          meta: {
+            upstreamStarted,
+            outcomeUnknown: upstreamOutcomeUnknown,
+            errorName: error instanceof Error ? error.name : typeof error,
+          },
         });
-        const supabase = createServiceRoleSupabaseClient();
-        await supabase.from('video_generation_jobs').update({
-          status: 'refunded',
-          refunded_credits: refund.refundedCredits,
-          failure_reason: error instanceof Error ? error.message.slice(0, 1000) : 'UNKNOWN_ERROR',
-          updated_at: new Date().toISOString(),
-        }).eq('request_id', requestId).eq('user_id', chargedUserId);
-      } catch (refundError) {
-        console.error('Failed to refund credits after video generation error:', refundError);
+      } catch (settlementError) {
+        console.error('[generate-video] failed to settle video billing job', {
+          requestId,
+          outcomeUnknown: upstreamOutcomeUnknown,
+          errorName: settlementError instanceof Error ? settlementError.name : typeof settlementError,
+        });
       }
     }
     if (budgetReserved && requestId) {
@@ -322,6 +503,21 @@ export async function POST(request: NextRequest) {
     }
     if (isAiToolRequestError(error)) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined });
+    }
+    if (upstreamOutcomeUnknown) {
+      const outcomeError = error instanceof VideoUpstreamOutcomeUnknownError ? error : null;
+      return NextResponse.json({
+        error: outcomeError?.message || 'The upstream video outcome is unknown after a connection interruption',
+        code: outcomeError?.code || 'VIDEO_UPSTREAM_OUTCOME_UNKNOWN',
+        requestId,
+        taskId: recoverableTaskId || undefined,
+        chargedCredits: chargedAmount,
+        refundedCredits: 0,
+        recoverable: true,
+      }, {
+        status: outcomeError?.status || 504,
+        headers: recoverableTaskId ? { 'X-Doodleverse-Recoverable-Task-Id': recoverableTaskId } : undefined,
+      });
     }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: 'Failed to generate video', details: message, requestId, priceVersion: quote?.priceVersion }, { status: 500 });

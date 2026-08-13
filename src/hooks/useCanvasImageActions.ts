@@ -61,11 +61,13 @@ async function cropImageWithCanvas(imageSrc: string, options: CropOptions) {
   };
 }
 
-async function pollUpscaleTask(taskId: string, timeoutMs = 300000, pollIntervalMs = 3500) {
+async function pollUpscaleTask(taskId: string, requestId?: string, timeoutMs = 300000, pollIntervalMs = 3500) {
   const startedAt = Date.now();
 
   while (true) {
-    const response = await authedFetch(`/api/upscale-status?taskId=${encodeURIComponent(taskId)}`);
+    const query = new URLSearchParams({ taskId });
+    if (requestId) query.set('requestId', requestId);
+    const response = await authedFetch(`/api/upscale-status?${query.toString()}`);
     const data = await response.json();
 
     if (!response.ok) {
@@ -209,7 +211,8 @@ export function useCanvasImageActions({ setElements, setSelectedIds }: UseCanvas
       });
 
       const data = await response.json();
-      if (!response.ok) {
+      const recoveryTaskId = response.headers.get('X-Doodleverse-Recoverable-Task-Id');
+      if (!response.ok && !recoveryTaskId) {
         throw new Error(data.details || data.error || '启动超分失败');
       }
 
@@ -237,11 +240,12 @@ export function useCanvasImageActions({ setElements, setSelectedIds }: UseCanvas
         return;
       }
 
-      if (!data.taskId) {
+      const taskId = data.taskId || recoveryTaskId;
+      if (!taskId) {
         throw new Error('超分任务未返回 taskId');
       }
 
-      const imageData = await pollUpscaleTask(data.taskId);
+      const imageData = await pollUpscaleTask(taskId, data.requestId);
       const dimensions = await getImageDimensions(imageData);
       const displaySize = getSmartDisplaySize(dimensions);
       const resultId = uuidv4();

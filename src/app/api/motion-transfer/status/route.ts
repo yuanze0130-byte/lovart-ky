@@ -1,6 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { getGenerationJobFailureKind, normalizeGenerationJobStatus, normalizeGenerationProgress, normalizeProviderStatus } from '@/lib/generation-jobs';
+import { enforceUserRateLimit, isAiToolRequestError } from '@/lib/ai-tool-request-guards';
+import {
+  bindAsyncGenerationTask,
+  findAsyncGenerationJobByRequest,
+  findOwnedAsyncGenerationJob,
+  settleAsyncGenerationJob,
+  updateAsyncGenerationJob,
+} from '@/lib/async-generation-jobs';
 
 function normalizeVideoBaseUrl(value: string) {
   return value.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
@@ -17,9 +25,64 @@ function firstString(...values: unknown[]) {
 
 export async function GET(request: NextRequest) {
   try {
-    await requireUser(request);
+    const user = await requireUser(request);
+    enforceUserRateLimit(user.id, 'motion-transfer-status', { limit: 60, windowMs: 60_000 });
     const taskId = request.nextUrl.searchParams.get('taskId');
     if (!taskId) return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
+    if (taskId.length > 256) return NextResponse.json({ error: 'Task ID is invalid' }, { status: 400 });
+    const requestId = request.nextUrl.searchParams.get('requestId');
+    if (requestId && !/^[0-9a-f-]{36}$/i.test(requestId)) {
+      return NextResponse.json({ error: 'Request ID is invalid' }, { status: 400 });
+    }
+
+    let job = await findOwnedAsyncGenerationJob({
+      userId: user.id,
+      kind: 'motion_transfer',
+      taskId,
+    });
+    if (!job && requestId) {
+      const recoveryJob = await findAsyncGenerationJobByRequest({
+        requestId,
+        userId: user.id,
+        kind: 'motion_transfer',
+      });
+      if (recoveryJob && (!recoveryJob.task_id || recoveryJob.status === 'outcome_unknown')) {
+        job = await bindAsyncGenerationTask({
+          requestId,
+          userId: user.id,
+          kind: 'motion_transfer',
+          taskId,
+          status: 'running',
+        });
+      }
+    }
+    if (!job) return NextResponse.json({ error: 'Motion transfer task not found' }, { status: 404 });
+
+    if (job.status === 'succeeded' && job.output_url) {
+      return NextResponse.json({
+        taskId,
+        status: 'succeeded',
+        jobStatus: 'succeeded',
+        progress: 100,
+        videoUrl: job.output_url,
+        requestId: job.request_id,
+        chargedCredits: job.charged_credits,
+        refundedCredits: job.refunded_credits,
+      });
+    }
+    if (job.status === 'failed' || job.status === 'cancelled') {
+      return NextResponse.json({
+        taskId,
+        status: job.status,
+        jobStatus: job.status,
+        failureKind: job.status === 'cancelled' ? 'cancelled' : 'failed',
+        progress: 0,
+        error: job.failure_reason || 'Motion transfer task failed',
+        requestId: job.request_id,
+        chargedCredits: job.charged_credits,
+        refundedCredits: job.refunded_credits,
+      });
+    }
 
     const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     const baseUrl = normalizeVideoBaseUrl(process.env.VIDEO_API_BASE_URL || process.env.GEMINI_BASE_URL || 'https://ai.comfly.org');
@@ -29,6 +92,7 @@ export async function GET(request: NextRequest) {
     const endpoint = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
     const response = await fetch(endpoint, {
       headers: { Authorization: `Bearer ${apiKey}` },
+      signal: request.signal,
     });
     const rawText = await response.text();
     let result: Record<string, unknown> = {};
@@ -57,18 +121,68 @@ export async function GET(request: NextRequest) {
       contentUrls[0],
     ) || '';
 
+    const terminalWithoutOutput = jobStatus === 'succeeded' && !videoUrl;
+    const effectiveJobStatus = terminalWithoutOutput ? 'failed' : jobStatus;
+    const failureReason = firstString(
+      data.fail_reason,
+      result.error,
+      terminalWithoutOutput ? 'Upstream task completed without a video URL' : undefined,
+    );
+    let settledJob = job;
+    if (effectiveJobStatus === 'failed' || effectiveJobStatus === 'cancelled') {
+      settledJob = await settleAsyncGenerationJob({
+        job,
+        status: effectiveJobStatus,
+        failureReason: failureReason || 'Motion transfer task failed',
+        meta: { taskId, providerStatus: normalizedStatus || null },
+      });
+    } else if (effectiveJobStatus === 'succeeded') {
+      settledJob = await settleAsyncGenerationJob({
+        job,
+        status: 'succeeded',
+        outputUrl: videoUrl,
+      });
+    } else {
+      settledJob = await updateAsyncGenerationJob({
+        requestId: job.request_id,
+        userId: user.id,
+        kind: 'motion_transfer',
+        status: effectiveJobStatus === 'running' ? 'running' : 'queued',
+      });
+    }
+
+    const persistedJobStatus = settledJob.status === 'succeeded'
+      || settledJob.status === 'failed'
+      || settledJob.status === 'cancelled'
+      ? settledJob.status
+      : effectiveJobStatus;
+    const persistedFailureStatus = persistedJobStatus === 'failed' || persistedJobStatus === 'cancelled';
     return NextResponse.json({
       taskId,
-      status: normalizedStatus,
-      jobStatus,
-      failureKind: getGenerationJobFailureKind(normalizedStatus),
-      progress: normalizeGenerationProgress(result.progress as number | string | undefined, jobStatus),
-      videoUrl: videoUrl || undefined,
-      error: data.fail_reason || result.error,
+      status: persistedJobStatus === 'succeeded'
+        ? 'succeeded'
+        : persistedFailureStatus ? persistedJobStatus : normalizedStatus,
+      jobStatus: persistedJobStatus,
+      failureKind: persistedFailureStatus ? getGenerationJobFailureKind(persistedJobStatus) : undefined,
+      progress: normalizeGenerationProgress(result.progress as number | string | undefined, persistedJobStatus),
+      videoUrl: settledJob.output_url || videoUrl || undefined,
+      error: persistedFailureStatus ? settledJob.failure_reason || failureReason : undefined,
       model: result.model,
+      requestId: job.request_id,
+      chargedCredits: job.charged_credits,
+      refundedCredits: settledJob.refunded_credits,
     });
   } catch (error) {
     if (isNotAuthenticatedError(error)) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        {
+          status: error.status,
+          headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined,
+        },
+      );
+    }
     return NextResponse.json({ error: '查询动作迁移状态失败', details: error instanceof Error ? error.message : '未知错误' }, { status: 500 });
   }
 }

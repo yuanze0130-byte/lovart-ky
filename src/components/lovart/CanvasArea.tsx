@@ -496,6 +496,8 @@ export function CanvasArea({
     const pendingPanRef = useRef<{ x: number; y: number } | null>(null);
     const elementUpdateFrameRef = useRef<number | null>(null);
     const pendingElementUpdatesRef = useRef<Array<{ id: string; updates: Partial<CanvasElement> }> | null>(null);
+    const connectionDraftFrameRef = useRef<number | null>(null);
+    const pendingConnectionPointRef = useRef<{ x: number; y: number } | null>(null);
 
     const applyQueuedElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
         if (onElementsChange) {
@@ -530,6 +532,28 @@ export function CanvasArea({
         });
     };
 
+    const queueConnectionPoint = (point: { x: number; y: number }) => {
+        pendingConnectionPointRef.current = point;
+        if (connectionDraftFrameRef.current !== null) return;
+
+        connectionDraftFrameRef.current = window.requestAnimationFrame(() => {
+            connectionDraftFrameRef.current = null;
+            const pendingPoint = pendingConnectionPointRef.current;
+            pendingConnectionPointRef.current = null;
+            if (pendingPoint) {
+                setConnectionDraft((current) => current ? { ...current, pointer: pendingPoint } : null);
+            }
+        });
+    };
+
+    const clearQueuedConnectionPoint = () => {
+        if (connectionDraftFrameRef.current !== null) {
+            window.cancelAnimationFrame(connectionDraftFrameRef.current);
+            connectionDraftFrameRef.current = null;
+        }
+        pendingConnectionPointRef.current = null;
+    };
+
     const flushQueuedInteractionUpdates = () => {
         if (panFrameRef.current !== null) {
             window.cancelAnimationFrame(panFrameRef.current);
@@ -548,6 +572,8 @@ export function CanvasArea({
             applyQueuedElementUpdates(pendingElementUpdatesRef.current);
             pendingElementUpdatesRef.current = null;
         }
+
+        clearQueuedConnectionPoint();
     };
 
     const getCanvasPoint = (clientX: number, clientY: number) => ({
@@ -783,7 +809,7 @@ export function CanvasArea({
         const point = getCanvasPoint(e.clientX, e.clientY);
 
         if (connectionDraft) {
-            setConnectionDraft((current) => current ? { ...current, pointer: point } : null);
+            queueConnectionPoint(point);
         }
 
         if (isDrawing && currentPath) {
@@ -949,6 +975,7 @@ export function CanvasArea({
         event.preventDefault();
         event.stopPropagation();
         if (port.direction !== 'output') return;
+        clearQueuedConnectionPoint();
         setConnectionDraft({
             sourceNodeId: element.id,
             sourcePort: port,
@@ -960,6 +987,7 @@ export function CanvasArea({
         event.preventDefault();
         event.stopPropagation();
         const draft = connectionDraft;
+        clearQueuedConnectionPoint();
         setConnectionDraft(null);
         if (!draft || draft.sourceNodeId === target.id || !canConnectPorts(draft.sourcePort, targetPort)) return;
         if (wouldCreateConnectionCycle(elements, draft.sourceNodeId, target.id)) return;
@@ -1091,7 +1119,10 @@ export function CanvasArea({
             if (isDragging || isResizing || isPanning || isDrawing || isSelecting) {
                 handleMouseUp();
             }
-            if (connectionDraft) setConnectionDraft(null);
+            if (connectionDraft) {
+                clearQueuedConnectionPoint();
+                setConnectionDraft(null);
+            }
         };
         window.addEventListener('mouseup', handleGlobalMouseUp);
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
@@ -1101,13 +1132,34 @@ export function CanvasArea({
     useEffect(() => () => {
         if (panFrameRef.current !== null) window.cancelAnimationFrame(panFrameRef.current);
         if (elementUpdateFrameRef.current !== null) window.cancelAnimationFrame(elementUpdateFrameRef.current);
+        if (connectionDraftFrameRef.current !== null) window.cancelAnimationFrame(connectionDraftFrameRef.current);
     }, []);
 
-    const selectedElement = elements.find((el) => selectedIds.includes(el.id));
-    const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
-    const isLowDetail = scale < 0.5;
     const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+    const selectedElement = elements.find((el) => selectedIdSet.has(el.id));
+    const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
+    const isLowDetail = scale < 0.75;
     const elementById = useMemo(() => new Map(elements.map((element) => [element.id, element])), [elements]);
+    const selectedGroupIds = useMemo(() => {
+        const groupIds = new Set<string>();
+        selectedIds.forEach((id) => {
+            const groupId = elementById.get(id)?.groupId;
+            if (groupId) groupIds.add(groupId);
+        });
+        return groupIds;
+    }, [elementById, selectedIds]);
+    const linkedToSelectionIds = useMemo(() => {
+        const linkedIds = new Set<string>();
+        selectedIds.forEach((id) => {
+            elementById.get(id)?.linkedElements?.forEach((linkedId) => linkedIds.add(linkedId));
+        });
+        elements.forEach((element) => {
+            if (element.linkedElements?.some((linkedId) => selectedIdSet.has(linkedId))) {
+                linkedIds.add(element.id);
+            }
+        });
+        return linkedIds;
+    }, [elementById, elements, selectedIdSet, selectedIds]);
     const connectedContentsIndex = useMemo(() => buildConnectedNodeContentsIndex(elements), [elements]);
     const handleToolRunningChange = useCallback((elementId: string, running: boolean) => {
         setRunningToolNodeIds((current) => {
@@ -1165,10 +1217,10 @@ export function CanvasArea({
 
     useEffect(() => {
         if (!activeVideoId) return;
-        if (isLowDetail || !selectedIds.includes(activeVideoId) || !elements.some((element) => element.id === activeVideoId)) {
+        if (isLowDetail || !selectedIdSet.has(activeVideoId) || !elementById.has(activeVideoId)) {
             setActiveVideoId(null);
         }
-    }, [activeVideoId, elements, isLowDetail, selectedIds]);
+    }, [activeVideoId, elementById, isLowDetail, selectedIdSet]);
 
     const handleActivateVideo = useCallback((elementId: string) => {
         onSelect([elementId]);
@@ -1761,7 +1813,7 @@ export function CanvasArea({
                             const to = getPortAnchor(toEl, targetPortId, 'input');
                             const bend = Math.max(80, Math.abs(to.x - from.x) * 0.45);
                             const curve = `M ${from.x} ${from.y} C ${from.x + bend} ${from.y}, ${to.x - bend} ${to.y}, ${to.x} ${to.y}`;
-                            const selected = selectedIds.includes(connector.id);
+                            const selected = selectedIdSet.has(connector.id);
 
                             return (
                                 <g key={connector.id}>
@@ -1806,7 +1858,7 @@ export function CanvasArea({
                             <div
                                 key={el.id}
                                 data-canvas-element="true"
-                                className={`absolute group rounded-xl transition-[box-shadow,transform] ${featureSettings.tilt3d && !isLowDetail ? 'canvas-tilt-node' : ''} ${featureSettings.marquee && !isLowDetail && selectedIds.includes(el.id) ? 'canvas-marquee-node' : ''} ${featureSettings.generationAnimation && !isLowDetail && isGenerating && (el.type === 'image-generator' || el.type === 'video-generator') ? 'canvas-generation-animation' : ''} ${selectedIds.includes(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''} ${connectionDraft
+                                className={`absolute group rounded-xl transition-[box-shadow,transform] ${featureSettings.tilt3d && !isLowDetail ? 'canvas-tilt-node' : ''} ${featureSettings.marquee && !isLowDetail && selectedIdSet.has(el.id) ? 'canvas-marquee-node' : ''} ${featureSettings.generationAnimation && !isLowDetail && isGenerating && (el.type === 'image-generator' || el.type === 'video-generator') ? 'canvas-generation-animation' : ''} ${selectedIdSet.has(el.id) ? 'z-10' : ''} ${relightTargetId === el.id ? 'z-20' : ''} ${connectionDraft
                                     && connectionDraft.sourceNodeId !== el.id
                                     && SMART_CONNECTION_TARGET_TYPES.has(el.type)
                                     && getPreferredCompatibleInputPort(el, connectionDraft.sourcePort)
@@ -1850,7 +1902,7 @@ export function CanvasArea({
                                             title={`${port.direction === 'input' ? '输入' : '输出'}：${port.label}`}
                                         >
                                             <span
-                                                className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-white/10 bg-slate-950/90 px-2 py-1 text-[10px] font-medium text-white shadow-lg backdrop-blur-sm transition-opacity ${port.direction === 'input' ? 'left-6' : 'right-6'} ${selectedIds.includes(el.id) || compatible || connectionDraft?.sourceNodeId === el.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                                className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-white/10 bg-slate-950/90 px-2 py-1 text-[10px] font-medium text-white shadow-lg backdrop-blur-sm transition-opacity ${port.direction === 'input' ? 'left-6' : 'right-6'} ${selectedIdSet.has(el.id) || compatible || connectionDraft?.sourceNodeId === el.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                             >
                                                 {el.type === 'image' && port.id === 'image-out' ? '拖出作为参考图' : port.label}
                                             </span>
@@ -2134,15 +2186,9 @@ export function CanvasArea({
                                     );
                                 })()}
 
-                                {!selectedIds.includes(el.id) && !isDrawing && (() => {
-                                    const isLinked = selectedIds.some((selectedId) => {
-                                        const selectedEl = elements.find((e) => e.id === selectedId);
-                                        return selectedEl?.linkedElements?.includes(el.id) || el.linkedElements?.includes(selectedId);
-                                    });
-                                    const isInSelectedGroup = selectedIds.some((selectedId) => {
-                                        const selectedEl = elements.find((e) => e.id === selectedId);
-                                        return Boolean(selectedEl?.groupId && el.groupId && selectedEl.groupId === el.groupId);
-                                    });
+                                {!selectedIdSet.has(el.id) && !isDrawing && (() => {
+                                    const isLinked = linkedToSelectionIds.has(el.id);
+                                    const isInSelectedGroup = Boolean(el.groupId && selectedGroupIds.has(el.groupId));
 
                                     if (isInSelectedGroup) {
                                         return <div className="absolute inset-0 rounded-[inherit] border border-blue-300/90 pointer-events-none opacity-60 dark:border-sky-300/60" />;
@@ -2151,7 +2197,7 @@ export function CanvasArea({
                                     return isLinked ? <div className="absolute inset-0 border-2 border-dashed border-purple-400 pointer-events-none opacity-60" /> : null;
                                 })()}
 
-                                {selectedIds.includes(el.id) && !isDrawing && (
+                                {selectedIdSet.has(el.id) && !isDrawing && (
                                     <>
                                         <div className={`absolute inset-0 pointer-events-none dark:rounded-[inherit] ${relightTargetId === el.id ? 'border-2 border-sky-300/85 shadow-[0_0_0_1px_rgba(125,211,252,0.18),0_0_28px_rgba(56,189,248,0.18)]' : 'border-2 border-blue-500 dark:border-sky-400/90 dark:shadow-[0_0_0_1px_rgba(14,165,233,0.18),0_0_28px_rgba(56,189,248,0.24)]'}` } />
                                         {selectedIds.length === 1 && (
@@ -2176,7 +2222,7 @@ export function CanvasArea({
 
                                 {relightTargetId === el.id && el.type === 'image' && !isDrawing && (
                                     <>
-                                        {!selectedIds.includes(el.id) && (
+                                        {!selectedIdSet.has(el.id) && (
                                             <div className="absolute inset-0 rounded-[inherit] border-2 border-amber-300/95 pointer-events-none shadow-[0_0_0_1px_rgba(253,224,71,0.18),0_0_34px_rgba(251,191,36,0.28)]" />
                                         )}
                                         <div className="absolute left-3 top-3 pointer-events-none rounded-full border border-amber-200/70 bg-black/60 px-3 py-1 text-[10px] font-semibold tracking-[0.12em] text-amber-100 backdrop-blur-sm">

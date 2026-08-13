@@ -115,7 +115,7 @@ async function handleJsonResponse<T>(response: Response): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function sourceToFile(source: string, filename = 'input.png'): Promise<File> {
+export async function sourceToFile(source: string, filename = 'input.png', signal?: AbortSignal): Promise<File> {
   if (source.startsWith('data:')) {
     const match = source.match(/^data:(.*?);base64,(.*)$/);
     if (!match) throw new Error('Invalid data URL');
@@ -125,7 +125,7 @@ export async function sourceToFile(source: string, filename = 'input.png'): Prom
     return new File([buffer], filename, { type: mimeType });
   }
 
-  const response = await fetch(source);
+  const response = await fetch(source, { signal });
   if (!response.ok) {
     throw new Error(`Failed to fetch source image: ${response.status}`);
   }
@@ -138,7 +138,7 @@ export async function sourceToFile(source: string, filename = 'input.png'): Prom
   });
 }
 
-export async function uploadFileToRunningHub(apiKey: string, file: File): Promise<RunningHubUploadData> {
+export async function uploadFileToRunningHub(apiKey: string, file: File, signal?: AbortSignal): Promise<RunningHubUploadData> {
   const url = `${RUNNINGHUB_API_HOST}/openapi/v2/media/upload/binary`;
   const formData = new FormData();
   formData.append('file', file);
@@ -147,6 +147,7 @@ export async function uploadFileToRunningHub(apiKey: string, file: File): Promis
     method: 'POST',
     headers: buildAuthHeaders(apiKey),
     body: formData,
+    signal,
   });
 
   const json = await handleJsonResponse<RunningHubApiEnvelope<RunningHubUploadApiData>>(response);
@@ -166,7 +167,8 @@ export async function submitRunningHubTask(
   apiKey: string,
   webappId: string,
   nodeInfoList: RunningHubNodeInfo[],
-  instanceType?: 'default' | 'plus'
+  instanceType?: 'default' | 'plus',
+  signal?: AbortSignal,
 ): Promise<RunningHubSubmitResult> {
   const url = `${RUNNINGHUB_API_HOST}/task/openapi/ai-app/run`;
   const payload = {
@@ -183,6 +185,7 @@ export async function submitRunningHubTask(
       ...buildAuthHeaders(apiKey),
     },
     body: JSON.stringify(payload),
+    signal,
   });
 
   const json = await handleJsonResponse<RunningHubApiEnvelope<RunningHubSubmitApiData>>(response);
@@ -196,7 +199,7 @@ export async function submitRunningHubTask(
   };
 }
 
-export async function queryRunningHubTask(apiKey: string, taskId: string): Promise<RunningHubQueryResult> {
+export async function queryRunningHubTask(apiKey: string, taskId: string, signal?: AbortSignal): Promise<RunningHubQueryResult> {
   const url = `${RUNNINGHUB_API_HOST}/openapi/v2/query`;
   const response = await fetch(url, {
     method: 'POST',
@@ -205,6 +208,7 @@ export async function queryRunningHubTask(apiKey: string, taskId: string): Promi
       ...buildAuthHeaders(apiKey),
     },
     body: JSON.stringify({ taskId }),
+    signal,
   });
 
   const json = await handleJsonResponse<RunningHubApiEnvelope<RunningHubQueryApiData> | RunningHubQueryApiData>(response);

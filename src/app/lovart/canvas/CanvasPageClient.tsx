@@ -277,7 +277,9 @@ function LovartCanvasContent() {
         setElements,
         pan,
         scale,
-        enabled: !isHydrating,
+        viewportWidth: viewportSize.width,
+        viewportHeight: viewportSize.height,
+        enabled: !isHydrating && Boolean(user),
     });
 
     const selectedRhaiElements = useMemo(() => {

@@ -5,6 +5,37 @@ import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { normalizeGenerationJobStatus } from '@/lib/generation-jobs';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { estimatedCostMicrosFromCredits, isAiSafetyError, runMeteredAiOperation } from '@/lib/ai-safety';
+import {
+  AsyncGenerationTaskBindingError,
+  bindAsyncGenerationTask,
+  createAsyncGenerationJob,
+  settleAsyncGenerationJob,
+  updateAsyncGenerationJob,
+} from '@/lib/async-generation-jobs';
+import type { AsyncGenerationJobRow } from '@/lib/supabase';
+
+class MotionTransferUpstreamResponseError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MotionTransferUpstreamResponseError';
+  }
+}
+
+function isAbortOrTimeoutError(error: unknown) {
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError');
+}
+
+function isLikelyTransportError(error: unknown) {
+  if (!(error instanceof Error) || error instanceof MotionTransferUpstreamResponseError) return false;
+  const code = String((error as Error & { code?: unknown }).code || '').toUpperCase();
+  return error instanceof TypeError
+    || ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'].includes(code)
+    || /fetch failed|network|socket|connection reset|timed? ?out/i.test(error.message);
+}
+
+function isMotionTransferOutcomeUnknown(error: unknown) {
+  return isAbortOrTimeoutError(error) || isLikelyTransportError(error);
+}
 
 type MotionModel = 'kling-2.6' | 'kling-3.0';
 type MotionMode = 'std' | 'pro' | '4k';
@@ -86,6 +117,9 @@ function buildPayload(input: {
 }
 
 export async function POST(request: NextRequest) {
+  const asyncJobRef: { current: AsyncGenerationJobRow | null } = { current: null };
+  let upstreamSubmissionStarted = false;
+  let acceptedTaskId: string | null = null;
   try {
     const user = await requireUser(request);
     enforceUserRateLimit(user.id, 'motion-transfer', { limit: 4, windowMs: 60_000 });
@@ -115,6 +149,14 @@ export async function POST(request: NextRequest) {
     const chargedAmount = getVideoCreditCost(mode === 'std' ? 'fast' : 'standard');
     const requestId = randomUUID();
     const effectiveModel = resolveModel(model, mode);
+    asyncJobRef.current = await createAsyncGenerationJob({
+      requestId,
+      userId: user.id,
+      kind: 'motion_transfer',
+      creditType: 'generate_video',
+      chargedCredits: chargedAmount,
+      meta: { model: effectiveModel, mode, orientation },
+    });
     const { result: motionResult, billing } = await runMeteredAiOperation({
       requestId,
       userId: user.id,
@@ -125,6 +167,7 @@ export async function POST(request: NextRequest) {
       description: `动作迁移 (${model}/${mode})`,
       referenceType: 'motion_transfer',
       meta: { model: effectiveModel, mode },
+      shouldRefundOnError: (error) => !(upstreamSubmissionStarted && isMotionTransferOutcomeUnknown(error)),
       run: async () => {
         const payload = buildPayload({
           imageUrl: absoluteAssetUrl(body.imageUrl!, request.nextUrl.origin),
@@ -137,6 +180,8 @@ export async function POST(request: NextRequest) {
           watermark: body.watermark === true,
         });
         const endpoint = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+        request.signal.throwIfAborted();
+        upstreamSubmissionStarted = true;
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
@@ -147,7 +192,7 @@ export async function POST(request: NextRequest) {
         let result: Record<string, unknown> = {};
         try { result = rawText ? JSON.parse(rawText) as Record<string, unknown> : {}; } catch { result = {}; }
         if (!response.ok) {
-          throw new Error(`上游动作迁移接口错误 (${response.status}): ${stringifyErrorPayload(result.error || result.message || rawText)}`);
+          throw new MotionTransferUpstreamResponseError(`上游动作迁移接口错误 (${response.status}): ${stringifyErrorPayload(result.error || result.message || rawText)}`);
         }
 
         const data = result.data && typeof result.data === 'object' ? result.data as Record<string, unknown> : {};
@@ -166,24 +211,79 @@ export async function POST(request: NextRequest) {
           outputUrls[0],
           typeof data.output === 'string' ? data.output : undefined,
         ) || '';
-        if (!taskId && !videoUrl) throw new Error(`上游未返回任务 ID 或视频地址: ${rawText.slice(0, 500)}`);
+        if (!taskId && !videoUrl) throw new MotionTransferUpstreamResponseError(`上游未返回任务 ID 或视频地址: ${rawText.slice(0, 500)}`);
+        if (taskId) acceptedTaskId = taskId;
+        const jobStatus = normalizeGenerationJobStatus(String(result.status || data.status || (videoUrl ? 'succeeded' : 'queued')));
+        if (jobStatus === 'failed' || jobStatus === 'cancelled') {
+          throw new MotionTransferUpstreamResponseError('Motion transfer task was rejected by the upstream provider');
+        }
+        if (taskId) {
+          asyncJobRef.current = await bindAsyncGenerationTask({
+            requestId,
+            userId: user.id,
+            kind: 'motion_transfer',
+            taskId,
+            status: videoUrl
+              ? 'succeeded'
+              : jobStatus === 'running' || jobStatus === 'succeeded' ? 'running' : 'queued',
+            outputUrl: videoUrl || undefined,
+          });
+        } else {
+          asyncJobRef.current = await updateAsyncGenerationJob({
+            requestId,
+            userId: user.id,
+            kind: 'motion_transfer',
+            status: 'succeeded',
+            outputUrl: videoUrl,
+          });
+        }
         return {
           taskId: taskId || undefined,
           videoUrl: videoUrl || undefined,
           status: result.status || data.status,
-          jobStatus: normalizeGenerationJobStatus(String(result.status || data.status || (videoUrl ? 'succeeded' : 'queued'))),
+          jobStatus,
           model: effectiveModel,
           mode,
         };
       },
     });
-    return NextResponse.json({ ...motionResult, billing });
+    return NextResponse.json({ ...motionResult, requestId, billing });
   } catch (error) {
+    const asyncJob = asyncJobRef.current;
+    const recoveryTaskId = error instanceof AsyncGenerationTaskBindingError ? error.taskId : acceptedTaskId;
+    const upstreamOutcomeUnknown = Boolean(recoveryTaskId)
+      || (upstreamSubmissionStarted && isMotionTransferOutcomeUnknown(error));
+    if (asyncJob && asyncJob.status !== 'succeeded') {
+      await settleAsyncGenerationJob({
+        job: asyncJob,
+        status: upstreamOutcomeUnknown ? 'outcome_unknown' : 'failed',
+        failureReason: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
+        meta: { upstreamOutcomeUnknown, ...(recoveryTaskId ? { recoveryTaskId } : {}) },
+        refund: !upstreamOutcomeUnknown,
+      }).catch((settlementError) => {
+        console.error('[motion-transfer] Failed to settle rejected async task', settlementError);
+      });
+    }
     if (isNotAuthenticatedError(error)) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     if (isAiSafetyError(error) || isAiToolRequestError(error)) {
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
+      );
+    }
+    if (upstreamOutcomeUnknown) {
+      return NextResponse.json(
+        {
+          error: 'Motion transfer task outcome is unknown after cancellation or timeout',
+          code: 'MOTION_TRANSFER_UPSTREAM_OUTCOME_UNKNOWN',
+          requestId: asyncJob?.request_id,
+          taskId: recoveryTaskId || undefined,
+          recoverable: Boolean(recoveryTaskId),
+        },
+        {
+          status: 504,
+          headers: recoveryTaskId ? { 'X-Doodleverse-Recoverable-Task-Id': recoveryTaskId } : undefined,
+        },
       );
     }
     return NextResponse.json({ error: '动作迁移启动失败', details: error instanceof Error ? error.message : '未知错误' }, { status: 500 });

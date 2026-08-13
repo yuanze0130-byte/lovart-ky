@@ -80,6 +80,8 @@ npm run build
 npm run start
 ```
 
+生产启动默认只监听 `127.0.0.1:3000`，请由 Nginx 对外提供 HTTPS，不要直接暴露 Node 端口。
+
 ## 主要环境变量
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
@@ -89,6 +91,8 @@ npm run start
 - `NEXT_PUBLIC_AUTH_EMAIL_MODE`：Supabase 邮件登录模式，模板配置完成后设为 `otp`
 - `CANVAS_ASSET_DIR`：画布图片持久化目录，生产环境应位于代码目录之外
 - `CANVAS_ASSET_MAX_BYTES`：单张图片上传上限，默认 20 MB
+- `CANVAS_VIDEO_ASSET_MAX_BYTES`：单个视频素材上限，2 核 4G 服务器建议 64 MB
+- `CANVAS_ASSET_MAX_CONCURRENT_WRITES` / `CANVAS_ASSET_MAX_CONCURRENT_WRITES_PER_USER`：素材落盘并发，默认全局 2、单用户 1
 - `GEMINI_PROVIDER`
 - `GEMINI_API_KEY`
 - `GEMINI_BASE_URL`

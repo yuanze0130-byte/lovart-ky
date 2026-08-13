@@ -7,7 +7,38 @@ import {
   normalizeProviderStatus,
 } from '@/lib/generation-jobs';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
-import { refundCredits } from '@/lib/credits';
+import { enforceUserRateLimit, isAiToolRequestError } from '@/lib/ai-tool-request-guards';
+
+type VideoTerminalStatus = 'succeeded' | 'failed' | 'cancelled';
+
+async function settleVideoJob(params: {
+  requestId: string;
+  userId: string;
+  taskId: string;
+  status: VideoTerminalStatus;
+  failureReason?: string;
+  providerStatus?: string;
+}) {
+  const supabase = createServiceRoleSupabaseClient();
+  const { data, error } = await supabase.rpc('settle_video_generation_job_atomic', {
+    p_request_id: params.requestId,
+    p_user_id: params.userId,
+    p_terminal_status: params.status,
+    p_task_id: params.taskId,
+    p_failure_reason: params.failureReason?.slice(0, 1_000) || null,
+    p_meta: {
+      taskId: params.taskId,
+      providerStatus: params.providerStatus || null,
+      failureReason: params.failureReason?.slice(0, 1_000) || null,
+    },
+  });
+  if (error) throw error;
+  const result = data?.[0];
+  if (!result?.success && result?.error_code !== 'VIDEO_JOB_TERMINAL_CONFLICT') {
+    throw new Error(result?.error_code || 'VIDEO_JOB_SETTLEMENT_FAILED');
+  }
+  return result;
+}
 
 function stringifyErrorPayload(value: unknown): string {
   if (typeof value === 'string') return value;
@@ -57,19 +88,41 @@ function normalizeVideoBaseURL(baseUrl: string) {
 export async function GET(request: NextRequest) {
   try {
     const user = await requireUser(request);
+    enforceUserRateLimit(user.id, 'video-status', { limit: 60, windowMs: 60_000 });
     const taskId = request.nextUrl.searchParams.get('taskId');
     if (!taskId) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });
+    }
+    if (taskId.length > 256) {
+      return NextResponse.json({ error: 'Task ID is invalid' }, { status: 400 });
     }
 
     const supabase = createServiceRoleSupabaseClient();
     const { data: billingJob, error: billingLookupError } = await supabase
       .from('video_generation_jobs')
-      .select('request_id,user_id,task_id,charged_credits,refunded_credits,status')
+      .select('request_id,user_id,task_id,charged_credits,refunded_credits,status,failure_reason')
       .eq('task_id', taskId)
       .eq('user_id', user.id)
       .maybeSingle();
     if (billingLookupError) throw billingLookupError;
+    if (!billingJob) {
+      return NextResponse.json({ error: 'Video task not found' }, { status: 404 });
+    }
+
+    if (billingJob.status === 'failed' || billingJob.status === 'cancelled' || billingJob.status === 'refunded') {
+      const cachedStatus = billingJob.status === 'cancelled' ? 'cancelled' : 'failed';
+      return NextResponse.json({
+        id: taskId,
+        status: cachedStatus,
+        jobStatus: cachedStatus,
+        failureKind: cachedStatus,
+        progress: 0,
+        error: billingJob.failure_reason || 'Video task failed',
+        requestId: billingJob.request_id,
+        chargedCredits: billingJob.charged_credits,
+        refundedCredits: billingJob.refunded_credits,
+      });
+    }
 
     const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
     const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || 'https://ai.comfly.org');
@@ -116,56 +169,62 @@ export async function GET(request: NextRequest) {
       data.data?.content?.url ||
       data.data?.content?.urls?.[0];
 
-    const resolvedProgress = normalizeGenerationProgress(data.progress, jobStatus);
     const failureReason = data.data?.fail_reason || stringifyErrorPayload(data.error || '上游视频任务失败');
 
-    if (billingJob && jobStatus === 'failed') {
-      const refund = await refundCredits({
+    let persistedStatus = jobStatus;
+    let refundedCredits = billingJob.refunded_credits;
+    if (jobStatus === 'failed' || jobStatus === 'cancelled' || jobStatus === 'succeeded') {
+      const settlement = await settleVideoJob({
+        requestId: billingJob.request_id,
         userId: user.id,
-        amount: billingJob.charged_credits,
-        type: 'refund',
-        originalType: 'generate_video',
-        description: '视频任务最终失败，自动退回积分',
-        referenceId: billingJob.request_id,
-        meta: { taskId, providerStatus: normalizedStatus || null, reason: failureReason.slice(0, 1000) },
+        taskId,
+        status: jobStatus,
+        failureReason: jobStatus === 'succeeded' ? undefined : failureReason,
+        providerStatus: normalizedStatus || jobStatus,
       });
-      await supabase.from('video_generation_jobs').update({
-        status: 'refunded',
-        refunded_credits: refund.refundedCredits,
-        failure_reason: failureReason.slice(0, 1000),
-        updated_at: new Date().toISOString(),
-      }).eq('request_id', billingJob.request_id).eq('user_id', user.id);
-    } else if (billingJob && jobStatus === 'succeeded') {
-      await supabase.from('video_generation_jobs').update({
-        status: 'succeeded',
-        updated_at: new Date().toISOString(),
-      }).eq('request_id', billingJob.request_id).eq('user_id', user.id);
-    } else if (billingJob) {
-      await supabase.from('video_generation_jobs').update({
-        status: normalizedStatus || jobStatus,
-        updated_at: new Date().toISOString(),
-      }).eq('request_id', billingJob.request_id).eq('user_id', user.id);
+      const settledStatus = settlement?.job_status;
+      persistedStatus = settledStatus === 'refunded' ? 'failed' : normalizeGenerationJobStatus(settledStatus || jobStatus);
+      refundedCredits = settlement?.refunded_credits ?? billingJob.refunded_credits;
+    } else {
+      const { error: statusUpdateError } = await supabase
+        .from('video_generation_jobs')
+        .update({ status: jobStatus, updated_at: new Date().toISOString() })
+        .eq('request_id', billingJob.request_id)
+        .eq('user_id', user.id)
+        .in('status', ['created', 'starting', 'queued', 'running', 'outcome_unknown']);
+      if (statusUpdateError) throw statusUpdateError;
     }
+
+    const persistedFailure = persistedStatus === 'failed' || persistedStatus === 'cancelled';
 
     return NextResponse.json({
       id: data.id || data.task_id,
-      status: normalizedStatus || data.status,
-      jobStatus,
-      failureKind: getGenerationJobFailureKind(normalizedStatus),
-      progress: resolvedProgress,
-      videoUrl: resolvedVideoUrl,
+      status: persistedFailure || persistedStatus === 'succeeded' ? persistedStatus : normalizedStatus || data.status,
+      jobStatus: persistedStatus,
+      failureKind: persistedFailure ? getGenerationJobFailureKind(persistedStatus) : undefined,
+      progress: normalizeGenerationProgress(data.progress, persistedStatus),
+      videoUrl: persistedStatus === 'succeeded' ? resolvedVideoUrl : undefined,
       model: data.model,
       createdAt: data.created_at,
       size: data.size,
       seconds: data.seconds,
-      error: data.data?.fail_reason,
-      requestId: billingJob?.request_id,
-      chargedCredits: billingJob?.charged_credits,
-      refundedCredits: jobStatus === 'failed' ? billingJob?.charged_credits : billingJob?.refunded_credits,
+      error: persistedFailure ? failureReason : undefined,
+      requestId: billingJob.request_id,
+      chargedCredits: billingJob.charged_credits,
+      refundedCredits,
     });
   } catch (error: unknown) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    if (isAiToolRequestError(error)) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        {
+          status: error.status,
+          headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined,
+        },
+      );
     }
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
