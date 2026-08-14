@@ -50,6 +50,58 @@ export async function uploadInlineCanvasAsset(asset: string, signal?: AbortSigna
 
 export const uploadInlineCanvasImage = uploadInlineCanvasAsset;
 
+function collectCanvasAssetUrls(value: unknown, urls: Set<string>) {
+  if (typeof value === 'string') {
+    try {
+      const parsed = new URL(value, window.location.origin);
+      if (parsed.origin === window.location.origin && parsed.pathname.startsWith('/media/canvas/')) urls.add(value);
+    } catch {
+      // Ignore values that are not URLs.
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((entry) => collectCanvasAssetUrls(entry, urls));
+    return;
+  }
+  if (value && typeof value === 'object') {
+    Object.values(value as Record<string, unknown>).forEach((entry) => collectCanvasAssetUrls(entry, urls));
+  }
+}
+
+function replaceCanvasAssetUrls(value: unknown, signed: Record<string, string>): unknown {
+  if (typeof value === 'string') return signed[value] || value;
+  if (Array.isArray(value)) return value.map((entry) => replaceCanvasAssetUrls(entry, signed));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => [key, replaceCanvasAssetUrls(entry, signed)]));
+  }
+  return value;
+}
+
+export async function refreshCanvasAssetUrls<T>(value: T): Promise<T> {
+  const urls = new Set<string>();
+  collectCanvasAssetUrls(value, urls);
+  if (urls.size === 0) return value;
+  const values = Array.from(urls);
+  const signed: Record<string, string> = {};
+  for (let offset = 0; offset < values.length; offset += 150) {
+    const response = await authedFetch('/api/canvas-assets/sign', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls: values.slice(offset, offset + 150) }),
+    });
+    const result = await response.json().catch(() => ({})) as { signed?: Record<string, string> };
+    if (!response.ok || !result.signed) throw new Error('无法刷新画布素材访问权限');
+    Object.assign(signed, result.signed);
+  }
+  return replaceCanvasAssetUrls(value, signed) as T;
+}
+
+export function refreshCanvasElementAssetUrls(elements: CanvasElement[]) {
+  return refreshCanvasAssetUrls(elements);
+}
+
 export async function importRemoteCanvasAsset(
   remoteUrl: string,
   kind: RemoteCanvasAssetKind = 'video',

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, open, readdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, open, readdir, rename, rm, stat, statfs } from 'node:fs/promises';
 import path from 'node:path';
+import { createSignedCanvasAssetUrl } from '@/lib/canvas-asset-access';
 
 const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_MAX_VIDEO_BYTES = 64 * 1024 * 1024;
@@ -8,6 +9,7 @@ const DEFAULT_USER_STORAGE_MAX_BYTES = 2 * 1024 * 1024 * 1024;
 const DEFAULT_MAX_CONCURRENT_WRITES = 2;
 const DEFAULT_MAX_CONCURRENT_WRITES_PER_USER = 1;
 const DEFAULT_MAX_QUEUED_WRITES = 20;
+const DEFAULT_MIN_FREE_BYTES = 5 * 1024 * 1024 * 1024;
 const SIGNATURE_BYTES = 16;
 const DEFAULT_ASSET_ROOT = path.join(/*turbopackIgnore: true*/ process.cwd(), '.local-data', 'canvas-assets');
 
@@ -89,6 +91,10 @@ function getMaxVideoBytes() {
 
 function getUserStorageMaxBytes() {
   return getPositiveInteger('CANVAS_USER_STORAGE_MAX_BYTES', DEFAULT_USER_STORAGE_MAX_BYTES);
+}
+
+function getMinFreeBytes() {
+  return getPositiveInteger('CANVAS_ASSET_MIN_FREE_BYTES', DEFAULT_MIN_FREE_BYTES);
 }
 
 function getWriteLimits() {
@@ -305,7 +311,7 @@ function buildSavedAsset(userId: string, fileName: string, size: number, asset: 
     kind: asset.kind,
     fileName,
     size,
-    url: `/media/canvas/${userId}/${fileName}`,
+    url: createSignedCanvasAssetUrl(userId, fileName),
   };
 }
 
@@ -335,6 +341,12 @@ export async function saveCanvasAssetStream(
   try {
     if (options.signal?.aborted) throw createCanceledError();
     await mkdir(/*turbopackIgnore: true*/ userDirectory, { recursive: true, mode: 0o755 });
+    const fileSystem = await statfs(/* turbopackIgnore: true */ userDirectory);
+    const availableBytes = fileSystem.bavail * fileSystem.bsize;
+    const reservedBytes = options.declaredBytes ?? absoluteMaxBytes;
+    if (availableBytes - reservedBytes < getMinFreeBytes()) {
+      throw new CanvasAssetStorageError('服务器素材空间不足，请稍后再试', 507);
+    }
     fileHandle = await open(/*turbopackIgnore: true*/ temporaryPath, 'wx', 0o644);
 
     const hash = createHash('sha256');

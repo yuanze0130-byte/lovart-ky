@@ -10,6 +10,7 @@ import { useSupabase } from '@/hooks/useSupabase';
 import { useUserCredits } from '@/hooks/useUserCredits';
 import type { ProjectRow } from '@/lib/supabase';
 import { persistProjectThumbnail } from '@/lib/project-thumbnail';
+import { refreshCanvasAssetUrls } from '@/lib/canvas-asset-upload';
 import Link from 'next/link';
 
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
@@ -65,7 +66,7 @@ export default function ProjectsPage() {
                     .order('updated_at', { ascending: false });
 
                 if (projectsResult.error) throw projectsResult.error;
-                const projectRows = (projectsResult.data || []) as Project[];
+                const projectRows = await refreshCanvasAssetUrls((projectsResult.data || []) as Project[]);
                 if (cancelled) return;
 
                 setProjects(projectRows);
@@ -86,7 +87,7 @@ export default function ProjectsPage() {
                         return;
                     }
 
-                    const rows = (canvasRows || []) as CanvasElementThumbnailRow[];
+                    const rows = await refreshCanvasAssetUrls((canvasRows || []) as CanvasElementThumbnailRow[]);
                     if (cancelled) return;
 
                     const derivedThumbnailMap = new Map(rows.map((row) => [row.project_id, row.content]));

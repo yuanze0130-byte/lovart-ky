@@ -93,6 +93,8 @@ npm run start
 - `CANVAS_ASSET_MAX_BYTES`：单张图片上传上限，默认 20 MB
 - `CANVAS_VIDEO_ASSET_MAX_BYTES`：单个视频素材上限，2 核 4G 服务器建议 64 MB
 - `CANVAS_ASSET_MAX_CONCURRENT_WRITES` / `CANVAS_ASSET_MAX_CONCURRENT_WRITES_PER_USER`：素材落盘并发，默认全局 2、单用户 1
+- `CANVAS_ASSET_MIN_FREE_BYTES`：素材写入后必须保留的磁盘空间，默认 5 GB
+- `deploy/backup-doodleverse.sh`：备份 Supabase 业务数据和服务器画布素材；生产环境建议每日运行，并把备份同步到另一台机器或对象存储
 - `GEMINI_PROVIDER`
 - `GEMINI_API_KEY`
 - `GEMINI_BASE_URL`

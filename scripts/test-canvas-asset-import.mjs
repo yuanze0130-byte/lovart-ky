@@ -22,7 +22,14 @@ async function compile(sourceName, outputName) {
 
 try {
   const policy = await compile('canvas-asset-remote-policy.ts', 'canvas-asset-remote-policy.mjs');
+  const assetAccess = await compile('canvas-asset-access.ts', 'canvas-asset-access.mjs');
   const assetServer = await compile('canvas-asset-server.ts', 'canvas-asset-server.mjs');
+  await writeFile(
+    assetServer.outputPath,
+    (await readFile(assetServer.outputPath, 'utf8'))
+      .replace('@/lib/canvas-asset-access', './canvas-asset-access.mjs'),
+    'utf8',
+  );
   const importServerSource = await readFile(
     path.join(root, 'src', 'lib', 'canvas-asset-import-server.ts'),
     'utf8',
@@ -41,6 +48,10 @@ try {
     parseRemoteCanvasAssetUrl,
     RemoteAssetPolicyError,
   } = await import(`${pathToFileURL(policy.outputPath).href}?v=${Date.now()}`);
+  process.env.CANVAS_ASSET_URL_SECRET = 'test-only-canvas-asset-signing-secret-123456';
+  const { createSignedCanvasAssetUrl, verifySignedCanvasAssetUrl } = await import(
+    `${pathToFileURL(assetAccess.outputPath).href}?v=${Date.now()}`
+  );
   const { CanvasAssetStorageError, saveCanvasAssetStream } = await import(
     `${pathToFileURL(assetServer.outputPath).href}?v=${Date.now()}`
   );
@@ -66,6 +77,14 @@ try {
   }
 
   assert.equal(parseRemoteCanvasAssetUrl('https://cdn.example.com/video.mp4#fragment').hash, '');
+  const signedAssetUrl = createSignedCanvasAssetUrl(
+    '11111111-1111-4111-8111-111111111111',
+    `${'a'.repeat(64)}.png`,
+    1_000,
+  );
+  assert.equal(verifySignedCanvasAssetUrl(signedAssetUrl, 1_001), true);
+  assert.equal(verifySignedCanvasAssetUrl(signedAssetUrl, 100_000), false);
+  assert.equal(verifySignedCanvasAssetUrl(signedAssetUrl.replace('/11111111-', '/21111111-'), 1_001), false);
   for (const value of [
     'http://cdn.example.com/video.mp4',
     'https://user:pass@cdn.example.com/video.mp4',
@@ -89,6 +108,8 @@ try {
   assert.match(clientSource, /value\.startsWith\('blob:'\)/);
   assert.doesNotMatch(clientSource, /new FormData\(\)/);
   assert.match(uploadRouteSource, /saveCanvasAssetStream\(userId, request\.body/);
+  assert.match(assetServer.source, /CANVAS_ASSET_MIN_FREE_BYTES/);
+  assert.match(assetServer.source, /statfs/);
 
   const assetRoot = path.join(tempDir, 'assets');
   process.env.CANVAS_ASSET_DIR = assetRoot;
@@ -96,6 +117,8 @@ try {
   process.env.CANVAS_VIDEO_ASSET_MAX_BYTES = '96';
   process.env.CANVAS_ASSET_MAX_CONCURRENT_WRITES = '2';
   process.env.CANVAS_ASSET_MAX_CONCURRENT_WRITES_PER_USER = '1';
+  process.env.CANVAS_ASSET_MIN_FREE_BYTES = '1';
+  process.env.CANVAS_ASSET_URL_SECRET = 'test-only-canvas-asset-signing-secret-123456';
   const userId = '11111111-1111-4111-8111-111111111111';
   const pngBytes = new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

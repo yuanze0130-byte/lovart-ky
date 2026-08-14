@@ -4,11 +4,15 @@ import { Readable } from 'stream';
 import { NextResponse } from 'next/server';
 import { getCanvasAssetContentType, getCanvasAssetFile } from '@/lib/canvas-asset-server';
 import { parseSingleHttpByteRange } from '@/lib/http-byte-range';
+import { verifySignedCanvasAssetUrl } from '@/lib/canvas-asset-access';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ userId: string; fileName: string }> }
 ) {
+  if (!verifySignedCanvasAssetUrl(request.url)) {
+    return new NextResponse('Forbidden', { status: 403 });
+  }
   const { userId, fileName } = await params;
   const filePath = getCanvasAssetFile(userId, fileName);
   if (!filePath) return new NextResponse('Not found', { status: 404 });
@@ -19,7 +23,7 @@ export async function GET(
     const range = request.headers.get('range');
     const commonHeaders = {
       'Accept-Ranges': 'bytes',
-      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Cache-Control': 'private, max-age=3600',
       'Content-Type': contentType,
       'X-Content-Type-Options': 'nosniff',
     };

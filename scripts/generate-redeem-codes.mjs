@@ -15,7 +15,7 @@ if (!Number.isFinite(count) || count <= 0) {
 function randomChunk(length) {
   let result = '';
   for (let i = 0; i < length; i += 1) {
-    result += alphabet[Math.floor(Math.random() * alphabet.length)];
+    result += alphabet[crypto.randomInt(0, alphabet.length)];
   }
   return result;
 }

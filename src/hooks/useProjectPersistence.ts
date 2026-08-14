@@ -13,7 +13,7 @@ import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { useSupabase } from '@/hooks/useSupabase';
 import { loadLocalCanvasDraft, saveLocalCanvasDraft } from '@/lib/local-canvas-store';
 import { normalizeCanvasConnections } from '@/lib/canvas-connections';
-import { persistCanvasElementAssets } from '@/lib/canvas-asset-upload';
+import { persistCanvasElementAssets, refreshCanvasElementAssetUrls } from '@/lib/canvas-asset-upload';
 interface UseProjectPersistenceParams {
   user: User | null | undefined;
   initialProjectId: string | null;
@@ -310,7 +310,7 @@ export function useProjectPersistence({
 
         const project = projectResult.data as Pick<ProjectRow, 'id' | 'title'> | null;
         const loadedElementIds = new Set<string>();
-        const ingestRows = (rows: CanvasElementLoadRow[]) => {
+        const ingestRows = async (rows: CanvasElementLoadRow[]) => {
           const nextElements: CanvasElement[] = [];
 
           rows.forEach((row) => {
@@ -330,7 +330,7 @@ export function useProjectPersistence({
             nextElements.push(element);
           });
 
-          return nextElements;
+          return refreshCanvasElementAssetUrls(nextElements);
         };
 
         const projectTitle = project?.title || 'Untitled';
@@ -340,7 +340,7 @@ export function useProjectPersistence({
         let pageRows = (firstElementsResult.data || []) as unknown as CanvasElementLoadRow[];
         onProjectLoaded({
           title: projectTitle,
-          elements: ingestRows(pageRows),
+          elements: await ingestRows(pageRows),
           append: false,
         });
         setIsLoading(false);
@@ -353,7 +353,7 @@ export function useProjectPersistence({
           if (elementsResult.error) throw elementsResult.error;
 
           pageRows = (elementsResult.data || []) as unknown as CanvasElementLoadRow[];
-          const nextElements = ingestRows(pageRows);
+          const nextElements = await ingestRows(pageRows);
           if (nextElements.length > 0) {
             onProjectLoaded({
               title: projectTitle,

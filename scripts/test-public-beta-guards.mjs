@@ -26,6 +26,10 @@ const [
   userPage,
   dashboard,
   projectsPage,
+  redeemCodeGenerator,
+  assetSignRoute,
+  assetAuthorizeRoute,
+  assetAccess,
 ] = await Promise.all([
   read('src/components/auth/LoginModal.tsx'),
   read('src/components/auth/SupabaseAuthProvider.tsx'),
@@ -47,6 +51,10 @@ const [
   read('src/app/lovart/user/UserPageClient.tsx'),
   read('src/app/lovart/LovartDashboardClient.tsx'),
   read('src/app/lovart/projects/ProjectsPageClient.tsx'),
+  read('scripts/generate-redeem-codes.mjs'),
+  read('src/app/api/canvas-assets/sign/route.ts'),
+  read('src/app/api/canvas-assets/authorize/route.ts'),
+  read('src/lib/canvas-asset-access.ts'),
 ]);
 
 assert.match(login, /TurnstileWidget/);
@@ -100,5 +108,12 @@ assert.match(userPage, /500 <span[^>]*>积分/);
 assert.match(userPage, /¥50/);
 assert.match(dashboard, /href="\/user#recharge"/);
 assert.match(projectsPage, /href="\/user#recharge"/);
+assert.match(redeemCodeGenerator, /crypto\.randomInt\(0, alphabet\.length\)/);
+assert.doesNotMatch(redeemCodeGenerator, /Math\.random\(/);
+assert.match(assetSignRoute, /requireUser\(request\)/);
+assert.match(assetAuthorizeRoute, /verifySignedCanvasAssetUrl/);
+assert.match(assetAccess, /createHmac\('sha256'/);
+assert.match(assetAccess, /timingSafeEqual/);
+assert.match(nginxConfig, /auth_request \/_canvas_asset_auth/);
 
 console.log('Public beta guard tests passed.');
