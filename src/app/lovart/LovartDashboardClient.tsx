@@ -13,6 +13,7 @@ import type { ProjectRow } from '@/lib/supabase';
 import { persistProjectThumbnail } from '@/lib/project-thumbnail';
 import type { AgentMode } from '@/lib/agent/actions';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
@@ -35,6 +36,7 @@ interface Notification {
 }
 
 export default function LovartDashboard() {
+    const router = useRouter();
     const { user, signOut } = useAuth();
     const supabase = useSupabase();
     const { credits } = useUserCredits();
@@ -245,7 +247,7 @@ export default function LovartDashboard() {
             }
 
             console.log('Project created successfully:', projectData);
-            window.location.href = `/canvas?id=${newProjectId}&prompt=${encodeURIComponent(inputValue.trim())}&mode=${encodeURIComponent(agentMode)}`;
+            router.push(`/canvas?id=${newProjectId}&prompt=${encodeURIComponent(inputValue.trim())}&mode=${encodeURIComponent(agentMode)}`);
         } catch (error) {
             console.error('Generation failed:', error);
             alert(error instanceof Error ? error.message : '生成失败，请重试');
