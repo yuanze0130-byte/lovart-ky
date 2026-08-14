@@ -1,9 +1,9 @@
 import type { ImageModelId } from '@/lib/image-models';
 import type { ImageResolution } from '@/lib/image-model-routing';
 
-export const IMAGE_POINTS_PER_COMFLY_UNIT = 12;
+export const IMAGE_POINTS_PER_COMFLY_UNIT = 15;
 export const IMAGE_MARKUP_BPS = 500;
-export const IMAGE_PRICE_VERSION = 'comfly-web-2026-08-12-v1';
+export const IMAGE_PRICE_VERSION = 'comfly-web-2026-08-14-v2';
 const COMFLY_PRICE_SCALE = 100_000;
 
 export interface ImagePriceInput {

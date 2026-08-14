@@ -2,7 +2,7 @@ import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import type { UserCreditsRow } from '@/lib/supabase';
 import type { Json } from '@/lib/supabase';
 
-export const DEFAULT_SIGNUP_CREDITS = 20;
+export const DEFAULT_SIGNUP_CREDITS = 15;
 
 export type VideoModelMode = 'standard' | 'fast';
 export type UpscaleScale = 2 | 4 | 6;

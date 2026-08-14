@@ -1,8 +1,8 @@
 import type { VideoGenerationConfig } from '@/lib/video-models';
 
-export const POINTS_PER_COMFLY_UNIT = 12;
+export const POINTS_PER_COMFLY_UNIT = 15;
 export const VIDEO_MARKUP_BPS = 500;
-export const VIDEO_PRICE_VERSION = '2026-08-12-v1';
+export const VIDEO_PRICE_VERSION = '2026-08-14-v2';
 const COMFLY_MICRO_UNITS = 100_000;
 
 export interface VideoPriceInput extends VideoGenerationConfig {

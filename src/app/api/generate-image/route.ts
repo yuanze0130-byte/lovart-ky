@@ -9,6 +9,7 @@ import { resolveImageUpstreamModel } from '@/lib/image-model-routing';
 import { isImagePriceUnavailableError, quoteImageCredits, type ImagePriceQuote } from '@/lib/image-pricing';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
+import { collectImageResponseCandidates } from '@/lib/image-response-candidates';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = ImageModelId;
@@ -213,8 +214,11 @@ const GPT_IMAGE_2_DEFAULT_ASPECT_RATIOS: SupportedAspectRatio[] = ['1:1', '4:3',
 const DEFAULT_GPT_IMAGE_2_POLL_INTERVAL_MS = Number(process.env.GEMINI_PROXY_GPT_IMAGE_2_POLL_INTERVAL_MS || 3000);
 const DEFAULT_GPT_IMAGE_2_POLL_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_GPT_IMAGE_2_POLL_TIMEOUT_MS || 300000);
 const DEFAULT_PROMPT_TRANSLATION_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_PROMPT_TRANSLATION_TIMEOUT_MS || 8000);
-const DEFAULT_PROXY_IMAGE_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_IMAGE_TIMEOUT_MS || 180000);
+// Stay below the production reverse proxy's 600-second timeout so there is
+// still time to download and return the generated image to the canvas.
+const DEFAULT_PROXY_IMAGE_TIMEOUT_MS = Number(process.env.GEMINI_PROXY_IMAGE_TIMEOUT_MS || 540000);
 const DEFAULT_FETCH_IMAGE_TIMEOUT_MS = Number(process.env.GENERATED_IMAGE_FETCH_TIMEOUT_MS || 30000);
+const MAX_GENERATED_IMAGE_DOWNLOAD_BYTES = 32 * 1024 * 1024;
 const GPT_IMAGE_2_OFFICIAL_SIZE_MAP: Record<string, string> = {
   '1:1|1K': '1024x1024',
   '1:1|2K': '2048x2048',
@@ -392,10 +396,40 @@ async function fetchImageUrlAsDataUrl(imageUrl: string, signal?: AbortSignal) {
     throw new Error(`Failed to fetch generated image URL (${upstreamResponse.status} ${upstreamResponse.statusText})`);
   }
 
-  const contentType = upstreamResponse.headers.get('content-type') || 'image/png';
+  const declaredLength = Number(upstreamResponse.headers.get('content-length') || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_GENERATED_IMAGE_DOWNLOAD_BYTES) {
+    await upstreamResponse.body?.cancel().catch(() => undefined);
+    throw new Error('Generated image exceeds the 32 MiB download limit');
+  }
+
+  const contentType = (upstreamResponse.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const mayNeedContentSniffing = !contentType || contentType === 'application/octet-stream';
+  if (!contentType.startsWith('image/') && !mayNeedContentSniffing) {
+    await upstreamResponse.body?.cancel().catch(() => undefined);
+    throw new Error(`Generated image URL returned a non-image response (${contentType})`);
+  }
+
   const arrayBuffer = await upstreamResponse.arrayBuffer();
+  if (arrayBuffer.byteLength > MAX_GENERATED_IMAGE_DOWNLOAD_BYTES) {
+    throw new Error('Generated image exceeds the 32 MiB download limit');
+  }
+  const bytes = new Uint8Array(arrayBuffer);
+  const sniffedContentType = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47
+    ? 'image/png'
+    : bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+      ? 'image/jpeg'
+      : bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x38
+        ? 'image/gif'
+        : bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+          && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+          ? 'image/webp'
+          : undefined;
+  const resolvedContentType = contentType.startsWith('image/') ? contentType : sniffedContentType;
+  if (!resolvedContentType) {
+    throw new Error('Generated image response has an unsupported or invalid file signature');
+  }
   const base64Data = Buffer.from(arrayBuffer).toString('base64');
-  return `data:${contentType};base64,${base64Data}`;
+  return `data:${resolvedContentType};base64,${base64Data}`;
 }
 
 async function extractImageFromProxyResponse(response: GeminiChatCompletion, baseResult: Record<string, unknown>, signal?: AbortSignal) {
@@ -416,6 +450,36 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
   } catch {
     // ignore logging issues
   }
+  const responseCandidates = collectImageResponseCandidates(response);
+  let lastCandidateDownloadError: unknown;
+  for (const candidate of responseCandidates) {
+    if (candidate.kind === 'data-url') {
+      return { imageData: candidate.value, textResponse: '', ...baseResult };
+    }
+    if (candidate.kind === 'base64') {
+      return {
+        imageData: `data:${candidate.mimeType};base64,${candidate.value}`,
+        textResponse: '',
+        ...baseResult,
+      };
+    }
+    try {
+      return {
+        imageData: await fetchImageUrlAsDataUrl(candidate.value, signal),
+        textResponse: '',
+        ...baseResult,
+      };
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      lastCandidateDownloadError = error;
+    }
+  }
+  if (lastCandidateDownloadError) {
+    throw new Error('Model returned image links, but none could be downloaded', {
+      cause: lastCandidateDownloadError,
+    });
+  }
+
   const parts = response.choices?.[0]?.message?.parts;
   if (parts && Array.isArray(parts)) {
     for (const part of parts) {

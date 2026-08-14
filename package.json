@@ -21,6 +21,7 @@
     "test:public-beta": "node scripts/test-public-beta-guards.mjs",
     "test:prompt-library": "node scripts/test-prompt-library.mjs",
     "test:image-models": "node scripts/test-image-models.mjs",
+    "test:image-response": "node scripts/test-image-response-candidates.mjs",
     "test:image-pricing": "node scripts/test-image-pricing.mjs",
     "test:video-models": "node scripts/test-video-models.mjs",
     "test:video-pricing": "node scripts/test-video-pricing.mjs",

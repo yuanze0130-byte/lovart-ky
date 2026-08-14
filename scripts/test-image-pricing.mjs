@@ -32,16 +32,17 @@ const quote = (upstreamModel, resolution = '1K', referenceCount = 0) => pricing.
 let pricing;
 try {
   pricing = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
+  assert.equal(pricing.IMAGE_POINTS_PER_COMFLY_UNIT, 15);
   assert.equal(quote('gpt-image-2-all').credits, 1);
   assert.equal(quote('nano-banana').credits, 3);
   assert.equal(quote('nano-banana-hd', '2K').credits, 4);
-  assert.equal(quote('nano-banana-pro').credits, 6);
-  assert.equal(quote('nano-banana-pro-4k', '4K').credits, 7);
-  assert.equal(quote('gemini-3.1-flash-image-preview-4k', '4K').credits, 4);
-  assert.equal(quote('qwen-image-edit').credits, 3);
-  assert.equal(quote('seedream-v5-pro', '1K', 0).credits, 4);
-  assert.equal(quote('seedream-v5-pro', '1K', 4).credits, 5);
-  assert.equal(quote('seedream-v5-pro', '4K', 4).credits, 8);
+  assert.equal(quote('nano-banana-pro').credits, 7);
+  assert.equal(quote('nano-banana-pro-4k', '4K').credits, 9);
+  assert.equal(quote('gemini-3.1-flash-image-preview-4k', '4K').credits, 5);
+  assert.equal(quote('qwen-image-edit').credits, 4);
+  assert.equal(quote('seedream-v5-pro', '1K', 0).credits, 5);
+  assert.equal(quote('seedream-v5-pro', '1K', 4).credits, 6);
+  assert.equal(quote('seedream-v5-pro', '4K', 4).credits, 10);
   assert.equal(pricing.imageCreditsFromCostUnits(16_000), 3);
   assert.throws(() => quote('flux-kontext-pro'), { code: 'IMAGE_PRICE_UNAVAILABLE' });
   assert.throws(() => quote('midjourney'), { code: 'IMAGE_PRICE_UNAVAILABLE' });
