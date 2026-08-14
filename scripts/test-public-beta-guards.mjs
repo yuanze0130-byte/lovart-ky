@@ -30,6 +30,7 @@ const [
   assetSignRoute,
   assetAuthorizeRoute,
   assetAccess,
+  projectCard,
 ] = await Promise.all([
   read('src/components/auth/LoginModal.tsx'),
   read('src/components/auth/SupabaseAuthProvider.tsx'),
@@ -55,6 +56,7 @@ const [
   read('src/app/api/canvas-assets/sign/route.ts'),
   read('src/app/api/canvas-assets/authorize/route.ts'),
   read('src/lib/canvas-asset-access.ts'),
+  read('src/components/lovart/ProjectCard.tsx'),
 ]);
 
 assert.match(login, /TurnstileWidget/);
@@ -117,5 +119,6 @@ assert.match(assetAuthorizeRoute, /verifySignedCanvasAssetUrl/);
 assert.match(assetAccess, /createHmac\('sha256'/);
 assert.match(assetAccess, /timingSafeEqual/);
 assert.match(nginxConfig, /auth_request \/_canvas_asset_auth/);
+assert.match(projectCard, /imageUrl\.includes\('\/media\/canvas\/'\)/);
 
 console.log('Public beta guard tests passed.');

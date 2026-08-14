@@ -40,7 +40,7 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                         fill
                         sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 25vw"
                         className="object-cover"
-                        unoptimized={imageUrl.startsWith('data:')}
+                        unoptimized={imageUrl.startsWith('data:') || imageUrl.includes('/media/canvas/')}
                     />
                 ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-100 text-gray-300">
