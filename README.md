@@ -129,6 +129,11 @@ npm run migrate:canvas-assets -- --apply
 - `src/lib`：Supabase、积分、图像处理等基础能力
 - `sql` / `*.sql`：数据库脚本
 
+## 运维文档
+
+- [生产环境交接文档](docs/production-handoff.md)
+- [公测启用清单](docs/public-beta-launch.md)
+
 ## 标记编辑（第一版）
 - 已支持图片元素的 `标记编辑` 入口
 - 支持点击对象 → 后端识别 → 返回 bbox / polygon / maskUrl 协议
