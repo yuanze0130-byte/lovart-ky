@@ -68,7 +68,12 @@ export class CanvasAssetStorageError extends Error {
 
 function getAssetRoot() {
   const configuredRoot = process.env.CANVAS_ASSET_DIR?.trim();
-  if (!configuredRoot) return DEFAULT_ASSET_ROOT;
+  if (!configuredRoot) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new CanvasAssetStorageError('生产环境未配置 CANVAS_ASSET_DIR，已拒绝写入临时项目目录', 500);
+    }
+    return DEFAULT_ASSET_ROOT;
+  }
   return path.isAbsolute(configuredRoot)
     ? path.normalize(configuredRoot)
     : path.join(/*turbopackIgnore: true*/ process.cwd(), configuredRoot);

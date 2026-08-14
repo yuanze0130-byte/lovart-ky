@@ -89,7 +89,7 @@ npm run start
 - `ADMIN_EMAILS`
 - `NEXT_PUBLIC_TURNSTILE_SITE_KEY`：Cloudflare Turnstile 站点密钥
 - `NEXT_PUBLIC_AUTH_EMAIL_MODE`：Supabase 邮件登录模式，模板配置完成后设为 `otp`
-- `CANVAS_ASSET_DIR`：画布图片持久化目录，生产环境应位于代码目录之外
+- `CANVAS_ASSET_DIR`：画布图片持久化目录；生产环境必须配置为代码目录之外的绝对路径，否则服务会拒绝素材写入，避免部署后写入临时项目目录
 - `CANVAS_ASSET_MAX_BYTES`：单张图片上传上限，默认 20 MB
 - `CANVAS_VIDEO_ASSET_MAX_BYTES`：单个视频素材上限，2 核 4G 服务器建议 64 MB
 - `CANVAS_ASSET_MAX_CONCURRENT_WRITES` / `CANVAS_ASSET_MAX_CONCURRENT_WRITES_PER_USER`：素材落盘并发，默认全局 2、单用户 1

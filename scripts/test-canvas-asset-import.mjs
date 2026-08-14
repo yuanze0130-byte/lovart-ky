@@ -109,6 +109,8 @@ try {
   assert.doesNotMatch(clientSource, /new FormData\(\)/);
   assert.match(uploadRouteSource, /saveCanvasAssetStream\(userId, request\.body/);
   assert.match(assetServer.source, /CANVAS_ASSET_MIN_FREE_BYTES/);
+  assert.match(assetServer.source, /NODE_ENV === 'production'/);
+  assert.match(assetServer.source, /生产环境未配置 CANVAS_ASSET_DIR/);
   assert.match(assetServer.source, /statfs/);
 
   const assetRoot = path.join(tempDir, 'assets');
