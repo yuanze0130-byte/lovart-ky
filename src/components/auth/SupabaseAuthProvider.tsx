@@ -28,6 +28,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     let mounted = true;
+    let authEventVersion = 0;
 
     if (!supabase) {
       return () => {
@@ -35,20 +36,43 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       };
     }
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setSession(data.session ?? null);
-      setUser(data.session?.user ?? null);
-      setLoading(false);
-    });
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      authEventVersion += 1;
+      if (!mounted) return;
       setSession(nextSession ?? null);
       setUser(nextSession?.user ?? null);
       setLoading(false);
     });
+
+    const restoreSession = async () => {
+      const restoreVersion = authEventVersion;
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const { data, error } = await supabase.auth.getSession();
+        if (!mounted || authEventVersion !== restoreVersion) return;
+
+        if (!error) {
+          setSession(data.session ?? null);
+          setUser(data.session?.user ?? null);
+          setLoading(false);
+          return;
+        }
+
+        lastError = error;
+        if (attempt < 2) {
+          await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+        }
+      }
+
+      if (!mounted || authEventVersion !== restoreVersion) return;
+      console.warn('Supabase session restore failed:', lastError?.message || 'unknown error');
+      setLoading(false);
+    };
+
+    void restoreSession();
 
     return () => {
       mounted = false;
@@ -85,7 +109,7 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       },
       signOut: async () => {
         if (!supabase) return;
-        const { error } = await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut({ scope: 'local' });
         if (error) throw error;
       },
     }),

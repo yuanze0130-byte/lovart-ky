@@ -50,16 +50,6 @@ export interface ImageModelDefinition {
 
 export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
   {
-    id: 'nano-banana',
-    label: 'Nano Banana',
-    category: 'Google',
-    description: '快速草图与低成本迭代',
-    transport: 'chat',
-    proxyModel: 'nano-banana',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
     id: 'nano-banana-2',
     label: 'Nano Banana 2',
     category: 'Google',
@@ -130,36 +120,6 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     supportsEditing: true,
   },
   {
-    id: 'gpt-4o-image',
-    label: 'GPT-4o Image',
-    category: 'OpenAI',
-    description: '经中转站 OpenAI 兼容接口进行图像生成与编辑',
-    transport: 'chat',
-    proxyModel: 'gpt-4o-image',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'gpt-image-1',
-    label: 'GPT Image 1',
-    category: 'OpenAI',
-    description: '稳定的通用图像生成',
-    transport: 'image-task',
-    proxyModel: 'gpt-image-1',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'gpt-image-1.5',
-    label: 'GPT Image 1.5',
-    category: 'OpenAI',
-    description: '更强文字与指令遵循',
-    transport: 'image-task',
-    proxyModel: 'gpt-image-1.5',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
     id: 'gpt-image-2',
     label: 'GPT Image 2',
     category: 'OpenAI',
@@ -176,66 +136,6 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '官方参数与透明背景输出',
     transport: 'official-image-task',
     proxyModel: 'gpt-image-2',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'flux-kontext',
-    label: 'Flux Kontext',
-    category: 'Black Forest Labs',
-    description: '参考图上下文编辑，中转站当前映射到 Flux Kontext Pro',
-    transport: 'chat',
-    proxyModel: 'flux-kontext-pro',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'grok-4.1-image',
-    label: 'Grok 4.1 Image',
-    category: 'xAI',
-    description: 'Grok 图像生成与参考图编辑',
-    transport: 'chat',
-    proxyModel: 'grok-4.1-image',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'grok-4.2-image',
-    label: 'Grok 4.2 Image',
-    category: 'xAI',
-    description: '更新版 Grok 图像生成与参考图编辑',
-    transport: 'chat',
-    proxyModel: 'grok-4.2-image',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'z-image-official',
-    label: 'Z-Image 官',
-    category: 'Other',
-    description: '中转站当前可用的 Z-Image Turbo 图像生成入口',
-    transport: 'chat',
-    proxyModel: 'z-image-turbo',
-    supportsReferences: false,
-    supportsEditing: false,
-  },
-  {
-    id: 'midjourney',
-    label: 'Midjourney',
-    category: 'Other',
-    description: '经中转站 OpenAI 兼容接口调用 Midjourney',
-    transport: 'chat',
-    proxyModel: 'midjourney',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'seedream-4.0',
-    label: 'Seedream 4.0',
-    category: 'ByteDance',
-    description: '中文语义与设计图生成',
-    transport: 'chat',
-    proxyModel: 'seedream-4.0',
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -279,17 +179,6 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     supportsReferences: true,
     supportsEditing: true,
   },
-  {
-    id: 'qwen-image-edit',
-    label: 'Qwen Image Edit',
-    category: 'Alibaba',
-    description: '参考图修改与局部重绘',
-    transport: 'chat',
-    proxyModel: 'qwen-image-edit',
-    supportsReferences: true,
-    supportsEditing: true,
-    requiresReference: true,
-  },
 ];
 
 const MODEL_IDS = new Set<ImageModelId>([
@@ -310,17 +199,15 @@ export function normalizeImageModelId(modelId: ImageModelId): ImageModelDefiniti
 
 export function getImageModelDefinition(modelId: ImageModelId) {
   const normalized = normalizeImageModelId(modelId);
-  return IMAGE_MODEL_OPTIONS.find((model) => model.id === normalized) || IMAGE_MODEL_OPTIONS[2];
+  return IMAGE_MODEL_OPTIONS.find((model) => model.id === normalized)
+    || IMAGE_MODEL_OPTIONS.find((model) => model.id === 'nano-banana-pro')
+    || IMAGE_MODEL_OPTIONS[0];
 }
 
 export const IMAGE_MODEL_CATEGORIES: ImageModelCategory[] = [
   'Google',
   'OpenAI',
-  'Black Forest Labs',
-  'xAI',
   'ByteDance',
-  'Alibaba',
-  'Other',
 ];
 
 export type ImageGenerationExecutionMode = 'sequential' | 'parallel';

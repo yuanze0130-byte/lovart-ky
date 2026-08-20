@@ -31,6 +31,7 @@ try {
     buildConnectedNodeContentsIndex,
     canConnectPorts,
     getNodePorts,
+    getPreferredCompatibleInputPort,
     normalizeCanvasConnections,
     resolveConnectedInputs,
     resolveConnectedNodeContents,
@@ -137,7 +138,9 @@ try {
   const imageOutput = getNodePorts(imageNode).find((port) => port.id === 'image-out');
   const referenceInput = getNodePorts(generator).find((port) => port.id === 'reference-in');
   assert.equal(canConnectPorts(imageOutput, referenceInput), true);
+  assert.equal(getPreferredCompatibleInputPort(generator, imageOutput)?.id, 'reference-in');
   const compareNode = { id: 'compare', type: 'image-compare', x: 600, y: 0 };
+  assert.equal(getPreferredCompatibleInputPort(compareNode, imageOutput)?.id, 'compare-a-in');
   assert.equal(getNodePorts(compareNode).filter((port) => port.direction === 'input').length, 2);
   assert.equal(canConnectPorts(imageOutput, getNodePorts(compareNode).find((port) => port.id === 'compare-a-in')), true);
   const secondImageNode = { id: 'reference-2', type: 'image', x: 100, y: 100, content: 'data:image/png;base64,def' };

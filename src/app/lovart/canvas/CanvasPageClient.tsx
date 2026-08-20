@@ -8,7 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useSupabase } from '@/hooks/useSupabase';
 import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
-import { CanvasArea, type CanvasElement, type GenerationMetadata } from '@/components/lovart/CanvasArea';
+import { CanvasArea, type CanvasElement, type CanvasNodeCreationRequest, type GenerationMetadata } from '@/components/lovart/CanvasArea';
 import { CanvasFeaturesMenu } from '@/components/lovart/CanvasFeaturesMenu';
 import { NodeAlignmentPanel } from '@/components/lovart/NodeAlignmentPanel';
 import { RhaiLibraryPanel } from '@/components/lovart/RhaiLibraryPanel';
@@ -37,7 +37,13 @@ import { useStoryboardManager } from '@/hooks/useStoryboardManager';
 import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult, AgentImageLayout } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 import { authedFetch } from '@/lib/authed-fetch';
-import { normalizeCanvasConnections } from '@/lib/canvas-connections';
+import {
+    PORT_COLORS,
+    connectionKindForPorts,
+    getNodePorts,
+    getPreferredCompatibleInputPort,
+    normalizeCanvasConnections,
+} from '@/lib/canvas-connections';
 import type { ImageModelId } from '@/lib/image-models';
 import type { PromptLibraryItem } from '@/lib/prompt-library';
 import { alignCanvasElements, type NodeAlignmentAction } from '@/lib/node-alignment';
@@ -263,6 +269,14 @@ function LovartCanvasContent() {
         createImageGeneratorElement,
         createPanoramaGeneratorElement,
         createVideoGeneratorElement,
+        createImageCompareElement,
+        createGlobalViewElement,
+        createMotionTransferElement,
+        createTableEditorElement,
+        createVideoFramesElement,
+        createVideoBreakdownElement,
+        createScriptWriterElement,
+        createInpaintElement,
     } = useCanvasElements({
         pan,
         scale,
@@ -271,6 +285,116 @@ function LovartCanvasContent() {
         setSelectedIds,
         setActiveTool,
     });
+
+    const handleCreateNodeAt = useCallback((request: CanvasNodeCreationRequest) => {
+        if (request.action === 'draw') {
+            setActiveTool('draw');
+            return;
+        }
+        if (request.action === 'agent') {
+            if (agentPanelEnabled) setShowChat(true);
+            return;
+        }
+        if (request.action === 'rhai-library') {
+            setShowRhaiLibrary(true);
+            return;
+        }
+
+        let createdElement: CanvasElement | null = null;
+        switch (request.action) {
+            case 'text':
+                createdElement = {
+                    id: uuidv4(),
+                    type: 'text',
+                    x: request.x,
+                    y: request.y,
+                    width: 240,
+                    height: 100,
+                    content: '双击编辑文本',
+                };
+                break;
+            case 'image-generator':
+                createdElement = createImageGeneratorElement();
+                break;
+            case 'video-generator':
+                createdElement = createVideoGeneratorElement();
+                break;
+            case 'image-compare':
+                createdElement = createImageCompareElement();
+                break;
+            case 'global-view':
+                createdElement = createGlobalViewElement();
+                break;
+            case 'motion-transfer':
+                createdElement = createMotionTransferElement();
+                break;
+            case 'table-editor':
+                createdElement = createTableEditorElement();
+                break;
+            case 'video-frames':
+                createdElement = createVideoFramesElement();
+                break;
+            case 'video-breakdown':
+                createdElement = createVideoBreakdownElement();
+                break;
+            case 'script-writer':
+                createdElement = createScriptWriterElement();
+                break;
+            case 'inpaint':
+                createdElement = createInpaintElement();
+                break;
+        }
+        if (!createdElement) return;
+
+        const placedElement: CanvasElement = {
+            ...createdElement,
+            x: request.x,
+            y: request.y,
+        };
+
+        setElements((currentElements) => {
+            const nextElements = [...currentElements, placedElement];
+            if (!request.source) return nextElements;
+
+            const sourceElement = currentElements.find((element) => element.id === request.source?.nodeId);
+            const sourcePort = sourceElement
+                ? getNodePorts(sourceElement).find((port) => port.direction === 'output' && port.id === request.source?.port.id)
+                : undefined;
+            const targetPort = sourcePort ? getPreferredCompatibleInputPort(placedElement, sourcePort) : undefined;
+            if (!sourceElement || !sourcePort || !targetPort) return nextElements;
+
+            nextElements.push({
+                id: uuidv4(),
+                type: 'connector',
+                x: 0,
+                y: 0,
+                connectorFrom: sourceElement.id,
+                connectorTo: placedElement.id,
+                connectorSourcePort: sourcePort.id,
+                connectorTargetPort: targetPort.id,
+                connectorDataKind: sourcePort.kind,
+                connectorKind: connectionKindForPorts(sourcePort, targetPort),
+                connectorOrder: 0,
+                connectorStyle: targetPort.multiple ? 'dashed' : 'solid',
+                color: PORT_COLORS[sourcePort.kind],
+            });
+            return nextElements;
+        });
+        setSelectedIds([placedElement.id]);
+        setActiveTool('select');
+    }, [
+        agentPanelEnabled,
+        createGlobalViewElement,
+        createImageCompareElement,
+        createImageGeneratorElement,
+        createInpaintElement,
+        createMotionTransferElement,
+        createScriptWriterElement,
+        createTableEditorElement,
+        createVideoBreakdownElement,
+        createVideoFramesElement,
+        createVideoGeneratorElement,
+    ]);
 
     useCanvasMediaOptimization({
         elements,
@@ -2953,13 +3077,7 @@ function LovartCanvasContent() {
                     backgroundColor={canvasBackground}
                     featureSettings={canvasFeatures}
                     isGenerating={isGenerating}
-                    onCreateNodeAt={(x, y) => {
-                        appendElement({
-                            ...createImageGeneratorElement(),
-                            x,
-                            y,
-                        });
-                    }}
+                    onCreateNodeAt={handleCreateNodeAt}
                     onDropImages={handleDropImages}
                     activeTool={activeTool}
                     onDragStart={() => setIsDraggingElement(true)}

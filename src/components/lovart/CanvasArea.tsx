@@ -13,6 +13,7 @@ import { VideoBreakdownNode } from './VideoBreakdownNode';
 import { ScriptWriterNode } from './ScriptWriterNode';
 import { VideoGeneratorNode } from './VideoGeneratorNode';
 import { CanvasImageMedia, CanvasVideoMedia } from './CanvasMedia';
+import { CanvasNodeCreateMenu, type CanvasQuickCreateAction } from './CanvasNodeCreateMenu';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
@@ -353,7 +354,7 @@ interface CanvasAreaProps {
     onDelete: (id: string) => void;
     onDeleteMany?: (ids: string[]) => void;
     onAddElement: (element: CanvasElement) => void;
-    onCreateNodeAt?: (x: number, y: number) => void;
+    onCreateNodeAt?: (request: CanvasNodeCreationRequest) => void;
     onDropImages?: (files: File[], point: { x: number; y: number }) => void;
     activeTool: string;
     backgroundColor?: string;
@@ -385,6 +386,16 @@ interface CanvasAreaProps {
     relightTargetId?: string | null;
     featureSettings: CanvasFeatureSettings;
     isGenerating?: boolean;
+}
+
+export interface CanvasNodeCreationRequest {
+    action: CanvasQuickCreateAction;
+    x: number;
+    y: number;
+    source?: {
+        nodeId: string;
+        port: CanvasPortDefinition;
+    };
 }
 
 function CanvasStopwatch() {
@@ -466,6 +477,13 @@ export function CanvasArea({
         mode: 'select' | 'batch-connect';
     } | null>(null);
     const [selectionContextMenu, setSelectionContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [nodeCreateMenu, setNodeCreateMenu] = useState<{
+        left: number;
+        top: number;
+        canvasX: number;
+        canvasY: number;
+        source?: CanvasNodeCreationRequest['source'];
+    } | null>(null);
     const [editingTextId, setEditingTextId] = useState<string | null>(null);
     const [currentPath, setCurrentPath] = useState<{ points: { x: number; y: number }[] } | null>(null);
     const [connectionDraft, setConnectionDraft] = useState<{
@@ -491,6 +509,8 @@ export function CanvasArea({
     const draggedElementIdRef = useRef<string | null>(null);
     const resizeHandleRef = useRef<string | null>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const canvasRootRef = useRef<HTMLDivElement>(null);
+    const connectionCompletedRef = useRef(false);
     const followGlowRef = useRef<HTMLDivElement>(null);
     const panFrameRef = useRef<number | null>(null);
     const pendingPanRef = useRef<{ x: number; y: number } | null>(null);
@@ -643,7 +663,10 @@ export function CanvasArea({
             || e.button === 1
             || (isBlankPrimaryClick && activeTool !== 'draw' && !isSelectionGesture);
 
-        if (e.button === 0) setSelectionContextMenu(null);
+        if (e.button === 0) {
+            setSelectionContextMenu(null);
+            setNodeCreateMenu(null);
+        }
 
         if (isPanGesture) {
             if (isBlankPrimaryClick && !e.ctrlKey && !e.metaKey && !e.shiftKey) onSelect([]);
@@ -975,6 +998,8 @@ export function CanvasArea({
         event.preventDefault();
         event.stopPropagation();
         if (port.direction !== 'output') return;
+        connectionCompletedRef.current = false;
+        setNodeCreateMenu(null);
         clearQueuedConnectionPoint();
         setConnectionDraft({
             sourceNodeId: element.id,
@@ -987,6 +1012,7 @@ export function CanvasArea({
         event.preventDefault();
         event.stopPropagation();
         const draft = connectionDraft;
+        connectionCompletedRef.current = true;
         clearQueuedConnectionPoint();
         setConnectionDraft(null);
         if (!draft || draft.sourceNodeId === target.id || !canConnectPorts(draft.sourcePort, targetPort)) return;
@@ -1115,19 +1141,39 @@ export function CanvasArea({
     };
 
     useEffect(() => {
-        const handleGlobalMouseUp = () => {
+        const handleGlobalMouseUp = (event: MouseEvent) => {
             if (isDragging || isResizing || isPanning || isDrawing || isSelecting) {
                 handleMouseUp();
             }
             if (connectionDraft) {
                 clearQueuedConnectionPoint();
                 setConnectionDraft(null);
+                const root = canvasRootRef.current;
+                const target = event.target instanceof Node ? event.target : null;
+                if (!connectionCompletedRef.current && root && target && root.contains(target)) {
+                    const sourceElement = elements.find((element) => element.id === connectionDraft.sourceNodeId);
+                    if (sourceElement && connectionDraft.sourcePort.kind === 'image') {
+                        const bounds = root.getBoundingClientRect();
+                        const point = getCanvasPoint(event.clientX, event.clientY);
+                        setNodeCreateMenu({
+                            left: Math.min(Math.max(12, event.clientX - bounds.left), Math.max(12, bounds.width - 332)),
+                            top: Math.min(Math.max(12, event.clientY - bounds.top), Math.max(12, bounds.height - 520)),
+                            canvasX: featureSettings.snap ? Math.round(point.x / featureSettings.gridGap) * featureSettings.gridGap : point.x,
+                            canvasY: featureSettings.snap ? Math.round(point.y / featureSettings.gridGap) * featureSettings.gridGap : point.y,
+                            source: {
+                                nodeId: sourceElement.id,
+                                port: connectionDraft.sourcePort,
+                            },
+                        });
+                    }
+                }
+                connectionCompletedRef.current = false;
             }
         };
         window.addEventListener('mouseup', handleGlobalMouseUp);
         return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
         // eslint-disable-next-line react-hooks/exhaustive-deps -- handleMouseUp intentionally reads the current gesture state mirrored in these dependencies.
-    }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath, connectionDraft]);
+    }, [isDragging, isResizing, isPanning, isDrawing, isSelecting, elements, selectionBox, currentPath, connectionDraft, featureSettings.gridGap, featureSettings.snap]);
 
     useEffect(() => () => {
         if (panFrameRef.current !== null) window.cancelAnimationFrame(panFrameRef.current);
@@ -1466,12 +1512,15 @@ export function CanvasArea({
     };
 
     const handleDoubleClickCanvas = (e: React.MouseEvent) => {
-        if ((e.target as HTMLElement).closest('[data-canvas-element="true"]')) return;
+        if ((e.target as HTMLElement).closest('[data-canvas-element="true"], [data-canvas-create-menu="true"]')) return;
         const point = getCanvasPoint(e.clientX, e.clientY);
-        onCreateNodeAt?.(
-            featureSettings.snap ? Math.round(point.x / featureSettings.gridGap) * featureSettings.gridGap : point.x,
-            featureSettings.snap ? Math.round(point.y / featureSettings.gridGap) * featureSettings.gridGap : point.y,
-        );
+        const bounds = e.currentTarget.getBoundingClientRect();
+        setNodeCreateMenu({
+            left: Math.min(Math.max(12, e.clientX - bounds.left), Math.max(12, bounds.width - 332)),
+            top: Math.min(Math.max(12, e.clientY - bounds.top), Math.max(12, bounds.height - 520)),
+            canvasX: featureSettings.snap ? Math.round(point.x / featureSettings.gridGap) * featureSettings.gridGap : point.x,
+            canvasY: featureSettings.snap ? Math.round(point.y / featureSettings.gridGap) * featureSettings.gridGap : point.y,
+        });
     };
 
     const handleCanvasContextMenu = (event: React.MouseEvent) => {
@@ -1503,6 +1552,7 @@ export function CanvasArea({
 
     return (
         <div
+            ref={canvasRootRef}
             className={`w-full h-full relative overflow-hidden ${
                 activeTool === 'hand'
                     ? 'cursor-grab active:cursor-grabbing'
@@ -1552,6 +1602,27 @@ export function CanvasArea({
                         </span>
                     </button>
                 </div>
+            )}
+            {nodeCreateMenu && (
+                <CanvasNodeCreateMenu
+                    left={nodeCreateMenu.left}
+                    top={nodeCreateMenu.top}
+                    hasReferenceSource={Boolean(nodeCreateMenu.source)}
+                    onClose={() => setNodeCreateMenu(null)}
+                    onSelect={(action) => {
+                        onCreateNodeAt?.({
+                            action,
+                            x: nodeCreateMenu.canvasX,
+                            y: nodeCreateMenu.canvasY,
+                            source: nodeCreateMenu.source,
+                        });
+                        setNodeCreateMenu(null);
+                    }}
+                    onUploadImages={(files) => {
+                        onDropImages?.(files, { x: nodeCreateMenu.canvasX, y: nodeCreateMenu.canvasY });
+                        setNodeCreateMenu(null);
+                    }}
+                />
             )}
             {selectedIds.length === 1 && selectedElement && !isDragging && !isResizing && !isPanning && !isDrawing && selectedElement.type !== 'connector' && (
                 <div
