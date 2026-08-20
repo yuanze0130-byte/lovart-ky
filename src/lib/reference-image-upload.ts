@@ -19,8 +19,20 @@ function isRemoteUrl(value: string) {
   return /^https?:\/\//i.test(value.trim());
 }
 
+function isFetchableBrowserUrl(value: string) {
+  const trimmed = value.trim();
+  return isRemoteUrl(trimmed) || /^\/(?!\/)/.test(trimmed) || /^blob:/i.test(trimmed);
+}
+
 async function inlineImageToBlob(referenceImage: string) {
   const trimmed = referenceImage.trim();
+  if (isFetchableBrowserUrl(trimmed)) {
+    const response = await fetch(trimmed);
+    if (!response.ok) throw new Error('Failed to read the reference image');
+    const blob = await response.blob();
+    if (!blob.type.startsWith('image/')) throw new Error('Reference asset is not an image');
+    return blob;
+  }
   const dataUrl = /^data:image\/[\w.+-]+;base64,/i.test(trimmed)
     ? trimmed
     : `data:image/jpeg;base64,${trimmed}`;

@@ -7,6 +7,7 @@ export type ImageModelCategory =
   | 'Alibaba'
   | 'Other';
 export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task';
+export type ImageModelResolution = '1K' | '2K' | '4K';
 
 export type ImageModelId =
   | 'standard'
@@ -43,6 +44,8 @@ export interface ImageModelDefinition {
   description: string;
   transport: ImageModelTransport;
   proxyModel: string;
+  upstreamModels: Readonly<Partial<Record<ImageModelResolution, string>>>;
+  supportedResolutions: readonly ImageModelResolution[];
   supportsReferences: boolean;
   supportsEditing: boolean;
   requiresReference?: boolean;
@@ -56,6 +59,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '通用生图与参考图编辑',
     transport: 'chat',
     proxyModel: 'nano-banana-2',
+    upstreamModels: { '1K': 'nano-banana-2', '2K': 'nano-banana-2-2k', '4K': 'nano-banana-2-4k' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -66,6 +71,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '轻量快速生成，经中转站映射到 Gemini 3.1 Flash Lite Image',
     transport: 'chat',
     proxyModel: 'gemini-3.1-flash-lite-image',
+    upstreamModels: { '1K': 'gemini-3.1-flash-lite-image' },
+    supportedResolutions: ['1K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -76,6 +83,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '高质量商业图与复杂构图',
     transport: 'chat',
     proxyModel: 'nano-banana-pro',
+    upstreamModels: { '1K': 'nano-banana-pro', '2K': 'nano-banana-pro-2k', '4K': 'nano-banana-pro-4k' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -86,6 +95,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '高速生成与多轮视觉理解',
     transport: 'chat',
     proxyModel: 'gemini-3.1-flash-image-preview',
+    upstreamModels: { '1K': 'gemini-3.1-flash-image-preview', '2K': 'gemini-3.1-flash-image-preview-2k', '4K': 'gemini-3.1-flash-image-preview-4k' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -96,6 +107,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '中转站 Gemini 3.1 Flash Image 正式模型入口',
     transport: 'chat',
     proxyModel: 'gemini-3.1-flash-image',
+    upstreamModels: { '1K': 'gemini-3.1-flash-image', '2K': 'gemini-3.1-flash-image-2k', '4K': 'gemini-3.1-flash-image-4k' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -106,6 +119,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '复杂构图、文字渲染与高质量参考图编辑',
     transport: 'chat',
     proxyModel: 'gemini-3-pro-image',
+    upstreamModels: { '1K': 'gemini-3-pro-image', '2K': 'gemini-3-pro-image-2k', '4K': 'gemini-3-pro-image-4k' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -116,6 +131,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '快速生成与参考图编辑的稳定版本',
     transport: 'chat',
     proxyModel: 'gemini-2.5-flash-image',
+    upstreamModels: { '1K': 'gemini-2.5-flash-image' },
+    supportedResolutions: ['1K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -126,6 +143,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '高质量生成与精细编辑',
     transport: 'image-task',
     proxyModel: 'gpt-image-2-all',
+    upstreamModels: { '1K': 'gpt-image-2-all' },
+    supportedResolutions: ['1K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -136,16 +155,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '官方参数与透明背景输出',
     transport: 'official-image-task',
     proxyModel: 'gpt-image-2',
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'seedream-4.5',
-    label: 'Seedream 4.5',
-    category: 'ByteDance',
-    description: '高细节中文场景与商业视觉',
-    transport: 'chat',
-    proxyModel: 'seedream-4.5',
+    upstreamModels: { '1K': 'gpt-image-2', '2K': 'gpt-image-2', '4K': 'gpt-image-2' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -156,6 +167,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '高质量中文商业视觉与多参考图生成',
     transport: 'chat',
     proxyModel: 'seedream-v5-pro',
+    upstreamModels: { '1K': 'seedream-v5-pro', '2K': 'seedream-v5-pro', '4K': 'seedream-v5-pro' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -166,6 +179,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '中转站火山方舟 Seedream 4.5 模型入口',
     transport: 'chat',
     proxyModel: 'doubao-seedream-4-5-251128',
+    upstreamModels: { '1K': 'doubao-seedream-4-5-251128', '2K': 'doubao-seedream-4-5-251128', '4K': 'doubao-seedream-4-5-251128' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -176,6 +191,8 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '中转站火山方舟 Seedream 5.0 模型入口',
     transport: 'chat',
     proxyModel: 'doubao-seedream-5-0-260128',
+    upstreamModels: { '1K': 'doubao-seedream-5-0-260128', '2K': 'doubao-seedream-5-0-260128', '4K': 'doubao-seedream-5-0-260128' },
+    supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -202,6 +219,13 @@ export function getImageModelDefinition(modelId: ImageModelId) {
   return IMAGE_MODEL_OPTIONS.find((model) => model.id === normalized)
     || IMAGE_MODEL_OPTIONS.find((model) => model.id === 'nano-banana-pro')
     || IMAGE_MODEL_OPTIONS[0];
+}
+
+export function supportsImageModelResolution(
+  modelId: ImageModelId,
+  resolution: ImageModelResolution,
+) {
+  return getImageModelDefinition(modelId).supportedResolutions.includes(resolution);
 }
 
 export const IMAGE_MODEL_CATEGORIES: ImageModelCategory[] = [

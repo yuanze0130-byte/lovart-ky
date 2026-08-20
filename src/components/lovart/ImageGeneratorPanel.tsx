@@ -13,6 +13,7 @@ import {
   isImageModelId,
   type ImageGenerationExecutionMode,
   type ImageModelId,
+  type ImageModelResolution,
 } from '@/lib/image-models';
 import { DEFAULT_IMAGE_MODEL_PREFERENCES, loadImageModelPreferences, saveImageModelPreferences, type ImageModelPreferences } from '@/lib/image-model-preferences';
 import { resolveConnectedInputs } from '@/lib/canvas-connections';
@@ -23,7 +24,7 @@ import {
   type PromptLibraryItem,
 } from '@/lib/prompt-library';
 
-type Resolution = '1K' | '2K' | '4K';
+type Resolution = ImageModelResolution;
 type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type OfficialQuality = 'auto' | 'high' | 'medium' | 'low';
@@ -171,6 +172,7 @@ export function ImageGeneratorPanel({
 
   const isPanorama = selectedElement?.generatorKind === 'panorama';
   const modelDefinition = useMemo(() => getImageModelDefinition(modelVariant), [modelVariant]);
+  const availableResolutions = modelDefinition.supportedResolutions;
   const activeMeta = isPanorama
     ? { title: 'Panorama Generator', subtitle: '专用全景资产：默认超宽横向构图。', icon: Sparkles }
     : MODE_META[editMode];
@@ -229,15 +231,18 @@ export function ImageGeneratorPanel({
 
   useEffect(() => {
     if (isPanorama) {
-      setResolution('2K');
+      setResolution(availableResolutions.includes('2K') ? '2K' : availableResolutions[0]);
       setAspectRatio('21:9');
       return;
     }
 
+    if (!availableResolutions.includes(resolution)) {
+      setResolution(availableResolutions[0]);
+    }
     if (!availableAspectRatios.includes(aspectRatio)) {
       setAspectRatio(availableAspectRatios[0] as AspectRatio);
     }
-  }, [aspectRatio, availableAspectRatios, isPanorama]);
+  }, [aspectRatio, availableAspectRatios, availableResolutions, isPanorama, resolution]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -575,9 +580,7 @@ export function ImageGeneratorPanel({
           <label className="text-xs text-gray-600">
             分辨率
             <select value={resolution} onChange={(e) => setResolution(e.target.value as Resolution)} disabled={isGenerating} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
-              <option value="1K">1K</option>
-              <option value="2K">2K</option>
-              <option value="4K">4K</option>
+              {availableResolutions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </label>
           <label className="text-xs text-gray-600">
@@ -592,7 +595,11 @@ export function ImageGeneratorPanel({
             模型
             <select value={modelVariant} onChange={(e) => {
               const modelId = e.target.value as ImageModelId;
+              const nextModel = getImageModelDefinition(modelId);
               setModelVariant(modelId);
+              if (!nextModel.supportedResolutions.includes(resolution)) {
+                setResolution(nextModel.supportedResolutions[0]);
+              }
               updatePreferences({ ...modelPreferences, lastUsedModelId: modelId });
             }} disabled={isBusy} className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-60">
               {IMAGE_MODEL_CATEGORIES.map((category) => (

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { isImageModelId } from '@/lib/image-models';
-import { resolveImageUpstreamModel, type ImageResolution } from '@/lib/image-model-routing';
+import {
+  isImageModelResolutionError,
+  resolveImageUpstreamModel,
+  type ImageResolution,
+} from '@/lib/image-model-routing';
 import { isImagePriceUnavailableError, quoteImageCredits } from '@/lib/image-pricing';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 
@@ -29,7 +33,7 @@ export async function POST(request: NextRequest) {
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
     }
-    if (isImagePriceUnavailableError(error)) {
+    if (isImagePriceUnavailableError(error) || isImageModelResolutionError(error)) {
       return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: 422 });
     }
     if (isAiToolRequestError(error)) {

@@ -1,4 +1,11 @@
-import { IMAGE_MODEL_OPTIONS, normalizeImageModelId, type ImageGenerationExecutionMode, type ImageModelId } from '@/lib/image-models';
+import {
+  IMAGE_MODEL_OPTIONS,
+  getImageModelDefinition,
+  normalizeImageModelId,
+  type ImageGenerationExecutionMode,
+  type ImageModelId,
+  type ImageModelResolution,
+} from '@/lib/image-models';
 
 const STORAGE_KEY = 'lovart-image-model-preferences-v1';
 
@@ -49,6 +56,13 @@ export function sanitizeImageModelPreferences(stored: Partial<ImageModelPreferen
         .map(getActiveModelId)
         .filter((modelId): modelId is ImageModelId => Boolean(modelId))
     : [];
+  const defaultModelId = getActiveModelId(stored.defaults?.modelId)
+    || DEFAULT_IMAGE_MODEL_PREFERENCES.defaults.modelId;
+  const defaultModel = getImageModelDefinition(defaultModelId);
+  const requestedResolution = stored.defaults?.resolution as ImageModelResolution | undefined;
+  const defaultResolution = requestedResolution && defaultModel.supportedResolutions.includes(requestedResolution)
+    ? requestedResolution
+    : defaultModel.supportedResolutions[0] || '1K';
 
   return {
     ...DEFAULT_IMAGE_MODEL_PREFERENCES,
@@ -59,7 +73,8 @@ export function sanitizeImageModelPreferences(stored: Partial<ImageModelPreferen
     defaults: {
       ...DEFAULT_IMAGE_MODEL_PREFERENCES.defaults,
       ...(stored.defaults || {}),
-      modelId: getActiveModelId(stored.defaults?.modelId) || DEFAULT_IMAGE_MODEL_PREFERENCES.defaults.modelId,
+      modelId: defaultModelId,
+      resolution: defaultResolution,
     },
   };
 }

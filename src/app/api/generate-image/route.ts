@@ -5,11 +5,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, refundCredits } from '@/lib/credits';
 import { getImageModelDefinition, isImageModelId, type ImageModelId } from '@/lib/image-models';
-import { resolveImageUpstreamModel } from '@/lib/image-model-routing';
+import { isImageModelResolutionError, resolveImageUpstreamModel } from '@/lib/image-model-routing';
 import { isImagePriceUnavailableError, quoteImageCredits, type ImagePriceQuote } from '@/lib/image-pricing';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 import { collectImageResponseCandidates } from '@/lib/image-response-candidates';
+import { saveCanvasAsset } from '@/lib/canvas-asset-server';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = ImageModelId;
@@ -570,6 +571,31 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
   throw new Error('No image data in proxy response');
 }
 
+async function persistGeneratedImageResult(userId: string, result: Record<string, unknown>) {
+  const imageData = typeof result.imageData === 'string' ? result.imageData : '';
+  const match = /^data:(image\/[\w.+-]+);base64,(.+)$/i.exec(imageData);
+  if (!match) return result;
+
+  try {
+    const bytes = Uint8Array.from(Buffer.from(match[2], 'base64'));
+    const asset = await saveCanvasAsset(userId, bytes);
+    return {
+      ...result,
+      imageData: asset.url,
+      imageAsset: {
+        contentType: asset.contentType,
+        fileName: asset.fileName,
+        size: asset.size,
+      },
+    };
+  } catch (error) {
+    // Preserve the generated result when local storage is temporarily full or
+    // unavailable. The browser can still persist the inline fallback itself.
+    console.warn('[generate-image] generated image could not be persisted locally', getSafeErrorLogDetails(error));
+    return result;
+  }
+}
+
 async function maybeTranslatePromptWithProxy(prompt: string, signal: AbortSignal) {
   const hasChinese = /[\u4e00-\u9fff]/.test(prompt);
   const targets = getProxyTargets();
@@ -676,7 +702,7 @@ async function pollGptImage2Task(params: {
   throw new Error(`gpt-image-2 task timed out after ${Math.round(timeoutMs / 1000)}s: ${JSON.stringify(lastPayload).slice(0, 500)}`);
 }
 
-function buildOfficialGptImage2FormData(params: {
+async function buildOfficialGptImage2FormData(params: {
   prompt: string;
   references: NormalizedReferenceImage[];
   size: string;
@@ -685,6 +711,7 @@ function buildOfficialGptImage2FormData(params: {
   background?: 'auto' | 'transparent' | 'opaque';
   outputFormat?: 'png' | 'jpeg' | 'webp';
   moderation?: 'auto' | 'low';
+  signal: AbortSignal;
 }) {
   const formData = new FormData();
   formData.append('prompt', params.prompt);
@@ -711,16 +738,23 @@ function buildOfficialGptImage2FormData(params: {
     return formData;
   }
 
-  params.references.forEach((reference, index) => {
-    if (!reference.data) {
-      return;
+  for (const [index, reference] of params.references.entries()) {
+    let mimeType = reference.mimeType || 'image/png';
+    let buffer: Buffer;
+    if (reference.data) {
+      buffer = Buffer.from(reference.data, 'base64');
+    } else if (reference.url) {
+      const dataUrl = await fetchImageUrlAsDataUrl(reference.url, params.signal);
+      const match = /^data:(image\/[\w.+-]+);base64,(.+)$/i.exec(dataUrl);
+      if (!match) throw new Error('GPT Image 2 Official 参考图下载结果无效');
+      mimeType = match[1];
+      buffer = Buffer.from(match[2], 'base64');
+    } else {
+      throw new Error('GPT Image 2 Official 参考图内容为空');
     }
-
-    const mimeType = reference.mimeType || 'image/png';
     const ext = mimeType.split('/')[1] || 'png';
-    const buffer = Buffer.from(reference.data, 'base64');
-    formData.append('image', new Blob([buffer], { type: mimeType }), `reference-${index + 1}.${ext}`);
-  });
+    formData.append('image', new Blob([Uint8Array.from(buffer)], { type: mimeType }), `reference-${index + 1}.${ext}`);
+  }
 
   return formData;
 }
@@ -876,7 +910,7 @@ async function generateViaProxy(
           throw new Error(officialSizeValidation.reason);
         }
 
-        const formData = buildOfficialGptImage2FormData({
+        const formData = await buildOfficialGptImage2FormData({
           prompt: translatedPrompt,
           references,
           size: officialSize,
@@ -885,6 +919,7 @@ async function generateViaProxy(
           background: payload.officialOptions?.background,
           outputFormat: payload.officialOptions?.outputFormat,
           moderation: payload.officialOptions?.moderation,
+          signal,
         });
 
         markTargetSubmissionStarted();
@@ -1285,11 +1320,12 @@ export async function POST(request: NextRequest) {
       priceVersion: priceQuote.priceVersion,
     };
     const respondWithResult = async (result: Record<string, unknown>) => {
+      const persistedResult = await persistGeneratedImageResult(user.id, result);
       await finalizeAiBudget(requestId, 'completed').catch((error) => {
         console.error('[generate-image] 无法完成成本预留记录', error);
       });
       budgetReserved = false;
-      return NextResponse.json({ ...result, billing });
+      return NextResponse.json({ ...persistedResult, billing });
     };
     const markUpstreamSubmissionStarted = () => {
       upstreamStarted = true;
@@ -1371,7 +1407,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (isImagePriceUnavailableError(error)) {
+    if (isImagePriceUnavailableError(error) || isImageModelResolutionError(error)) {
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: 422 },
@@ -1379,7 +1415,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (upstreamOutcomeUnknown) {
-      console.error('[generate-image] upstream outcome unknown after cancellation or timeout', getSafeErrorLogDetails(error));
+      console.error('[generate-image] upstream outcome unknown after cancellation or timeout', {
+        requestId: chargeReferenceId,
+        modelId: chargedQuote?.modelId,
+        upstreamModel: chargedQuote?.upstreamModel,
+        ...getSafeErrorLogDetails(error),
+      });
       return NextResponse.json(
         {
           error: '图片任务已提交，但连接在结果返回前中断',
@@ -1391,7 +1432,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error('[generate-image] generation failed', getSafeErrorLogDetails(error));
+    console.error('[generate-image] generation failed', {
+      requestId: chargeReferenceId,
+      modelId: chargedQuote?.modelId,
+      upstreamModel: chargedQuote?.upstreamModel,
+      ...getSafeErrorLogDetails(error),
+    });
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     return NextResponse.json(

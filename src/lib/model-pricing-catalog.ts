@@ -1,5 +1,5 @@
 import { IMAGE_MODEL_OPTIONS } from '@/lib/image-models';
-import { resolveImageUpstreamModel, type ImageResolution } from '@/lib/image-model-routing';
+import { resolveImageUpstreamModel } from '@/lib/image-model-routing';
 import {
   IMAGE_PRICE_VERSION,
   isImagePriceUnavailableError,
@@ -42,11 +42,9 @@ export interface ModelPricingCatalog {
   items: ModelPricingCatalogItem[];
 }
 
-const IMAGE_RESOLUTIONS: readonly ImageResolution[] = ['1K', '2K', '4K'];
-
 function buildImageItems(): ModelPricingCatalogItem[] {
   return IMAGE_MODEL_OPTIONS.map((model) => {
-    const specs = IMAGE_RESOLUTIONS.flatMap<ModelPricingSpec>((resolution) => {
+    const specs = model.supportedResolutions.flatMap<ModelPricingSpec>((resolution) => {
       try {
         const upstreamModel = resolveImageUpstreamModel({ modelId: model.id, resolution });
         const quote = quoteImageCredits({
