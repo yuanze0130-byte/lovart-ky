@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
-import { Plus, Minus, ChevronDown, Cloud, CloudOff, LoaderCircle, Map as MapIcon, History as HistoryIcon, Bot, Boxes } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Cloud, CloudOff, LoaderCircle, Map as MapIcon, History as HistoryIcon, Bot, Boxes, ScrollText } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -17,6 +17,7 @@ import { startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } f
 import type { RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
 import { GenerationHistoryPanel } from '@/components/lovart/GenerationHistoryPanel';
+import { CanvasTaskLogPanel } from '@/components/lovart/CanvasTaskLogPanel';
 import { AgentPanel } from '@/components/lovart/AgentPanel';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { useCanvasViewport } from '@/hooks/useCanvasViewport';
@@ -33,10 +34,12 @@ import { useAgentContext } from '@/hooks/useAgentContext';
 import { useAgentPanelController } from '@/hooks/useAgentPanelController';
 import { useViewportSize } from '@/hooks/useViewportSize';
 import { useCanvasHistory } from '@/hooks/useCanvasHistory';
+import { useCanvasTaskLog } from '@/hooks/useCanvasTaskLog';
 import { useStoryboardManager } from '@/hooks/useStoryboardManager';
 import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult, AgentImageLayout } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 import { authedFetch } from '@/lib/authed-fetch';
+import { dispatchCanvasTaskRetry, type CanvasTaskLogEntry } from '@/lib/canvas-task-log';
 import {
     PORT_COLORS,
     connectionKindForPorts,
@@ -157,6 +160,7 @@ function LovartCanvasContent() {
     const supabase = useSupabase();
     const searchParams = useSearchParams();
     const projectId = searchParams.get('id');
+    const { entries: taskLogEntries, recordTask, clearTasks: clearTaskLogs, syncState: taskLogSyncState } = useCanvasTaskLog(projectId, user?.id, supabase);
     const updateProjectThumbnail = useCallback(async (thumbnail: string) => {
         if (!supabase || !projectId || !thumbnail) return;
 
@@ -194,6 +198,7 @@ function LovartCanvasContent() {
     const miniMapRef = useRef<HTMLDivElement | null>(null);
     const lastFocusedRelightTargetRef = useRef<string | null>(null);
     const [showGenerationHistory, setShowGenerationHistory] = useState(false);
+    const [showTaskLog, setShowTaskLog] = useState(false);
     const [show3DDirector, setShow3DDirector] = useState(false);
     const [showNodeAlignment, setShowNodeAlignment] = useState(false);
     const [showRhaiLibrary, setShowRhaiLibrary] = useState(false);
@@ -573,6 +578,7 @@ function LovartCanvasContent() {
         setActiveTool,
         setIsGenerating,
         onThumbnailGenerated: updateProjectThumbnail,
+        onTaskUpdate: recordTask,
     });
 
     const { handleRemoveBackground, handleUpscale, handleCrop } = useCanvasImageActions({
@@ -1582,6 +1588,36 @@ function LovartCanvasContent() {
         y: (options?.viewportHeight ?? window.innerHeight) / 2 - (options?.chromeOffset ?? 56) - ((element.y + (element.height || 200) / 2) * scale),
     }), [scale]);
 
+    const handleLocateTaskNode = useCallback((nodeId: string) => {
+        const source = elements.find((element) => element.id === nodeId);
+        if (!source) return;
+        setSelectedIds([source.id]);
+        setPan(centerPanForElement(source));
+    }, [centerPanForElement, elements, setPan]);
+
+    const handleRetryTask = useCallback((entry: CanvasTaskLogEntry) => {
+        const source = entry.nodeId ? elements.find((element) => element.id === entry.nodeId) : undefined;
+        if (!source || (source.type !== 'image-generator' && source.type !== 'video-generator')) {
+            recordTask({
+                id: entry.id,
+                nodeId: entry.nodeId,
+                taskId: entry.taskId,
+                kind: entry.kind,
+                status: 'failed',
+                progress: entry.progress,
+                message: '无法重试：原始生成节点已不存在',
+                provider: entry.provider,
+                model: entry.model,
+                error: '请在画布中新建生成节点后重新提交。',
+            });
+            return;
+        }
+
+        setSelectedIds([source.id]);
+        setPan(centerPanForElement(source));
+        window.setTimeout(() => dispatchCanvasTaskRetry(source.id), 80);
+    }, [centerPanForElement, elements, recordTask, setPan]);
+
     useEffect(() => {
         if (!relightTargetId) {
             lastFocusedRelightTargetRef.current = null;
@@ -2482,6 +2518,18 @@ function LovartCanvasContent() {
         setElements((prev) => [...prev, generatorElement]);
         setSelectedIds([generatorElement.id]);
         setSelectedStoryboardItemId(input.storyboardItemId);
+        const logEntryId = `storyboard-image-${generatorElement.id}`;
+        recordTask({
+            id: logEntryId,
+            nodeId: generatorElement.id,
+            kind: 'image',
+            status: 'running',
+            progress: 10,
+            message: `分镜图片「${input.title}」已提交`,
+            model: input.modelVariant,
+            promptPreview: input.prompt,
+            referenceCount: 0,
+        });
 
         try {
             const result = await requestImageGeneration({
@@ -2537,11 +2585,31 @@ function LovartCanvasContent() {
                     sourceOutputSize: item.outputSize || aspectMeta.videoSize,
                 })
                 : item));
+            recordTask({
+                id: logEntryId,
+                nodeId: generatorElement.id,
+                taskId: result.returnedTaskId,
+                kind: 'image',
+                status: 'succeeded',
+                progress: 100,
+                message: `分镜图片「${input.title}」生成完成`,
+                provider: result.returnedProvider,
+                model: result.returnedModel || result.returnedModelVariant,
+            });
         } catch (error) {
-            setElements((prev) => prev.filter((el) => el.id !== generatorElement.id));
+            recordTask({
+                id: logEntryId,
+                nodeId: generatorElement.id,
+                kind: 'image',
+                status: 'failed',
+                progress: 0,
+                message: `分镜图片「${input.title}」生成失败`,
+                model: input.modelVariant,
+                error: error instanceof Error ? error.message : '未知错误',
+            });
             throw error;
         }
-    }, [buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardImageElementPatch, buildStoryboardItemResultPatch, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
+    }, [buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardImageElementPatch, buildStoryboardItemResultPatch, recordTask, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
 
     const handleAgentGenerateStoryboardVideo = useCallback(async (input: {
         storyboardItemId: string;
@@ -2582,6 +2650,18 @@ function LovartCanvasContent() {
         setElements((prev) => [...prev, generatorElement]);
         setSelectedIds([generatorElement.id]);
         setSelectedStoryboardItemId(input.storyboardItemId);
+        const logEntryId = `storyboard-video-${generatorElement.id}`;
+        recordTask({
+            id: logEntryId,
+            nodeId: generatorElement.id,
+            kind: 'video',
+            status: 'queued',
+            progress: 0,
+            message: `分镜视频「${input.title}」等待提交`,
+            model: input.mode,
+            promptPreview: input.prompt,
+            referenceCount: 0,
+        });
 
         try {
             const startResult = await startVideoGeneration({
@@ -2589,6 +2669,16 @@ function LovartCanvasContent() {
                 seconds: input.durationSeconds,
                 size: input.size,
                 modelMode: input.mode,
+            });
+            recordTask({
+                id: logEntryId,
+                nodeId: generatorElement.id,
+                taskId: startResult.taskId,
+                kind: 'video',
+                status: 'running',
+                progress: 5,
+                message: `分镜视频「${input.title}」已提交`,
+                model: startResult.model || startResult.modelMode || input.mode,
             });
 
             const startedAt = Date.now();
@@ -2604,6 +2694,16 @@ function LovartCanvasContent() {
 
                 const videoStatus = status.status ?? 'processing';
                 const progress = status.progress ?? 0;
+                recordTask({
+                    id: logEntryId,
+                    nodeId: generatorElement.id,
+                    taskId: startResult.taskId,
+                    kind: 'video',
+                    status: 'running',
+                    progress,
+                    message: `分镜视频「${input.title}」生成中`,
+                    model: status.model || startResult.model || input.mode,
+                });
 
                 setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
                     ...el,
@@ -2659,14 +2759,33 @@ function LovartCanvasContent() {
                             durationSec: input.durationSeconds,
                         })
                         : item));
+                    recordTask({
+                        id: logEntryId,
+                        nodeId: generatorElement.id,
+                        taskId: startResult.taskId,
+                        kind: 'video',
+                        status: 'succeeded',
+                        progress: 100,
+                        message: `分镜视频「${input.title}」生成完成`,
+                        model: status.model || startResult.model || input.mode,
+                    });
                     return;
                 }
             }
         } catch (error) {
-            setElements((prev) => prev.filter((el) => el.id !== generatorElement.id));
+            recordTask({
+                id: logEntryId,
+                nodeId: generatorElement.id,
+                kind: 'video',
+                status: 'failed',
+                progress: 0,
+                message: `分镜视频「${input.title}」生成失败`,
+                model: input.mode,
+                error: error instanceof Error ? error.message : '未知错误',
+            });
             throw error;
         }
-    }, [buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardItemResultPatch, buildStoryboardVideoElementPatch, buildStoryboardVideoProgressPatch, getStoryboardNodeSize, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
+    }, [buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardItemResultPatch, buildStoryboardVideoElementPatch, buildStoryboardVideoProgressPatch, getStoryboardNodeSize, recordTask, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
 
     const buildAgentFollowUps = useCallback((result: AgentActionResult): string[] => {
         switch (result.kind) {
@@ -2919,6 +3038,7 @@ function LovartCanvasContent() {
                         onClick={() => {
                             setShowChat(false);
                             setShowGenerationHistory(false);
+                            setShowTaskLog(false);
                             setShowRhaiLibrary((value) => !value);
                         }}
                         className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showRhaiLibrary ? 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
@@ -2937,6 +3057,7 @@ function LovartCanvasContent() {
                         type="button"
                         onClick={() => {
                             setShowChat(false);
+                            setShowTaskLog(false);
                             setShowGenerationHistory((value) => !value);
                         }}
                         className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showGenerationHistory ? 'bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
@@ -2945,11 +3066,27 @@ function LovartCanvasContent() {
                         <HistoryIcon size={15} />
                         <span>历史</span>
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setShowChat(false);
+                            setShowGenerationHistory(false);
+                            setShowRhaiLibrary(false);
+                            setShowTaskLog((value) => !value);
+                        }}
+                        className={`relative flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showTaskLog ? 'bg-violet-50 text-violet-700 dark:bg-violet-400/10 dark:text-violet-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
+                        title="打开任务日志"
+                    >
+                        <ScrollText size={15} />
+                        <span>日志</span>
+                        {taskLogEntries.some((entry) => entry.status === 'failed') && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-rose-500" />}
+                    </button>
                     {agentPanelEnabled && (
                         <button
                             type="button"
                             onClick={() => {
                                 setShowGenerationHistory(false);
+                                setShowTaskLog(false);
                                 setShowChat((value) => !value);
                             }}
                             className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showChat ? 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
@@ -2970,6 +3107,17 @@ function LovartCanvasContent() {
                         void handleInsertHistoryItem(item);
                         setShowGenerationHistory(false);
                     }}
+                />
+            )}
+
+            {showTaskLog && (
+                <CanvasTaskLogPanel
+                    entries={taskLogEntries}
+                    syncState={taskLogSyncState}
+                    onClose={() => setShowTaskLog(false)}
+                    onClear={clearTaskLogs}
+                    onLocateNode={handleLocateTaskNode}
+                    onRetryTask={handleRetryTask}
                 />
             )}
 
@@ -3093,6 +3241,7 @@ function LovartCanvasContent() {
                     onGlobalViewCapture={handleGlobalViewCapture}
                     onMotionTransferComplete={handleMotionTransferComplete}
                     onVideoGeneratorComplete={handleVideoGeneratorNodeComplete}
+                    onVideoGeneratorTaskUpdate={recordTask}
                     onVideoFramesComplete={handleVideoFramesComplete}
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}

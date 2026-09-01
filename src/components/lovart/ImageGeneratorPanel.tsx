@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Settings2, ChevronUp, ChevronDown, Eye, EyeOff, BookOpen, Search, X, Cable } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { authedFetch } from '@/lib/authed-fetch';
+import { CANVAS_TASK_RETRY_EVENT, type CanvasTaskRetryEventDetail } from '@/lib/canvas-task-log';
 import type { ImagePriceQuote } from '@/lib/image-pricing';
 import {
   IMAGE_MODEL_CATEGORIES,
@@ -110,8 +111,9 @@ export function ImageGeneratorPanel({
   onConfigChange,
   onInsertPromptLibraryItem,
 }: ImageGeneratorPanelProps) {
+  const retryHandlerRef = React.useRef<() => Promise<void>>(async () => undefined);
   const initialElement = canvasElements.find((item) => item.id === elementId);
-  const [prompt, setPrompt] = useState(initialPrompt || '');
+  const [prompt, setPrompt] = useState(initialPrompt || initialElement?.prompt || '');
   const [resolution, setResolution] = useState<Resolution>('1K');
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>('auto');
   const [modelVariant, setModelVariant] = useState<ImageModelId>(
@@ -139,6 +141,10 @@ export function ImageGeneratorPanel({
   const [priceQuote, setPriceQuote] = useState<ImagePriceQuote | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [isPriceLoading, setIsPriceLoading] = useState(true);
+
+  useEffect(() => {
+    setPrompt(initialPrompt || initialElement?.prompt || '');
+  }, [elementId, initialElement?.prompt, initialPrompt]);
 
   const selectedElement = useMemo(
     () => canvasElements.find((item) => item.id === elementId),
@@ -387,6 +393,16 @@ export function ImageGeneratorPanel({
       }, 800);
     }
   };
+
+  retryHandlerRef.current = handleSubmit;
+  useEffect(() => {
+    const handleRetry = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasTaskRetryEventDetail>).detail;
+      if (detail?.nodeId === elementId) void retryHandlerRef.current().catch(() => undefined);
+    };
+    window.addEventListener(CANVAS_TASK_RETRY_EVENT, handleRetry);
+    return () => window.removeEventListener(CANVAS_TASK_RETRY_EVENT, handleRetry);
+  }, [elementId]);
 
   return (
     <div

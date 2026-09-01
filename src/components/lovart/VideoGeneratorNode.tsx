@@ -14,6 +14,7 @@ import {
   type VideoQualityMode,
 } from '@/lib/video-models';
 import { authedFetch } from '@/lib/authed-fetch';
+import { CANVAS_TASK_RETRY_EVENT, type CanvasTaskLogUpdate, type CanvasTaskRetryEventDetail } from '@/lib/canvas-task-log';
 import type { VideoPriceQuote } from '@/lib/video-pricing';
 
 interface VideoGeneratorNodeProps {
@@ -24,6 +25,7 @@ interface VideoGeneratorNodeProps {
   lastFrame?: string;
   onConfigChange: (updates: Partial<CanvasElement>) => void;
   onComplete?: (videoUrl: string) => Promise<void> | void;
+  onTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
 }
 
 function SelectControl({ value, title, options, onChange, className = '' }: {
@@ -81,6 +83,7 @@ export function VideoGeneratorNode({
   lastFrame,
   onConfigChange,
   onComplete,
+  onTaskUpdate,
 }: VideoGeneratorNodeProps) {
   const [localPrompt, setLocalPrompt] = useState(element.prompt || '');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -91,6 +94,7 @@ export function VideoGeneratorNode({
   const [isPriceLoading, setIsPriceLoading] = useState(true);
   const runTokenRef = useRef(0);
   const requestIdRef = useRef<string | null>(null);
+  const retryHandlerRef = useRef<() => Promise<void>>(async () => undefined);
 
   useEffect(() => setLocalPrompt(element.prompt || ''), [element.prompt]);
   useEffect(() => () => { runTokenRef.current += 1; }, []);
@@ -172,9 +176,23 @@ export function VideoGeneratorNode({
     setProgress(0);
     setError(null);
     onConfigChange({ prompt: localPrompt, generationMetadata: { ...(element.generationMetadata || {}), taskStatus: 'queued', model: config.modelId } });
+    const requestId = requestIdRef.current || (requestIdRef.current = crypto.randomUUID());
+    const logId = `video-${element.id}-${requestId}`;
+    onTaskUpdate?.({
+      id: logId,
+      nodeId: element.id,
+      kind: 'video',
+      status: 'queued',
+      progress: 0,
+      message: '视频任务等待上游接收',
+      provider: definition.provider,
+      model: config.modelId,
+      promptPreview: effectivePrompt,
+      referenceCount: connectedCount,
+    });
     try {
       const result = await startVideoGeneration({
-        requestId: requestIdRef.current || (requestIdRef.current = crypto.randomUUID()),
+        requestId,
         prompt: effectivePrompt,
         modelId: config.modelId,
         aspectRatio: config.aspectRatio,
@@ -192,6 +210,17 @@ export function VideoGeneratorNode({
         lastFrame: config.useStartEndFrames ? lastFrame : undefined,
       });
       onConfigChange({ generationMetadata: { ...(element.generationMetadata || {}), taskId: result.taskId, taskStatus: result.status || 'queued', model: result.model || config.modelId } });
+      onTaskUpdate?.({
+        id: logId,
+        nodeId: element.id,
+        taskId: result.taskId,
+        kind: 'video',
+        status: 'running',
+        progress: 5,
+        message: '上游已接收视频任务',
+        provider: definition.provider,
+        model: result.model || config.modelId,
+      });
       const startedAt = Date.now();
       while (runToken === runTokenRef.current) {
         if (Date.now() - startedAt > 12 * 60 * 1000) throw new Error('视频生成超时，请稍后重试');
@@ -201,8 +230,30 @@ export function VideoGeneratorNode({
         setProgress(status.progress || 0);
         onConfigChange({ generationMetadata: { ...(element.generationMetadata || {}), taskId: result.taskId, taskStatus: status.status || 'processing', model: status.model || result.model || config.modelId } });
         if (isVideoGenerationFailed(status.status)) throw new Error(status.error || '视频生成失败');
+        onTaskUpdate?.({
+          id: logId,
+          nodeId: element.id,
+          taskId: result.taskId,
+          kind: 'video',
+          status: 'running',
+          progress: status.progress || 0,
+          message: '视频生成中',
+          provider: definition.provider,
+          model: status.model || result.model || config.modelId,
+        });
         if (isVideoGenerationReady(status) && status.videoUrl) {
           await onComplete?.(status.videoUrl);
+          onTaskUpdate?.({
+            id: logId,
+            nodeId: element.id,
+            taskId: result.taskId,
+            kind: 'video',
+            status: 'succeeded',
+            progress: 100,
+            message: '视频生成完成',
+            provider: definition.provider,
+            model: status.model || result.model || config.modelId,
+          });
           requestIdRef.current = null;
           return;
         }
@@ -210,12 +261,34 @@ export function VideoGeneratorNode({
     } catch (caught) {
       if (runToken === runTokenRef.current) {
         requestIdRef.current = null;
-        setError(caught instanceof Error ? caught.message : '视频生成失败');
+        const message = caught instanceof Error ? caught.message : '视频生成失败';
+        setError(message);
+        onTaskUpdate?.({
+          id: logId,
+          nodeId: element.id,
+          kind: 'video',
+          status: 'failed',
+          progress,
+          message: '视频生成失败',
+          provider: definition.provider,
+          model: config.modelId,
+          error: message,
+        });
       }
     } finally {
       if (runToken === runTokenRef.current) setIsGenerating(false);
     }
   };
+
+  retryHandlerRef.current = generate;
+  useEffect(() => {
+    const handleRetry = (event: Event) => {
+      const detail = (event as CustomEvent<CanvasTaskRetryEventDetail>).detail;
+      if (detail?.nodeId === element.id) void retryHandlerRef.current();
+    };
+    window.addEventListener(CANVAS_TASK_RETRY_EVENT, handleRetry);
+    return () => window.removeEventListener(CANVAS_TASK_RETRY_EVENT, handleRetry);
+  }, [element.id]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-[0_14px_40px_rgba(15,23,42,0.13)] dark:border-white/10 dark:bg-slate-950 dark:text-slate-100">

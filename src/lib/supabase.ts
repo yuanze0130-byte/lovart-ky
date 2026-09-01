@@ -550,6 +550,66 @@ export interface Database {
         };
         Relationships: [];
       };
+      canvas_task_logs: {
+        Row: {
+          project_id: string;
+          id: string;
+          user_id: string;
+          node_id: string | null;
+          task_id: string | null;
+          kind: string;
+          status: string;
+          level: string;
+          progress: number;
+          message: string;
+          provider: string | null;
+          model: string | null;
+          prompt_preview: string | null;
+          reference_count: number | null;
+          error: string | null;
+          created_at: string;
+          updated_at: string;
+          completed_at: string | null;
+        };
+        Insert: {
+          project_id: string;
+          id: string;
+          user_id: string;
+          node_id?: string | null;
+          task_id?: string | null;
+          kind: string;
+          status: string;
+          level: string;
+          progress?: number;
+          message: string;
+          provider?: string | null;
+          model?: string | null;
+          prompt_preview?: string | null;
+          reference_count?: number | null;
+          error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Update: {
+          node_id?: string | null;
+          task_id?: string | null;
+          kind?: string;
+          status?: string;
+          level?: string;
+          progress?: number;
+          message?: string;
+          provider?: string | null;
+          model?: string | null;
+          prompt_preview?: string | null;
+          reference_count?: number | null;
+          error?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          completed_at?: string | null;
+        };
+        Relationships: [];
+      };
       user_access_control: {
         Row: {
           user_id: string;

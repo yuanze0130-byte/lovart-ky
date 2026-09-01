@@ -27,6 +27,8 @@
     "test:video-pricing": "node scripts/test-video-pricing.mjs",
     "test:video-billing-safety": "node scripts/test-video-billing-safety.mjs",
     "test:generation-jobs": "node scripts/test-generation-jobs.mjs",
+    "test:canvas-task-log": "node scripts/test-canvas-task-log.mjs",
+    "test:canvas-task-log-security": "node scripts/test-canvas-task-log-security.mjs",
     "test:async-generation-security": "node scripts/test-async-generation-security.mjs",
     "migrate:canvas-assets": "node scripts/migrate-canvas-assets.mjs"
   },

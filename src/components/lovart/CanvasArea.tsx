@@ -15,6 +15,7 @@ import { VideoGeneratorNode } from './VideoGeneratorNode';
 import { CanvasImageMedia, CanvasVideoMedia } from './CanvasMedia';
 import { CanvasNodeCreateMenu, type CanvasQuickCreateAction } from './CanvasNodeCreateMenu';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
+import type { CanvasTaskLogUpdate } from '@/lib/canvas-task-log';
 import type { Json } from '@/lib/supabase';
 import { getStoryboardReviewRailLabel, getStoryboardReviewRailState } from '@/hooks/useProjectAssets';
 import { v4 as uuidv4 } from 'uuid';
@@ -374,6 +375,7 @@ interface CanvasAreaProps {
     onGlobalViewCapture?: (element: CanvasElement, images: Array<{ content: string; label: string }>) => void;
     onMotionTransferComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
     onVideoGeneratorComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
+    onVideoGeneratorTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
     onVideoFramesComplete?: (element: CanvasElement, frames: ExtractedVideoFrame[]) => void;
     annotationImageId?: string | null;
     annotationObject?: DetectedObject | null;
@@ -448,6 +450,7 @@ export function CanvasArea({
     onGlobalViewCapture,
     onMotionTransferComplete,
     onVideoGeneratorComplete,
+    onVideoGeneratorTaskUpdate,
     onVideoFramesComplete,
     annotationImageId,
     annotationObject,
@@ -2253,6 +2256,7 @@ export function CanvasArea({
                                             lastFrame={lastFrame}
                                             onConfigChange={(updates) => onElementChange(el.id, updates)}
                                             onComplete={onVideoGeneratorComplete ? (videoUrl) => onVideoGeneratorComplete(el, videoUrl) : undefined}
+                                            onTaskUpdate={onVideoGeneratorTaskUpdate}
                                         />
                                     );
                                 })()}

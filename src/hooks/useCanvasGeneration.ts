@@ -10,6 +10,7 @@ import { addGenerationHistoryItem } from '@/lib/generation-history';
 import { importRemoteCanvasVideo } from '@/lib/canvas-asset-upload';
 import { optimizeCanvasImageAsset } from '@/lib/canvas-media-optimization';
 import { uploadReferenceImages } from '@/lib/reference-image-upload';
+import type { CanvasTaskLogUpdate } from '@/lib/canvas-task-log';
 
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type OfficialImageOptions = {
@@ -49,6 +50,7 @@ interface UseCanvasGenerationParams {
   setActiveTool: Dispatch<SetStateAction<string>>;
   setIsGenerating: Dispatch<SetStateAction<boolean>>;
   onThumbnailGenerated?: (thumbnail: string) => void | Promise<void>;
+  onTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
 }
 
 function buildGenerationMetadata({
@@ -433,6 +435,7 @@ export function useCanvasGeneration({
   setActiveTool,
   setIsGenerating,
   onThumbnailGenerated,
+  onTaskUpdate,
 }: UseCanvasGenerationParams) {
   const handleGenerateVideo = useCallback(
     async (videoUrl: string, targetElementId?: string) => {
@@ -601,10 +604,13 @@ export function useCanvasGeneration({
       targetElementId?: string,
     ) => {
       setIsGenerating(true);
+      const logEntryId = uuidv4();
+      let logNodeId = targetElementId;
       try {
         const generatorElementId = targetElementId && elements.some((el) => el.id === targetElementId && el.type === 'image-generator')
           ? targetElementId
           : selectedIds.find((id) => elements.find((el) => el.id === id)?.type === 'image-generator');
+        logNodeId = generatorElementId || targetElementId;
         const connectedInputs = generatorElementId
           ? resolveConnectedInputs(generatorElementId, elements)
           : null;
@@ -613,6 +619,17 @@ export function useCanvasGeneration({
           ...(connectedInputs?.references || []),
           ...referenceImages,
         ].filter(Boolean)));
+        onTaskUpdate?.({
+          id: logEntryId,
+          nodeId: logNodeId,
+          kind: 'image',
+          status: 'running',
+          progress: 10,
+          message: '图片任务已提交',
+          model: modelVariant,
+          promptPreview: effectivePrompt,
+          referenceCount: effectiveReferences.length,
+        });
         const result = await requestImageGeneration({
           prompt: effectivePrompt,
           resolution,
@@ -651,6 +668,17 @@ export function useCanvasGeneration({
           returnedTaskCompletedAt,
           returnedTaskPayload,
         } = result;
+        onTaskUpdate?.({
+          id: logEntryId,
+          nodeId: logNodeId,
+          taskId: returnedTaskId,
+          kind: 'image',
+          status: 'running',
+          progress: 85,
+          message: '上游已返回，正在写入画布',
+          provider: returnedProvider,
+          model: returnedModel || returnedModelVariant,
+        });
 
         if (imageData) {
           const optimized = await optimizeCanvasImageAsset(imageData).catch((error) => {
@@ -681,7 +709,7 @@ export function useCanvasGeneration({
 
           if (generatorElementId) {
             const generatorElement = elements.find((el) => el.id === generatorElementId);
-            if (!generatorElement) return;
+            if (!generatorElement) throw new Error('生成节点已不存在，无法写入结果');
 
             const imageResult: GeneratedImageResult = { ...result, imageData: persistedImage };
             const resultId = uuidv4();
@@ -805,15 +833,39 @@ export function useCanvasGeneration({
           };
           setElements((prev) => [...prev, newElement]);
           setSelectedIds([newElement.id]);
+        } else {
+          throw new Error('上游未返回可用的图片或文本结果');
         }
+        onTaskUpdate?.({
+          id: logEntryId,
+          nodeId: logNodeId,
+          taskId: returnedTaskId,
+          kind: 'image',
+          status: 'succeeded',
+          progress: 100,
+          message: imageData ? '图片生成完成' : '文本结果已写入画布',
+          provider: returnedProvider,
+          model: returnedModel || returnedModelVariant,
+        });
       } catch (error) {
+        const message = error instanceof Error ? error.message : '未知错误';
+        onTaskUpdate?.({
+          id: logEntryId,
+          nodeId: logNodeId,
+          kind: 'image',
+          status: 'failed',
+          progress: 0,
+          message: '图片生成失败',
+          model: modelVariant,
+          error: message,
+        });
         console.error('Generation failed:', error);
-        alert(`生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        alert(`生成失败: ${message}`);
       } finally {
         setIsGenerating(false);
       }
     },
-    [elements, onThumbnailGenerated, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
+    [elements, onTaskUpdate, onThumbnailGenerated, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
   );
 
   const handleGenerateSelectedImages = useCallback(
@@ -829,6 +881,7 @@ export function useCanvasGeneration({
         const generatedIds: string[] = [];
         const results = await Promise.allSettled(
           generatorElements.map(async (generatorElement) => {
+            const logEntryId = uuidv4();
             const connectedInputs = resolveConnectedInputs(generatorElement.id, elements);
             const fallbackPrompt = typeof generatorElement.initialPrompt === 'string' && generatorElement.initialPrompt.trim()
               ? generatorElement.initialPrompt.trim()
@@ -851,29 +904,65 @@ export function useCanvasGeneration({
               ...fallbackReferences,
             ].filter(Boolean)));
             const editMode = generatorElement.initialEditMode || 'generate';
-
-            const result = await requestImageGeneration({
-              prompt,
-              resolution,
-              aspectRatio,
-              referenceImages,
-              modelVariant: 'pro',
-              editMode,
+            onTaskUpdate?.({
+              id: logEntryId,
+              nodeId: generatorElement.id,
+              kind: 'image',
+              status: 'running',
+              progress: 10,
+              message: '批量图片任务已提交',
+              model: 'pro',
+              promptPreview: prompt,
+              referenceCount: referenceImages.length,
             });
 
-            if (!result.imageData) {
-              throw new Error(result.textResponse || '未返回图片');
+            try {
+              const result = await requestImageGeneration({
+                prompt,
+                resolution,
+                aspectRatio,
+                referenceImages,
+                modelVariant: 'pro',
+                editMode,
+              });
+
+              if (!result.imageData) {
+                throw new Error(result.textResponse || '未返回图片');
+              }
+
+              const imageResult: GeneratedImageResult = { ...result, imageData: result.imageData };
+              const dimensions = await getImageDimensions(imageResult.imageData);
+              const displaySize = getSmartDisplaySize(dimensions);
+              onTaskUpdate?.({
+                id: logEntryId,
+                nodeId: generatorElement.id,
+                taskId: result.returnedTaskId,
+                kind: 'image',
+                status: 'succeeded',
+                progress: 100,
+                message: '批量图片生成完成',
+                provider: result.returnedProvider,
+                model: result.returnedModel || result.returnedModelVariant,
+              });
+
+              return {
+                generatorElement,
+                result: imageResult,
+                displaySize,
+              };
+            } catch (error) {
+              onTaskUpdate?.({
+                id: logEntryId,
+                nodeId: generatorElement.id,
+                kind: 'image',
+                status: 'failed',
+                progress: 0,
+                message: '批量图片生成失败',
+                model: 'pro',
+                error: error instanceof Error ? error.message : '未知错误',
+              });
+              throw error;
             }
-
-            const imageResult: GeneratedImageResult = { ...result, imageData: result.imageData };
-            const dimensions = await getImageDimensions(imageResult.imageData);
-            const displaySize = getSmartDisplaySize(dimensions);
-
-            return {
-              generatorElement,
-              result: imageResult,
-              displaySize,
-            };
           })
         );
 
@@ -947,7 +1036,7 @@ export function useCanvasGeneration({
         setIsGenerating(false);
       }
     },
-    [elements, onThumbnailGenerated, selectedIds, setElements, setIsGenerating, setSelectedIds]
+    [elements, onTaskUpdate, onThumbnailGenerated, selectedIds, setElements, setIsGenerating, setSelectedIds]
   );
 
   return {
