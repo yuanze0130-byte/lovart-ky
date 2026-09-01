@@ -34,11 +34,11 @@ CREATE POLICY "Users can view their own canvas task logs"
   FOR SELECT
   TO authenticated
   USING (
-    user_id = ((SELECT auth.uid())::TEXT)
+    user_id = ((SELECT auth.jwt())->>'sub')
     AND EXISTS (
       SELECT 1 FROM public.projects
       WHERE projects.id = canvas_task_logs.project_id
-        AND projects.user_id = ((SELECT auth.uid())::TEXT)
+        AND projects.user_id = ((SELECT auth.jwt())->>'sub')
     )
   );
 
@@ -48,11 +48,11 @@ CREATE POLICY "Users can insert their own canvas task logs"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    user_id = ((SELECT auth.uid())::TEXT)
+    user_id = ((SELECT auth.jwt())->>'sub')
     AND EXISTS (
       SELECT 1 FROM public.projects
       WHERE projects.id = canvas_task_logs.project_id
-        AND projects.user_id = ((SELECT auth.uid())::TEXT)
+        AND projects.user_id = ((SELECT auth.jwt())->>'sub')
     )
   );
 
@@ -62,19 +62,19 @@ CREATE POLICY "Users can update their own canvas task logs"
   FOR UPDATE
   TO authenticated
   USING (
-    user_id = ((SELECT auth.uid())::TEXT)
+    user_id = ((SELECT auth.jwt())->>'sub')
     AND EXISTS (
       SELECT 1 FROM public.projects
       WHERE projects.id = canvas_task_logs.project_id
-        AND projects.user_id = ((SELECT auth.uid())::TEXT)
+        AND projects.user_id = ((SELECT auth.jwt())->>'sub')
     )
   )
   WITH CHECK (
-    user_id = ((SELECT auth.uid())::TEXT)
+    user_id = ((SELECT auth.jwt())->>'sub')
     AND EXISTS (
       SELECT 1 FROM public.projects
       WHERE projects.id = canvas_task_logs.project_id
-        AND projects.user_id = ((SELECT auth.uid())::TEXT)
+        AND projects.user_id = ((SELECT auth.jwt())->>'sub')
     )
   );
 
@@ -84,11 +84,11 @@ CREATE POLICY "Users can delete their own canvas task logs"
   FOR DELETE
   TO authenticated
   USING (
-    user_id = ((SELECT auth.uid())::TEXT)
+    user_id = ((SELECT auth.jwt())->>'sub')
     AND EXISTS (
       SELECT 1 FROM public.projects
       WHERE projects.id = canvas_task_logs.project_id
-        AND projects.user_id = ((SELECT auth.uid())::TEXT)
+        AND projects.user_id = ((SELECT auth.jwt())->>'sub')
     )
   );
 
