@@ -7,6 +7,7 @@ const read = (relativePath) => readFile(path.join(root, relativePath), 'utf8');
 
 const [
   login,
+  turnstile,
   authProvider,
   credits,
   generateImage,
@@ -33,6 +34,7 @@ const [
   projectCard,
 ] = await Promise.all([
   read('src/components/auth/LoginModal.tsx'),
+  read('src/components/auth/TurnstileWidget.tsx'),
   read('src/components/auth/SupabaseAuthProvider.tsx'),
   read('src/lib/credits.ts'),
   read('src/app/api/generate-image/route.ts'),
@@ -61,6 +63,13 @@ const [
 
 assert.match(login, /TurnstileWidget/);
 assert.match(login, /NEXT_PUBLIC_AUTH_EMAIL_MODE === 'otp'/);
+assert.match(login, /等待安全检测/);
+assert.match(login, /setCaptchaResetKey\(\(value\) => value \+ 1\)/);
+assert.match(turnstile, /onReady=/);
+assert.match(turnstile, /onError=/);
+assert.match(turnstile, /TURNSTILE_TIMEOUT_MS = 10_000/);
+assert.match(turnstile, /安全检测已通过/);
+assert.match(turnstile, /重新加载/);
 assert.match(authProvider, /captchaToken/);
 assert.match(authProvider, /verifyOtp/);
 assert.match(credits, /credits: 0/);

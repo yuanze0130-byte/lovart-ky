@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ArrowLeft, KeyRound, Mail, ShieldCheck, X } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { TurnstileWidget } from '@/components/auth/TurnstileWidget';
+import { TurnstileWidget, type TurnstileStatus } from '@/components/auth/TurnstileWidget';
 
 interface LoginModalProps {
   open: boolean;
@@ -48,6 +48,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaStatus, setCaptchaStatus] = useState<TurnstileStatus>('loading');
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() || '';
   const captchaRequired = Boolean(turnstileSiteKey);
@@ -55,6 +56,10 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
 
   const handleCaptchaTokenChange = useCallback((token: string | null) => {
     setCaptchaToken(token);
+  }, []);
+
+  const handleCaptchaStatusChange = useCallback((status: TurnstileStatus) => {
+    setCaptchaStatus(status);
   }, []);
 
   useEffect(() => {
@@ -76,6 +81,7 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
       setOtp('');
       setStep('email');
       setCaptchaToken(null);
+      setCaptchaStatus('loading');
     }
   }, [open]);
 
@@ -103,8 +109,6 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
       } else {
         setMessage('登录邮件已发送，请检查收件箱和垃圾邮件。');
       }
-      setCaptchaToken(null);
-      setCaptchaResetKey((value) => value + 1);
     } catch (err) {
       const { message: loginError, shouldCooldown } = getLoginErrorMessage(err);
       if (shouldCooldown) {
@@ -112,6 +116,11 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
       }
       setError(loginError);
     } finally {
+      if (captchaRequired) {
+        setCaptchaToken(null);
+        setCaptchaStatus('loading');
+        setCaptchaResetKey((value) => value + 1);
+      }
       setLoading(false);
     }
   };
@@ -142,13 +151,17 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
     ? '发送中...'
     : cooldown > 0
       ? `${cooldown}s 后重试`
+      : captchaRequired && !captchaToken
+        ? captchaStatus === 'loading' ? '等待安全检测…' : '请重新加载安全检测'
       : emailOtpEnabled ? '发送验证码' : '发送登录链接';
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
       <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
         <button
+          type="button"
           onClick={onClose}
+          aria-label="关闭登录窗口"
           className="absolute right-4 top-4 rounded-lg p-2 text-gray-500 hover:bg-gray-100"
         >
           <X size={18} />
@@ -177,9 +190,11 @@ export function LoginModal({ open, onClose }: LoginModalProps) {
 
           {captchaRequired ? (
             <TurnstileWidget
+              key={captchaResetKey}
               siteKey={turnstileSiteKey}
               resetKey={captchaResetKey}
               onTokenChange={handleCaptchaTokenChange}
+              onStatusChange={handleCaptchaStatusChange}
             />
           ) : process.env.NODE_ENV !== 'production' ? (
             <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
