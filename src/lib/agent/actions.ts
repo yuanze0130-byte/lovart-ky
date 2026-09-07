@@ -180,7 +180,7 @@ export type AgentActionResult =
       title: string;
       prompt: string;
       aspectRatio: StoryboardAspectRatio;
-      resolution: '1K' | '2K' | '4K';
+      resolution: '1K' | '2K' | '3K' | '4K';
       modelVariant: import('@/lib/image-models').ImageModelId;
       message: string;
     }

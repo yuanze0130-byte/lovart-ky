@@ -11,12 +11,17 @@ import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/l
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 import { collectImageResponseCandidates } from '@/lib/image-response-candidates';
 import { saveCanvasAsset } from '@/lib/canvas-asset-server';
+import {
+  buildImageApiEndpoint,
+  buildSeedreamGenerationBody,
+  resolveImageApiKind,
+} from '@/lib/image-upstream-request';
 
 type GeminiProvider = 'proxy' | 'official' | 'auto';
 type ModelVariant = ImageModelId;
 type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type SupportedAspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9' | '9:21' | '2:1' | '1:2';
-type SupportedResolution = '1K' | '2K' | '4K';
+type SupportedResolution = '1K' | '2K' | '3K' | '4K';
 const GENERATION_DEBUG_LOGS_ENABLED = process.env.GENERATION_DEBUG_LOGS === 'true';
 
 function logGenerationDebug(event: string, details: Record<string, unknown>) {
@@ -164,6 +169,8 @@ function buildPrompt(prompt: string, resolution: SupportedResolution, aspectRati
     : `Generate the image in ${aspectRatio} aspect ratio.`;
   const resolutionInstruction = resolution === '4K'
     ? 'Target a high-detail 4K-style composition.'
+    : resolution === '3K'
+      ? 'Target a high-detail 3K-style composition.'
     : resolution === '2K'
       ? 'Target a high-detail 2K-style composition.'
       : 'Target a clear 1K-style composition.';
@@ -274,6 +281,12 @@ function buildTimeoutSignal(timeoutMs: number, parentSignal?: AbortSignal) {
   return parentSignal ? AbortSignal.any([parentSignal, timeoutSignal]) : timeoutSignal;
 }
 
+function referenceImagesToApiValues(references: NormalizedReferenceImage[]) {
+  return references.map((reference) => reference.kind === 'url'
+    ? reference.url!
+    : `data:${reference.mimeType || 'image/jpeg'};base64,${reference.data || ''}`);
+}
+
 function waitForAbortableDelay(delayMs: number, signal: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
     if (signal.aborted) {
@@ -340,13 +353,13 @@ function validateOfficialGptImage2Size(size: string): OfficialImageSizeValidatio
 
 function normalizeProxyBaseURL(baseURL: string) {
   const trimmed = baseURL.trim().replace(/\/+$/, '');
-  if (!trimmed) return 'https://ai.t8star.cn/v1';
+  if (!trimmed) return 'https://doodleverse.fun/v1';
   if (/\/v\d+$/i.test(trimmed)) return trimmed;
   return `${trimmed}/v1`;
 }
 
 function getProxyTargets() {
-  const primaryBaseURL = normalizeProxyBaseURL(process.env.GEMINI_BASE_URL || 'https://ai.t8star.cn/v1');
+  const primaryBaseURL = normalizeProxyBaseURL(process.env.GEMINI_BASE_URL || 'https://doodleverse.fun/v1');
   const primaryApiKey = process.env.GEMINI_API_KEY;
   const fallbackBaseURL = process.env.GEMINI_FALLBACK_BASE_URL
     ? normalizeProxyBaseURL(process.env.GEMINI_FALLBACK_BASE_URL)
@@ -730,12 +743,7 @@ async function buildOfficialGptImage2FormData(params: {
   }
 
   if (params.references.length === 0) {
-    const blankPng = Buffer.from(
-      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wn6zk0AAAAASUVORK5CYII=',
-      'base64',
-    );
-    formData.append('image', new Blob([blankPng], { type: 'image/png' }), 'blank.png');
-    return formData;
+    throw new Error('GPT Image 2 改图接口缺少参考图');
   }
 
   for (const [index, reference] of params.references.entries()) {
@@ -843,8 +851,38 @@ async function generateViaProxy(
           }
         | undefined;
 
-      if (modelDefinition.transport === 'image-task') {
-        const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/generations?async=true`;
+      if (modelDefinition.transport === 'image-generation') {
+        const endpoint = buildImageApiEndpoint(target.baseURL, 'generation');
+        const seedreamBody = buildSeedreamGenerationBody({
+          modelId: modelDefinition.id,
+          model: proxyModel,
+          prompt: translatedPrompt,
+          resolution: payload.resolution || '1K',
+          aspectRatio: normalizedAspectRatio,
+          references: referenceImagesToApiValues(references),
+        });
+        markTargetSubmissionStarted();
+        const imageResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${target.apiKey}`,
+          },
+          body: JSON.stringify(seedreamBody),
+          signal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal),
+        });
+
+        const rawText = await imageResponse.text();
+        if (!imageResponse.ok) {
+          throw new KnownUpstreamFailureError(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+        }
+        try {
+          response = JSON.parse(rawText) as GeminiChatCompletion;
+        } catch {
+          throw new Error(`${proxyModel} proxy returned non-JSON: ${rawText.slice(0, 500)}`);
+        }
+      } else if (modelDefinition.transport === 'image-task') {
+        const endpoint = buildImageApiEndpoint(target.baseURL, 'generation', true);
         markTargetSubmissionStarted();
         const imageResponse = await fetch(endpoint, {
           method: 'POST',
@@ -860,11 +898,7 @@ async function generateViaProxy(
               : '1:1',
             ...(references.length > 0
               ? {
-                  image: references.map((reference) =>
-                    reference.kind === 'url'
-                      ? reference.url!
-                      : `data:${reference.mimeType || 'image/jpeg'};base64,${reference.data || ''}`
-                  ),
+                  image: referenceImagesToApiValues(references),
                 }
               : {}),
           }),
@@ -903,32 +937,49 @@ async function generateViaProxy(
         taskPayload = taskResult.taskPayload as Record<string, unknown>;
         taskMetadata = taskResult.pollMetadata;
       } else if (modelDefinition.transport === 'official-image-task') {
-        const endpoint = `${target.baseURL.replace(/\/+$/, '')}/images/edits?async=true`;
+        const apiKind = resolveImageApiKind(references.length);
+        const endpoint = buildImageApiEndpoint(target.baseURL, apiKind, true);
         const officialSize = getOfficialGptImage2Size(normalizedAspectRatio, payload.resolution || '1K');
         const officialSizeValidation = validateOfficialGptImage2Size(officialSize);
         if (!officialSizeValidation.ok) {
           throw new Error(officialSizeValidation.reason);
         }
 
-        const formData = await buildOfficialGptImage2FormData({
-          prompt: translatedPrompt,
-          references,
-          size: officialSize,
-          model: proxyModel,
-          quality: payload.officialOptions?.quality,
-          background: payload.officialOptions?.background,
-          outputFormat: payload.officialOptions?.outputFormat,
-          moderation: payload.officialOptions?.moderation,
-          signal,
-        });
+        const requestBody = apiKind === 'edit'
+          ? await buildOfficialGptImage2FormData({
+              prompt: translatedPrompt,
+              references,
+              size: officialSize,
+              model: proxyModel,
+              quality: payload.officialOptions?.quality,
+              background: payload.officialOptions?.background,
+              outputFormat: payload.officialOptions?.outputFormat,
+              moderation: payload.officialOptions?.moderation,
+              signal,
+            })
+          : JSON.stringify({
+              model: proxyModel,
+              prompt: translatedPrompt,
+              n: 1,
+              quality: payload.officialOptions?.quality || 'auto',
+              moderation: payload.officialOptions?.moderation || 'auto',
+              size: officialSize,
+              ...(payload.officialOptions?.background && payload.officialOptions.background !== 'auto'
+                ? { background: payload.officialOptions.background }
+                : {}),
+              ...(payload.officialOptions?.outputFormat && payload.officialOptions.outputFormat !== 'png'
+                ? { output_format: payload.officialOptions.outputFormat }
+                : {}),
+            });
 
         markTargetSubmissionStarted();
         const imageResponse = await fetch(endpoint, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${target.apiKey}`,
+            ...(apiKind === 'generation' ? { 'Content-Type': 'application/json' } : {}),
           },
-          body: formData,
+          body: requestBody,
           signal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal),
         });
 
@@ -1230,7 +1281,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '提示词不能为空且不能超过 10000 个字符' }, { status: 400 });
     }
 
-    if (!isImageModelId(modelVariant) || !['1K', '2K', '4K'].includes(resolution)) {
+    if (!isImageModelId(modelVariant) || !['1K', '2K', '3K', '4K'].includes(resolution)) {
       return NextResponse.json({ error: '图片模型或分辨率无效' }, { status: 400 });
     }
 

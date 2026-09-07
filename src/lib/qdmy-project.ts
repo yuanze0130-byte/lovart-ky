@@ -88,7 +88,7 @@ function normalizeRatio(value: unknown): CanvasElement['requestedAspectRatio'] {
 
 function normalizeResolution(value: unknown): CanvasElement['requestedResolution'] {
   const resolution = firstString(value)?.toUpperCase();
-  return resolution === '1K' || resolution === '2K' || resolution === '4K' ? resolution : undefined;
+  return resolution === '1K' || resolution === '2K' || resolution === '3K' || resolution === '4K' ? resolution : undefined;
 }
 
 function connectionEndpoints(connection: UnknownRecord) {

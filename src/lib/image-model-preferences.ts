@@ -15,7 +15,7 @@ export interface ImageModelPreferences {
   lastUsedModelId: ImageModelId;
   defaults: {
     modelId: ImageModelId;
-    resolution: '1K' | '2K' | '4K';
+    resolution: ImageModelResolution;
     aspectRatio: string;
     outputCount: number;
     executionMode: ImageGenerationExecutionMode;

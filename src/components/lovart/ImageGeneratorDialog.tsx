@@ -12,7 +12,7 @@ interface ImageGeneratorDialogProps {
     onImageGenerated: (imageData: string) => void;
 }
 
-type Resolution = '1K' | '2K' | '4K';
+type Resolution = '1K' | '2K' | '3K' | '4K';
 type AspectRatio = '1:1' | '4:3' | '16:9';
 
 type GenerateImageResponse = {

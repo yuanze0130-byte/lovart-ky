@@ -66,6 +66,7 @@ interface ImageGeneratorPanelProps {
 const ASPECT_RATIO_OPTIONS: AspectRatio[] = ['auto', '4:3', '8:1', '1:1', '3:2', '1:8', '9:16', '2:3', '4:1', '16:9', '4:5', '1:4', '3:4', '5:4', '21:9'];
 const GPT_IMAGE_2_ASPECT_RATIO_OPTIONS: AspectRatio[] = ['1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
 const GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS: AspectRatio[] = ['1:1', '3:2', '2:3', '4:3', '3:4', '5:4', '4:5', '16:9', '9:16', '21:9'];
+const SEEDREAM_ASPECT_RATIO_OPTIONS: AspectRatio[] = ['auto', '1:1', '4:3', '3:4', '16:9', '9:16', '3:2', '2:3', '21:9'];
 
 const MODE_META: Record<ImageEditMode, { title: string; subtitle: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
   generate: {
@@ -189,6 +190,8 @@ export function ImageGeneratorPanel({
         ? GPT_IMAGE_2_ASPECT_RATIO_OPTIONS
         : modelDefinition.transport === 'official-image-task'
           ? GPT_IMAGE_2_OFFICIAL_ASPECT_RATIO_OPTIONS
+          : modelDefinition.transport === 'image-generation'
+            ? SEEDREAM_ASPECT_RATIO_OPTIONS
           : ASPECT_RATIO_OPTIONS
   ), [isPanorama, modelDefinition.transport]);
   const totalCreditCost = (priceQuote?.credits || 0) * outputCount;

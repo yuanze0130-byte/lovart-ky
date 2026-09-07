@@ -30,7 +30,7 @@ type RelightRequestPayload = {
   color: string;
 };
 
-export type Resolution = '1K' | '2K' | '4K';
+export type Resolution = '1K' | '2K' | '3K' | '4K';
 export type AspectRatio = 'auto' | '4:3' | '8:1' | '1:1' | '3:2' | '1:8' | '9:16' | '2:3' | '4:1' | '16:9' | '4:5' | '1:4' | '3:4' | '5:4' | '21:9';
 
 function isResolution(value: unknown): value is Resolution {

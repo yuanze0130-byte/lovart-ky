@@ -6,8 +6,8 @@ export type ImageModelCategory =
   | 'ByteDance'
   | 'Alibaba'
   | 'Other';
-export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task';
-export type ImageModelResolution = '1K' | '2K' | '4K';
+export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task' | 'image-generation';
+export type ImageModelResolution = '1K' | '2K' | '3K' | '4K';
 
 export type ImageModelId =
   | 'standard'
@@ -102,7 +102,7 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
   },
   {
     id: 'gemini-3.1-flash-image-official',
-    label: 'Gemini 3.1 Flash 官',
+    label: 'Gemini 3.1 Flash 正式版',
     category: 'Google',
     description: '中转站 Gemini 3.1 Flash Image 正式模型入口',
     transport: 'chat',
@@ -114,7 +114,7 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
   },
   {
     id: 'gemini-3-pro-image-official',
-    label: 'Gemini 3 Pro 官',
+    label: 'Gemini 3 Pro 高质量版',
     category: 'Google',
     description: '复杂构图、文字渲染与高质量参考图编辑',
     transport: 'chat',
@@ -126,7 +126,7 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
   },
   {
     id: 'gemini-2.5-flash-image-official',
-    label: 'Gemini 2.5 Flash 官',
+    label: 'Gemini 2.5 Flash 稳定版',
     category: 'Google',
     description: '快速生成与参考图编辑的稳定版本',
     transport: 'chat',
@@ -138,7 +138,7 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
   },
   {
     id: 'gpt-image-2',
-    label: 'GPT Image 2',
+    label: 'GPT Image 2 低价版（1K）',
     category: 'OpenAI',
     description: '高质量生成与精细编辑',
     transport: 'image-task',
@@ -150,9 +150,9 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
   },
   {
     id: 'gpt-image-2-official',
-    label: 'GPT Image 2 Official',
+    label: 'GPT Image 2 高质量版',
     category: 'OpenAI',
-    description: '官方参数与透明背景输出',
+    description: '兼容官方参数，支持高分辨率与透明背景输出',
     transport: 'official-image-task',
     proxyModel: 'gpt-image-2',
     upstreamModels: { '1K': 'gpt-image-2', '2K': 'gpt-image-2', '4K': 'gpt-image-2' },
@@ -162,13 +162,13 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
   },
   {
     id: 'seedream-5.0-pro-official',
-    label: 'Seedream 5.0 Pro官',
+    label: 'Seedream 5.0 Pro API',
     category: 'ByteDance',
     description: '高质量中文商业视觉与多参考图生成',
-    transport: 'chat',
+    transport: 'image-generation',
     proxyModel: 'seedream-v5-pro',
-    upstreamModels: { '1K': 'seedream-v5-pro', '2K': 'seedream-v5-pro', '4K': 'seedream-v5-pro' },
-    supportedResolutions: ['1K', '2K', '4K'],
+    upstreamModels: { '1K': 'seedream-v5-pro', '2K': 'seedream-v5-pro' },
+    supportedResolutions: ['1K', '2K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -177,10 +177,10 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     label: 'Seedream 4.5 API',
     category: 'ByteDance',
     description: '中转站火山方舟 Seedream 4.5 模型入口',
-    transport: 'chat',
+    transport: 'image-generation',
     proxyModel: 'doubao-seedream-4-5-251128',
-    upstreamModels: { '1K': 'doubao-seedream-4-5-251128', '2K': 'doubao-seedream-4-5-251128', '4K': 'doubao-seedream-4-5-251128' },
-    supportedResolutions: ['1K', '2K', '4K'],
+    upstreamModels: { '2K': 'doubao-seedream-4-5-251128', '4K': 'doubao-seedream-4-5-251128' },
+    supportedResolutions: ['2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,
   },
@@ -189,10 +189,10 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     label: 'Seedream 5.0 API',
     category: 'ByteDance',
     description: '中转站火山方舟 Seedream 5.0 模型入口',
-    transport: 'chat',
+    transport: 'image-generation',
     proxyModel: 'doubao-seedream-5-0-260128',
-    upstreamModels: { '1K': 'doubao-seedream-5-0-260128', '2K': 'doubao-seedream-5-0-260128', '4K': 'doubao-seedream-5-0-260128' },
-    supportedResolutions: ['1K', '2K', '4K'],
+    upstreamModels: { '2K': 'doubao-seedream-5-0-260128', '3K': 'doubao-seedream-5-0-260128' },
+    supportedResolutions: ['2K', '3K'],
     supportsReferences: true,
     supportsEditing: true,
   },
