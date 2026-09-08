@@ -10,6 +10,7 @@ import {
   Globe2,
   ImagePlus,
   Library,
+  Music2,
   Paintbrush,
   Pencil,
   PersonStanding,
@@ -19,13 +20,18 @@ import {
   Type,
   Upload,
   Video,
+  Volume2,
 } from 'lucide-react';
 
 export type CanvasQuickCreateAction =
   | 'text'
+  | 'ai-text'
+  | 'ai-agent'
   | 'draw'
   | 'image-generator'
   | 'video-generator'
+  | 'speech-generator'
+  | 'music-generator'
   | 'image-compare'
   | 'global-view'
   | 'motion-transfer'
@@ -54,7 +60,7 @@ interface MenuAction {
 }
 
 const PRIMARY_ACTIONS: MenuAction[] = [
-  { action: 'text', label: '文本', description: '编写脚本、文案与提示词', icon: <Type size={21} /> },
+  { action: 'ai-text', label: 'AI 文本', description: '调用模型、反推图片、改写提示词', icon: <Type size={21} /> },
   { action: 'image-generator', label: '图像生成', description: '生成图片或使用参考图编辑', icon: <Sparkles size={21} /> },
   { action: 'table-editor', label: '分镜表', description: '整理镜头与结构化内容', icon: <Table2 size={21} /> },
   { action: 'draw', label: '绘画', description: '切换到画笔工具', icon: <Pencil size={21} /> },
@@ -62,7 +68,11 @@ const PRIMARY_ACTIONS: MenuAction[] = [
 ];
 
 const MORE_ACTIONS: MenuAction[] = [
+  { action: 'text', label: '普通文字便签', icon: <Type size={21} /> },
+  { action: 'ai-agent', label: 'Agent 节点', icon: <Bot size={21} /> },
   { action: 'video-generator', label: '视频生成', icon: <Video size={21} /> },
+  { action: 'speech-generator', label: '语音生成', icon: <Volume2 size={21} /> },
+  { action: 'music-generator', label: '音乐生成', icon: <Music2 size={21} /> },
   { action: 'image-compare', label: '图片对比', icon: <Columns2 size={21} /> },
   { action: 'global-view', label: '全局视角', icon: <Globe2 size={21} /> },
   { action: 'motion-transfer', label: '动作迁移', icon: <PersonStanding size={21} /> },
@@ -70,7 +80,7 @@ const MORE_ACTIONS: MenuAction[] = [
   { action: 'video-breakdown', label: '视频拆解', icon: <ScanSearch size={21} /> },
   { action: 'script-writer', label: '剧本创作', icon: <FileText size={21} /> },
   { action: 'inpaint', label: '局部重绘', icon: <Paintbrush size={21} /> },
-  { action: 'agent', label: 'Agent', icon: <Bot size={21} /> },
+  { action: 'agent', label: '侧栏 Agent', icon: <Bot size={21} /> },
 ];
 
 export function CanvasNodeCreateMenu({

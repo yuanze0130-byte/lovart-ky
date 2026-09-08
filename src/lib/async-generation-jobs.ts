@@ -5,7 +5,7 @@ import {
   type Json,
 } from '@/lib/supabase';
 
-export type AsyncGenerationJobKind = 'upscale' | 'motion_transfer';
+export type AsyncGenerationJobKind = 'upscale' | 'motion_transfer' | 'music';
 export type AsyncGenerationJobStatus =
   | 'created'
   | 'starting'

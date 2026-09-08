@@ -11,9 +11,13 @@ import { TableEditorNode } from './TableEditorNode';
 import { VideoFramesNode } from './VideoFramesNode';
 import { VideoBreakdownNode } from './VideoBreakdownNode';
 import { ScriptWriterNode } from './ScriptWriterNode';
+import { AiTextNode } from './AiTextNode';
+import { SpeechNode } from './SpeechNode';
+import { MusicGeneratorNode } from './MusicGeneratorNode';
 import { VideoGeneratorNode } from './VideoGeneratorNode';
-import { CanvasImageMedia, CanvasVideoMedia } from './CanvasMedia';
+import { CanvasAudioMedia, CanvasImageMedia, CanvasVideoMedia } from './CanvasMedia';
 import { CanvasNodeCreateMenu, type CanvasQuickCreateAction } from './CanvasNodeCreateMenu';
+import { CanvasAssetReferencePicker, type CanvasReferenceAsset } from './CanvasAssetReferencePicker';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
 import type { CanvasTaskLogUpdate } from '@/lib/canvas-task-log';
 import type { Json } from '@/lib/supabase';
@@ -25,6 +29,7 @@ import {
     buildConnectedNodeContentsIndex,
     canConnectPorts,
     connectionKindForPorts,
+    getCanvasReferenceLabel,
     getNodePorts,
     getPreferredCompatibleInputPort,
     getPortAnchor,
@@ -38,11 +43,15 @@ import { duplicateCanvasSelection, serializeCanvasSelection } from '@/lib/canvas
 import type { CanvasFeatureSettings } from '@/lib/canvas-feature-settings';
 import type { ExtractedVideoFrame } from '@/lib/video-frame-extraction';
 
-export type CanvasElementType = 'image' | 'text' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'video' | 'image-compare' | 'global-view' | 'motion-transfer' | 'table-editor' | 'video-frames' | 'video-breakdown' | 'script-writer' | 'inpaint' | 'connector';
+export type CanvasElementType = 'image' | 'text' | 'ai-text' | 'ai-agent' | 'shape' | 'path' | 'image-generator' | 'video-generator' | 'speech-generator' | 'music-generator' | 'video' | 'audio' | 'image-compare' | 'global-view' | 'motion-transfer' | 'table-editor' | 'video-frames' | 'video-breakdown' | 'script-writer' | 'inpaint' | 'connector';
 
 const SMART_CONNECTION_TARGET_TYPES = new Set<CanvasElementType>([
+    'ai-text',
+    'ai-agent',
     'image-generator',
     'video-generator',
+    'speech-generator',
+    'music-generator',
     'image-compare',
     'global-view',
     'motion-transfer',
@@ -51,6 +60,10 @@ const SMART_CONNECTION_TARGET_TYPES = new Set<CanvasElementType>([
     'video-breakdown',
     'script-writer',
     'inpaint',
+]);
+
+const QUICK_REFERENCE_TARGET_TYPES = new Set<CanvasElementType>([
+    'ai-text', 'ai-agent', 'image-generator', 'video-generator', 'speech-generator', 'music-generator',
 ]);
 
 export interface VideoBreakdownRow {
@@ -107,6 +120,17 @@ export interface GenerationMetadata extends Record<string, Json | undefined> {
     officialModeration?: 'auto' | 'low';
     layoutRole?: 'grid-item' | 'character-view';
     layoutLabel?: string;
+}
+
+export interface MusicTrack {
+    [key: string]: Json | undefined;
+    id: string;
+    title: string;
+    audioUrl: string;
+    imageUrl?: string;
+    videoUrl?: string;
+    duration?: number;
+    status?: string;
 }
 
 export interface CanvasElement extends Record<string, Json | undefined> {
@@ -196,6 +220,24 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     motionKeepAudio?: boolean;
     motionOrientation?: 'image' | 'video';
     motionWatermark?: boolean;
+    aiModel?: string;
+    aiInstruction?: string;
+    aiSystemPrompt?: string;
+    speechModel?: string;
+    speechVoiceId?: string;
+    speechSpeed?: number;
+    speechPitch?: number;
+    speechEmotion?: string;
+    speechLanguageBoost?: string;
+    speechAudioFormat?: 'mp3' | 'wav' | 'flac';
+    musicMode?: 'inspiration' | 'custom';
+    musicTitle?: string;
+    musicStyle?: string;
+    musicInstrumental?: boolean;
+    musicVersion?: string;
+    musicTaskId?: string;
+    musicTracks?: MusicTrack[];
+    assetReferenceIds?: string[];
     tableColumns?: string[];
     tableRows?: string[][];
     tableView?: 'table' | 'markdown';
@@ -217,7 +259,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     connectorStyle?: 'solid' | 'dashed';
     connectorSourcePort?: string;
     connectorTargetPort?: string;
-    connectorDataKind?: 'prompt' | 'content' | 'image' | 'video' | 'any';
+    connectorDataKind?: 'prompt' | 'content' | 'image' | 'video' | 'audio' | 'any';
     connectorKind?: 'prompt' | 'reference' | 'result' | 'control';
     connectorOrder?: number;
 }
@@ -376,6 +418,8 @@ interface CanvasAreaProps {
     onMotionTransferComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
     onVideoGeneratorComplete?: (element: CanvasElement, videoUrl: string) => Promise<void> | void;
     onVideoGeneratorTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
+    onSpeechGeneratorTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
+    onMusicGeneratorTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
     onVideoFramesComplete?: (element: CanvasElement, frames: ExtractedVideoFrame[]) => void;
     annotationImageId?: string | null;
     annotationObject?: DetectedObject | null;
@@ -451,6 +495,8 @@ export function CanvasArea({
     onMotionTransferComplete,
     onVideoGeneratorComplete,
     onVideoGeneratorTaskUpdate,
+    onSpeechGeneratorTaskUpdate,
+    onMusicGeneratorTaskUpdate,
     onVideoFramesComplete,
     annotationImageId,
     annotationObject,
@@ -494,6 +540,7 @@ export function CanvasArea({
         sourcePort: CanvasPortDefinition;
         pointer: { x: number; y: number };
     } | null>(null);
+    const [assetPickerNodeId, setAssetPickerNodeId] = useState<string | null>(null);
 
     const dragStartRef = useRef<{
         x: number;
@@ -1189,6 +1236,27 @@ export function CanvasArea({
     const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
     const isLowDetail = scale < 0.75;
     const elementById = useMemo(() => new Map(elements.map((element) => [element.id, element])), [elements]);
+    const referenceAssets = useMemo<CanvasReferenceAsset[]>(() => elements.flatMap((element, index) => {
+        const content = typeof element.content === 'string' ? element.content.trim() : '';
+        if (!content) return [];
+        const kind = element.type === 'image'
+            ? 'image'
+            : element.type === 'video'
+                ? 'video'
+                : element.type === 'audio' || element.type === 'speech-generator' || element.type === 'music-generator'
+                    ? 'audio'
+                    : element.type === 'text' || element.type === 'ai-text' || element.type === 'ai-agent' || element.type === 'table-editor' || element.type === 'script-writer'
+                        ? 'text'
+                        : undefined;
+        if (!kind) return [];
+        return [{
+            id: element.id,
+            kind,
+            label: getCanvasReferenceLabel(element, index),
+            content,
+            previewUrl: element.thumbnailUrl || element.previewUrl || element.posterUrl,
+        }];
+    }), [elements]);
     const selectedGroupIds = useMemo(() => {
         const groupIds = new Set<string>();
         selectedIds.forEach((id) => {
@@ -1952,7 +2020,36 @@ export function CanvasArea({
                                     if (targetPort) handleConnectionFinish(event, el, targetPort);
                                 }}
                                 onDoubleClick={() => el.type === 'text' && setEditingTextId(el.id)}
+                                onInputCapture={(event) => {
+                                    if (!QUICK_REFERENCE_TARGET_TYPES.has(el.type)) return;
+                                    const target = event.target;
+                                    if (!(target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)) return;
+                                    const cursor = target.selectionStart;
+                                    if (!cursor || target.value[cursor - 1] !== '@') return;
+                                    const nextValue = `${target.value.slice(0, cursor - 1)}${target.value.slice(cursor)}`;
+                                    const prototype = target instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                                    Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(target, nextValue);
+                                    target.setSelectionRange(cursor - 1, cursor - 1);
+                                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                                    setAssetPickerNodeId(el.id);
+                                }}
                             >
+                                {!isLowDetail && QUICK_REFERENCE_TARGET_TYPES.has(el.type) && (
+                                    <CanvasAssetReferencePicker
+                                        key={`${el.id}-${assetPickerNodeId === el.id ? 'open' : 'closed'}`}
+                                        assets={referenceAssets}
+                                        excludedId={el.id}
+                                        acceptedKinds={el.type === 'ai-text' || el.type === 'ai-agent'
+                                            ? ['text', 'image', 'video']
+                                            : el.type === 'image-generator' || el.type === 'video-generator'
+                                                ? ['text', 'image']
+                                                : ['text']}
+                                        selectedIds={el.assetReferenceIds || []}
+                                        open={assetPickerNodeId === el.id}
+                                        onOpenChange={(open) => setAssetPickerNodeId(open ? el.id : null)}
+                                        onChange={(assetReferenceIds) => onElementChange(el.id, { assetReferenceIds })}
+                                    />
+                                )}
                                 {!isLowDetail && getNodePorts(el).map((port) => {
                                     const sidePorts = getNodePorts(el).filter((candidate) => candidate.direction === port.direction);
                                     const index = sidePorts.findIndex((candidate) => candidate.id === port.id);
@@ -1976,7 +2073,7 @@ export function CanvasArea({
                                             title={`${port.direction === 'input' ? '输入' : '输出'}：${port.label}`}
                                         >
                                             <span
-                                                className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-white/10 bg-slate-950/90 px-2 py-1 text-[10px] font-medium text-white shadow-lg backdrop-blur-sm transition-opacity ${port.direction === 'input' ? 'left-6' : 'right-6'} ${selectedIdSet.has(el.id) || compatible || connectionDraft?.sourceNodeId === el.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                                className={`pointer-events-none absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-white/10 bg-slate-950/90 px-2 py-1 text-[10px] font-medium text-white shadow-lg backdrop-blur-sm transition-opacity ${(el.type === 'ai-text' || el.type === 'ai-agent' || el.type === 'table-editor') ? (port.direction === 'input' ? 'right-6' : 'left-6') : (port.direction === 'input' ? 'left-6' : 'right-6')} ${selectedIdSet.has(el.id) || compatible || connectionDraft?.sourceNodeId === el.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                             >
                                                 {el.type === 'image' && port.id === 'image-out' ? '拖出作为参考图' : port.label}
                                             </span>
@@ -2247,6 +2344,10 @@ export function CanvasArea({
                                     const referenceImages = resolveConnectedNodeContentsFromIndex(el.id, 'reference-in', connectedContentsIndex);
                                     const firstFrame = resolveConnectedNodeContentsFromIndex(el.id, 'first-frame-in', connectedContentsIndex)[0];
                                     const lastFrame = resolveConnectedNodeContentsFromIndex(el.id, 'last-frame-in', connectedContentsIndex)[0];
+                                    const referenceLabels = (el.assetReferenceIds || []).flatMap((id) => {
+                                        const asset = referenceAssets.find((item) => item.id === id);
+                                        return asset ? [asset.label] : [];
+                                    });
                                     return (
                                         <VideoGeneratorNode
                                             element={el}
@@ -2254,11 +2355,36 @@ export function CanvasArea({
                                             referenceImages={referenceImages}
                                             firstFrame={firstFrame}
                                             lastFrame={lastFrame}
+                                            referenceLabels={referenceLabels}
                                             onConfigChange={(updates) => onElementChange(el.id, updates)}
                                             onComplete={onVideoGeneratorComplete ? (videoUrl) => onVideoGeneratorComplete(el, videoUrl) : undefined}
                                             onTaskUpdate={onVideoGeneratorTaskUpdate}
                                         />
                                     );
+                                })()}
+
+                                {el.type === 'speech-generator' && (() => {
+                                    const connectedText = [
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex),
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'content-in', connectedContentsIndex),
+                                    ].join('\n\n');
+                                    const referenceLabels = (el.assetReferenceIds || []).flatMap((id) => {
+                                        const asset = referenceAssets.find((item) => item.id === id);
+                                        return asset ? [asset.label] : [];
+                                    });
+                                    return <SpeechNode element={el} connectedText={connectedText} referenceLabels={referenceLabels} onConfigChange={(updates) => onElementChange(el.id, updates)} onRunningChange={(running) => handleToolRunningChange(el.id, running)} onTaskUpdate={onSpeechGeneratorTaskUpdate} />;
+                                })()}
+
+                                {el.type === 'music-generator' && (() => {
+                                    const connectedText = [
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex),
+                                        ...resolveConnectedNodeContentsFromIndex(el.id, 'content-in', connectedContentsIndex),
+                                    ].join('\n\n');
+                                    const referenceLabels = (el.assetReferenceIds || []).flatMap((id) => {
+                                        const asset = referenceAssets.find((item) => item.id === id);
+                                        return asset ? [asset.label] : [];
+                                    });
+                                    return <MusicGeneratorNode element={el} connectedText={connectedText} referenceLabels={referenceLabels} onConfigChange={(updates) => onElementChange(el.id, updates)} onRunningChange={(running) => handleToolRunningChange(el.id, running)} onTaskUpdate={onMusicGeneratorTaskUpdate} />;
                                 })()}
 
                                 {!selectedIdSet.has(el.id) && !isDrawing && (() => {
@@ -2377,6 +2503,15 @@ export function CanvasArea({
                                     );
                                 })()}
 
+                                {(el.type === 'ai-text' || el.type === 'ai-agent') && (
+                                    <AiTextNode element={el}
+                                        source={[...resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex), ...resolveConnectedNodeContentsFromIndex(el.id, 'content-in', connectedContentsIndex)].join('\n\n')}
+                                        images={resolveConnectedNodeContentsFromIndex(el.id, 'reference-in', connectedContentsIndex)}
+                                        video={resolveConnectedNodeContentsFromIndex(el.id, 'video-in', connectedContentsIndex)[0]}
+                                        onConfigChange={(updates) => onElementChange(el.id, updates)}
+                                        onRunningChange={(running) => handleToolRunningChange(el.id, running)} />
+                                )}
+
                                 {el.type === 'table-editor' && (() => {
                                     const connectedContent = [
                                         ...resolveConnectedNodeContentsFromIndex(el.id, 'prompt-in', connectedContentsIndex),
@@ -2384,6 +2519,11 @@ export function CanvasArea({
                                     ].join('\n\n');
                                     return (
                                         <TableEditorNode
+                                            aiModel={el.aiModel}
+                                            aiInstruction={el.aiInstruction}
+                                            onExportImage={(image) => onAddElement({ id: uuidv4(), type: 'image', x: el.x + (el.width || 440) + 80, y: el.y,
+                                                content: image.content, width: Math.min(700, image.width), height: image.height * Math.min(1, 700 / image.width), originalWidth: image.width, originalHeight: image.height })}
+                                            onRunningChange={(running) => handleToolRunningChange(el.id, running)}
                                             connectedContent={connectedContent}
                                             columns={el.tableColumns || ['#']}
                                             rows={el.tableRows || []}
@@ -2788,6 +2928,8 @@ export function CanvasArea({
                                         </div>
                                     );
                                 })()}
+
+                                {el.type === 'audio' && el.content && <CanvasAudioMedia source={el.content} />}
 
                                 {el.type === 'text' && (editingTextId === el.id ? (
                                     <textarea

@@ -28,7 +28,7 @@ export async function GET(
       'X-Content-Type-Options': 'nosniff',
     };
 
-    if (range && contentType.startsWith('video/')) {
+    if (range && (contentType.startsWith('video/') || contentType.startsWith('audio/'))) {
       const parsedRange = parseSingleHttpByteRange(range, fileStat.size);
       if (!parsedRange) {
         return new NextResponse(null, { status: 416, headers: { 'Content-Range': `bytes */${fileStat.size}` } });

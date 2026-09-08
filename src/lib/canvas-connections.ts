@@ -14,6 +14,7 @@ export const PORT_COLORS: Record<CanvasPortKind, string> = {
   content: '#0ea5e9',
   image: '#10b981',
   video: '#8b5cf6',
+  audio: '#ec4899',
   any: '#64748b',
 };
 
@@ -50,8 +51,10 @@ export function getPreferredCompatibleInputPort(element: CanvasElement, sourcePo
       ? ['prompt-in']
       : sourcePort.kind === 'video'
         ? ['video-in']
-        : sourcePort.kind === 'content'
+      : sourcePort.kind === 'content'
           ? ['content-in']
+        : sourcePort.kind === 'audio'
+          ? ['audio-in']
         : [];
 
   return preferredPortIds
@@ -95,7 +98,7 @@ export function buildBatchConnections(
     });
   const workingElements = [...elements];
   const connectors: CanvasElement[] = [];
-  const preferredTargetTypes = new Set(['image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'table-editor', 'video-frames', 'video-breakdown', 'script-writer', 'inpaint']);
+  const preferredTargetTypes = new Set(['ai-text', 'ai-agent', 'image-generator', 'video-generator', 'speech-generator', 'music-generator', 'image-compare', 'global-view', 'motion-transfer', 'table-editor', 'video-frames', 'video-breakdown', 'script-writer', 'inpaint']);
 
   selectedNodes.forEach((source, sourceIndex) => {
     const outputPorts = getNodePorts(source).filter((port) => port.direction === 'output');
@@ -189,6 +192,32 @@ export function normalizeCanvasConnections(elements: CanvasElement[]) {
   });
 }
 
+export function getCanvasReferenceLabel(element: CanvasElement, index = 0) {
+  const fallback = element.type === 'image'
+    ? '图片'
+    : element.type === 'video'
+      ? '视频'
+      : element.type === 'audio' || element.type === 'speech-generator' || element.type === 'music-generator'
+        ? '音频'
+        : '文字';
+  return element.storyboardTitle
+    || element.annotationLabel
+    || element.musicTitle
+    || element.promptLibraryLabel
+    || `${fallback} ${index + 1}`;
+}
+
+export function resolveCanvasReferenceLabels(targetId: string, elements: CanvasElement[]) {
+  const target = elements.find((element) => element.id === targetId);
+  if (!target?.assetReferenceIds?.length) return [];
+  const indexes = new Map(elements.map((element, index) => [element.id, index]));
+  const byId = new Map(elements.map((element) => [element.id, element]));
+  return target.assetReferenceIds.flatMap((referenceId) => {
+    const source = byId.get(referenceId);
+    return source ? [getCanvasReferenceLabel(source, indexes.get(referenceId) || 0)] : [];
+  });
+}
+
 export function resolveConnectedInputs(targetId: string, elements: CanvasElement[]) {
   const byId = new Map(elements.map((element) => [element.id, element]));
   const edges = normalizeCanvasConnections(elements)
@@ -210,7 +239,23 @@ export function resolveConnectedInputs(targetId: string, elements: CanvasElement
     else if (edge.connectorTargetPort === 'last-frame-in') lastFrame = value;
     else if (edge.connectorTargetPort === 'reference-in') references.push(value);
   }
-  return { prompt: promptParts.join('\n\n'), references, firstFrame, lastFrame, edges };
+  const target = byId.get(targetId);
+  for (const referenceId of target?.assetReferenceIds || []) {
+    const source = byId.get(referenceId);
+    if (!source) continue;
+    const value = typeof source.content === 'string' ? source.content : typeof source.prompt === 'string' ? source.prompt : '';
+    if (!value) continue;
+    if (source.type === 'image') references.push(value);
+    else if (source.type !== 'video' && source.type !== 'audio' && source.type !== 'speech-generator' && source.type !== 'music-generator') promptParts.push(value);
+  }
+  return {
+    prompt: promptParts.join('\n\n'),
+    references,
+    firstFrame,
+    lastFrame,
+    edges,
+    referenceLabels: resolveCanvasReferenceLabels(targetId, elements),
+  };
 }
 
 export function buildConnectedNodeContentsIndex(elements: CanvasElement[]): ConnectedNodeContentsIndex {
@@ -240,6 +285,35 @@ export function buildConnectedNodeContentsIndex(elements: CanvasElement[]): Conn
       targetPorts.set(targetPortId, portContents);
     }
     portContents.push({ content, order: edge.connectorOrder || 0 });
+  }
+
+  for (const target of elements) {
+    if (!target.assetReferenceIds?.length) continue;
+    const targetPorts = new Set(getNodePorts(target).filter((port) => port.direction === 'input').map((port) => port.id));
+    for (const [index, referenceId] of target.assetReferenceIds.entries()) {
+      const source = byId.get(referenceId);
+      const content = source && typeof source.content === 'string' ? source.content : '';
+      if (!source || !content) continue;
+      const targetPortId = source.type === 'image'
+        ? (targetPorts.has('reference-in') ? 'reference-in' : targetPorts.has('image-in') ? 'image-in' : undefined)
+        : source.type === 'video'
+          ? (targetPorts.has('video-in') ? 'video-in' : undefined)
+          : source.type === 'audio' || source.type === 'speech-generator' || source.type === 'music-generator'
+            ? (targetPorts.has('audio-in') ? 'audio-in' : undefined)
+            : targetPorts.has('prompt-in') ? 'prompt-in' : targetPorts.has('content-in') ? 'content-in' : undefined;
+      if (!targetPortId) continue;
+      let targetIndex = indexedEdges.get(target.id);
+      if (!targetIndex) {
+        targetIndex = new Map();
+        indexedEdges.set(target.id, targetIndex);
+      }
+      let portContents = targetIndex.get(targetPortId);
+      if (!portContents) {
+        portContents = [];
+        targetIndex.set(targetPortId, portContents);
+      }
+      if (!portContents.some((entry) => entry.content === content)) portContents.push({ content, order: 100_000 + index });
+    }
   }
 
   const contentsIndex: ConnectedNodeContentsIndex = new Map();

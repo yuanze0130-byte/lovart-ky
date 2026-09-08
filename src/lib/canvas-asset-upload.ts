@@ -5,16 +5,16 @@ import { authedFetch } from '@/lib/authed-fetch';
 
 type AssetUploadResponse = {
   error?: string;
-  kind?: 'image' | 'video';
+  kind?: 'image' | 'video' | 'audio';
   size?: number;
   url?: string;
 };
 
-export type RemoteCanvasAssetKind = 'image' | 'video';
+export type RemoteCanvasAssetKind = 'image' | 'video' | 'audio';
 
 function isInlineAsset(value: unknown) {
   return typeof value === 'string' && (
-    /^data:(?:image|video)\/[\w.+-]+;base64,/i.test(value)
+    /^data:(?:image|video|audio)\/[\w.+-]+;base64,/i.test(value)
     || value.startsWith('blob:')
   );
 }

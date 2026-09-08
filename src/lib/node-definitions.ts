@@ -3,7 +3,7 @@ import type { CanvasElement, CanvasElementType } from '@/components/lovart/Canva
 export type RegisteredNodeType = CanvasElementType;
 
 export type NodePortDirection = 'input' | 'output';
-export type NodePortKind = 'prompt' | 'content' | 'image' | 'video' | 'any';
+export type NodePortKind = 'prompt' | 'content' | 'image' | 'video' | 'audio' | 'any';
 
 export interface NodePortDefinition {
   id: string;
@@ -13,7 +13,7 @@ export interface NodePortDefinition {
   multiple?: boolean;
 }
 
-export type NodeCreateAction = 'image-generator' | 'video-generator' | 'image-compare' | 'global-view' | 'motion-transfer' | 'table-editor' | 'video-frames' | 'video-breakdown' | 'inpaint';
+export type NodeCreateAction = 'ai-text' | 'ai-agent' | 'image-generator' | 'video-generator' | 'speech-generator' | 'music-generator' | 'image-compare' | 'global-view' | 'motion-transfer' | 'table-editor' | 'video-frames' | 'video-breakdown' | 'inpaint';
 
 export interface NodeDefinition {
   type: RegisteredNodeType;
@@ -31,16 +31,46 @@ export interface NodeDefinition {
     action: NodeCreateAction;
     label: string;
     order: number;
-    icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'table' | 'frames' | 'breakdown' | 'paintbrush';
+    icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'table' | 'frames' | 'breakdown' | 'paintbrush' | 'audio' | 'music';
   };
 }
 
 const NODE_DEFINITIONS: NodeDefinition[] = [
   {
     type: 'text', label: '文字', category: 'input',
-    qdmy: { importTypes: ['text-node', 'custom-agent', 'storyboard-menu', 'gen-music', 'gen-speech'], exportType: 'text-node' },
+    qdmy: { importTypes: ['text-node', 'storyboard-menu'], exportType: 'text-node' },
     ports: [
       { id: 'prompt-out', label: '提示词', direction: 'output', kind: 'prompt' },
+    ],
+  },
+  {
+    type: 'ai-text', label: 'AI 文本', category: 'generation',
+    defaultState: { width: 420, height: 460 },
+    creatable: true,
+    createMenu: { action: 'ai-text', label: 'AI 文本', order: 5, icon: 'sparkles' },
+    runnable: true,
+    qdmy: { importTypes: ['ai-text'], exportType: 'ai-text' },
+    ports: [
+      { id: 'prompt-in', label: '上游文字', direction: 'input', kind: 'prompt', multiple: true },
+      { id: 'content-in', label: '表格 / 内容', direction: 'input', kind: 'content', multiple: true },
+      { id: 'reference-in', label: '参考图片', direction: 'input', kind: 'image', multiple: true },
+      { id: 'video-in', label: '参考视频（抽帧）', direction: 'input', kind: 'video' },
+      { id: 'prompt-out', label: '文字结果', direction: 'output', kind: 'prompt' },
+    ],
+  },
+  {
+    type: 'ai-agent', label: 'Agent 节点', category: 'generation',
+    defaultState: { width: 440, height: 520 },
+    creatable: true,
+    createMenu: { action: 'ai-agent', label: 'Agent 节点', order: 6, icon: 'sparkles' },
+    runnable: true,
+    qdmy: { importTypes: ['custom-agent', 'ai-agent'], exportType: 'custom-agent' },
+    ports: [
+      { id: 'prompt-in', label: '上游文字', direction: 'input', kind: 'prompt', multiple: true },
+      { id: 'content-in', label: '表格 / 内容', direction: 'input', kind: 'content', multiple: true },
+      { id: 'reference-in', label: '参考图片', direction: 'input', kind: 'image', multiple: true },
+      { id: 'video-in', label: '参考视频（抽帧）', direction: 'input', kind: 'video' },
+      { id: 'prompt-out', label: 'Agent 结果', direction: 'output', kind: 'prompt' },
     ],
   },
   {
@@ -85,6 +115,40 @@ const NODE_DEFINITIONS: NodeDefinition[] = [
       { id: 'first-frame-in', label: '首帧', direction: 'input', kind: 'image' },
       { id: 'last-frame-in', label: '尾帧', direction: 'input', kind: 'image' },
       { id: 'video-out', label: '视频结果', direction: 'output', kind: 'video' },
+    ],
+  },
+  {
+    type: 'audio', label: '音频', category: 'output',
+    qdmy: { importTypes: ['audio'], exportType: 'preview' },
+    ports: [
+      { id: 'audio-in', label: '生成结果', direction: 'input', kind: 'audio' },
+      { id: 'audio-out', label: '音频', direction: 'output', kind: 'audio' },
+    ],
+  },
+  {
+    type: 'speech-generator', label: '语音生成', category: 'generation',
+    defaultState: { width: 430, height: 520, speechModel: 'minimax/speech-02-turbo', speechSpeed: 1, speechPitch: 0, speechAudioFormat: 'mp3' },
+    creatable: true,
+    runnable: true,
+    qdmy: { importTypes: ['gen-speech', 'speech-generator'], exportType: 'gen-speech' },
+    createMenu: { action: 'speech-generator', label: '语音生成', order: 25, icon: 'audio' },
+    ports: [
+      { id: 'prompt-in', label: '文字输入', direction: 'input', kind: 'prompt', multiple: true },
+      { id: 'content-in', label: '内容输入', direction: 'input', kind: 'content', multiple: true },
+      { id: 'audio-out', label: '语音结果', direction: 'output', kind: 'audio' },
+    ],
+  },
+  {
+    type: 'music-generator', label: '音乐生成', category: 'generation',
+    defaultState: { width: 440, height: 610, musicMode: 'inspiration', musicVersion: 'chirp-fenix', musicInstrumental: false },
+    creatable: true,
+    runnable: true,
+    qdmy: { importTypes: ['gen-music', 'music-generator'], exportType: 'gen-music' },
+    createMenu: { action: 'music-generator', label: '音乐生成', order: 26, icon: 'music' },
+    ports: [
+      { id: 'prompt-in', label: '歌词 / 灵感', direction: 'input', kind: 'prompt', multiple: true },
+      { id: 'content-in', label: '内容输入', direction: 'input', kind: 'content', multiple: true },
+      { id: 'audio-out', label: '音乐结果', direction: 'output', kind: 'audio' },
     ],
   },
   {

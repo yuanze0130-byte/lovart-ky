@@ -56,6 +56,7 @@ export function duplicateCanvasSelection(
       x: element.type === 'connector' ? element.x : element.x + offset,
       y: element.type === 'connector' ? element.y : element.y + offset,
       referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) || element.referenceImageId : undefined,
+      assetReferenceIds: element.assetReferenceIds?.map((id) => idMap.get(id) || id),
       connectorFrom: element.connectorFrom ? idMap.get(element.connectorFrom) || element.connectorFrom : undefined,
       connectorTo: element.connectorTo ? idMap.get(element.connectorTo) || element.connectorTo : undefined,
       linkedElements: element.linkedElements?.map((id) => idMap.get(id) || id),

@@ -27,6 +27,7 @@ try {
     progress: 18,
     message: '图片任务已提交',
     promptPreview: 'a'.repeat(400),
+    referenceLabels: ['产品正面', '产品正面', '场景参考', 'x'.repeat(100)],
   }, 'project-1', '2026-09-01T00:00:00.000Z');
 
   assert.equal(started.length, 1);
@@ -34,6 +35,8 @@ try {
   assert.equal(started[0].progress, 18);
   assert.equal(started[0].promptPreview.length, 300);
   assert.equal(started[0].level, 'info');
+  assert.deepEqual(started[0].referenceLabels?.slice(0, 2), ['产品正面', '场景参考']);
+  assert.equal(started[0].referenceLabels?.[2].length, 80);
 
   const completed = taskLog.upsertCanvasTaskLogEntries(started, {
     id: 'task-1',
@@ -54,6 +57,7 @@ try {
   const serverRow = taskLog.canvasTaskLogEntryToServerRow(completed[0], 'user-1');
   assert.equal(serverRow.user_id, 'user-1');
   assert.equal(serverRow.project_id, 'project-1');
+  assert.deepEqual(serverRow.reference_labels?.slice(0, 2), ['产品正面', '场景参考']);
   assert.deepEqual(taskLog.canvasTaskLogServerRowToEntry(serverRow), completed[0]);
 
   const mergedCollections = taskLog.mergeCanvasTaskLogCollections(started, completed);

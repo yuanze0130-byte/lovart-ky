@@ -23,6 +23,7 @@ interface VideoGeneratorNodeProps {
   referenceImages: string[];
   firstFrame?: string;
   lastFrame?: string;
+  referenceLabels?: string[];
   onConfigChange: (updates: Partial<CanvasElement>) => void;
   onComplete?: (videoUrl: string) => Promise<void> | void;
   onTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
@@ -81,6 +82,7 @@ export function VideoGeneratorNode({
   referenceImages,
   firstFrame,
   lastFrame,
+  referenceLabels = [],
   onConfigChange,
   onComplete,
   onTaskUpdate,
@@ -189,6 +191,7 @@ export function VideoGeneratorNode({
       model: config.modelId,
       promptPreview: effectivePrompt,
       referenceCount: connectedCount,
+      referenceLabels,
     });
     try {
       const result = await startVideoGeneration({

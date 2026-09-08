@@ -63,6 +63,9 @@ export function useUserCredits() {
 
   useEffect(() => {
     void refresh();
+    const onCreditsUpdated = () => { void refresh(); };
+    window.addEventListener('credits-updated', onCreditsUpdated);
+    return () => window.removeEventListener('credits-updated', onCreditsUpdated);
   }, [refresh]);
 
   const redeemCode = useCallback(async (code: string) => {

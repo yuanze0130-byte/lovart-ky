@@ -13,10 +13,10 @@ const DEFAULT_MIN_FREE_BYTES = 5 * 1024 * 1024 * 1024;
 const SIGNATURE_BYTES = 16;
 const DEFAULT_ASSET_ROOT = path.join(/*turbopackIgnore: true*/ process.cwd(), '.local-data', 'canvas-assets');
 
-export type CanvasAssetKind = 'image' | 'video';
+export type CanvasAssetKind = 'image' | 'video' | 'audio';
 
 export type SupportedCanvasAsset = {
-  extension: 'png' | 'jpg' | 'webp' | 'gif' | 'avif' | 'mp4' | 'webm' | 'mov';
+  extension: 'png' | 'jpg' | 'webp' | 'gif' | 'avif' | 'mp4' | 'webm' | 'mov' | 'mp3' | 'wav' | 'flac';
   contentType: string;
   kind: CanvasAssetKind;
 };
@@ -217,10 +217,21 @@ function hasBytes(bytes: Uint8Array, offset: number, expected: number[]) {
 }
 
 export function getCanvasAssetMaxBytes(kind: CanvasAssetKind) {
+  if (kind === 'audio') return getPositiveInteger('CANVAS_AUDIO_ASSET_MAX_BYTES', 32 * 1024 * 1024);
   return kind === 'video' ? getMaxVideoBytes() : getMaxImageBytes();
 }
 
 export function detectCanvasAsset(bytes: Uint8Array): SupportedCanvasAsset | null {
+  if (hasBytes(bytes, 0, [0x52, 0x49, 0x46, 0x46]) && hasBytes(bytes, 8, [0x57, 0x41, 0x56, 0x45])) {
+    return { extension: 'wav', contentType: 'audio/wav', kind: 'audio' };
+  }
+  if (hasBytes(bytes, 0, [0x66, 0x4c, 0x61, 0x43])) return { extension: 'flac', contentType: 'audio/flac', kind: 'audio' };
+  // ID3 tag or MPEG audio frame header (exclude reserved version/layer/rate values).
+  if (hasBytes(bytes, 0, [0x49, 0x44, 0x33]) || (bytes.length >= 4 && bytes[0] === 0xff
+    && (bytes[1] & 0xe0) === 0xe0 && (bytes[1] & 0x18) !== 0x08 && (bytes[1] & 0x06) !== 0
+    && (bytes[2] & 0xf0) !== 0 && (bytes[2] & 0xf0) !== 0xf0 && (bytes[2] & 0x0c) !== 0x0c)) {
+    return { extension: 'mp3', contentType: 'audio/mpeg', kind: 'audio' };
+  }
   if (hasBytes(bytes, 0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
     return { extension: 'png', contentType: 'image/png', kind: 'image' };
   }
@@ -265,7 +276,7 @@ function validateUserId(userId: string) {
 
 export function getCanvasAssetFile(userId: string, fileName: string) {
   if (!/^[0-9a-f-]{36}$/i.test(userId)) return null;
-  if (!/^[0-9a-f]{64}\.(?:png|jpg|webp|gif|avif|mp4|webm|mov)$/i.test(fileName)) return null;
+  if (!/^[0-9a-f]{64}\.(?:png|jpg|webp|gif|avif|mp4|webm|mov|mp3|wav|flac)$/i.test(fileName)) return null;
 
   const root = getAssetRoot();
   const filePath = path.resolve(/*turbopackIgnore: true*/ root, userId, fileName);
@@ -333,7 +344,7 @@ export async function saveCanvasAssetStream(
     throw new CanvasAssetStorageError('素材大小声明无效', 400);
   }
 
-  const absoluteMaxBytes = Math.max(getMaxImageBytes(), getMaxVideoBytes());
+  const absoluteMaxBytes = Math.max(getMaxImageBytes(), getMaxVideoBytes(), getCanvasAssetMaxBytes('audio'));
   if (options.declaredBytes !== undefined && options.declaredBytes > absoluteMaxBytes) {
     throw new CanvasAssetStorageError('素材超过服务器允许的大小', 413);
   }
@@ -372,10 +383,10 @@ export async function saveCanvasAssetStream(
       signature = appendSignature(signature, chunk);
       if (!asset && signature.byteLength >= 12) {
         asset = detectCanvasAsset(signature);
-        if (!asset) throw new CanvasAssetStorageError('仅支持 PNG、JPEG、WebP、GIF、AVIF、MP4、WebM 或 MOV 素材', 415);
+        if (!asset) throw new CanvasAssetStorageError('仅支持图片、视频及 MP3、WAV、FLAC 音频素材', 415);
         if (options.expectedKind && asset.kind !== options.expectedKind) {
           throw new CanvasAssetStorageError(
-            options.expectedKind === 'video' ? '素材不是受支持的视频' : '素材不是受支持的图片',
+            `素材不是受支持的${options.expectedKind === 'audio' ? '音频' : options.expectedKind === 'video' ? '视频' : '图片'}`,
             415,
           );
         }
@@ -385,7 +396,7 @@ export async function saveCanvasAssetStream(
         }
       }
       if (asset && totalBytes > getCanvasAssetMaxBytes(asset.kind)) {
-        throw new CanvasAssetStorageError(`${asset.kind === 'video' ? '视频' : '图片'}超过服务器允许的大小`, 413);
+        throw new CanvasAssetStorageError('素材超过服务器允许的大小', 413);
       }
 
       hash.update(chunk);
@@ -405,15 +416,15 @@ export async function saveCanvasAssetStream(
 
     if (totalBytes === 0) throw new CanvasAssetStorageError('素材文件为空', 400);
     asset ??= detectCanvasAsset(signature);
-    if (!asset) throw new CanvasAssetStorageError('仅支持 PNG、JPEG、WebP、GIF、AVIF、MP4、WebM 或 MOV 素材', 415);
+    if (!asset) throw new CanvasAssetStorageError('仅支持图片、视频及 MP3、WAV、FLAC 音频素材', 415);
     if (options.expectedKind && asset.kind !== options.expectedKind) {
       throw new CanvasAssetStorageError(
-        options.expectedKind === 'video' ? '素材不是受支持的视频' : '素材不是受支持的图片',
+        `素材不是受支持的${options.expectedKind === 'audio' ? '音频' : options.expectedKind === 'video' ? '视频' : '图片'}`,
         415,
       );
     }
     if (totalBytes > getCanvasAssetMaxBytes(asset.kind)) {
-      throw new CanvasAssetStorageError(`${asset.kind === 'video' ? '视频' : '图片'}超过服务器允许的大小`, 413);
+      throw new CanvasAssetStorageError('素材超过服务器允许的大小', 413);
     }
     if (options.declaredBytes !== undefined && totalBytes !== options.declaredBytes) {
       throw new CanvasAssetStorageError('素材实际大小与声明不一致', 400);
@@ -461,6 +472,9 @@ export async function saveCanvasAsset(userId: string, bytes: Uint8Array) {
 }
 
 export function getCanvasAssetContentType(fileName: string) {
+  if (fileName.endsWith('.mp3')) return 'audio/mpeg';
+  if (fileName.endsWith('.wav')) return 'audio/wav';
+  if (fileName.endsWith('.flac')) return 'audio/flac';
   if (fileName.endsWith('.mp4')) return 'video/mp4';
   if (fileName.endsWith('.webm')) return 'video/webm';
   if (fileName.endsWith('.mov')) return 'video/quicktime';

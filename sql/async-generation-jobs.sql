@@ -2,10 +2,24 @@
 -- by video_generation_jobs. Apply before deploying the matching API routes.
 -- Requires sql/video-credit-ledger.sql to have been applied first.
 
+-- Existing installations used a two-value kind constraint. Widen it before the
+-- idempotent CREATE TABLE and function replacement below.
+do $$
+begin
+  if to_regclass('public.async_generation_jobs') is not null then
+    alter table public.async_generation_jobs
+      drop constraint if exists async_generation_jobs_kind_check;
+    alter table public.async_generation_jobs
+      add constraint async_generation_jobs_kind_check
+      check (kind in ('upscale', 'motion_transfer', 'music'));
+  end if;
+end;
+$$;
+
 create table if not exists public.async_generation_jobs (
   request_id text primary key,
   user_id text not null,
-  kind text not null check (kind in ('upscale', 'motion_transfer')),
+  kind text not null check (kind in ('upscale', 'motion_transfer', 'music')),
   task_id text,
   credit_type text not null,
   charged_credits integer not null check (charged_credits > 0),
@@ -63,7 +77,7 @@ declare
 begin
   if p_request_id is null or p_request_id = ''
     or p_user_id is null or p_user_id = ''
-    or p_kind not in ('upscale', 'motion_transfer')
+    or p_kind not in ('upscale', 'motion_transfer', 'music')
     or p_terminal_status not in ('succeeded', 'failed', 'cancelled', 'outcome_unknown') then
     raise exception 'INVALID_ASYNC_JOB_SETTLEMENT';
   end if;
@@ -102,8 +116,9 @@ begin
       p_user_id,
       p_request_id,
       v_job.credit_type,
-      case when v_job.kind = 'upscale'
-        then 'Upscale task failed; credits refunded automatically'
+      case v_job.kind
+        when 'upscale' then 'Upscale task failed; credits refunded automatically'
+        when 'music' then 'Music task failed; credits refunded automatically'
         else 'Motion transfer task failed; credits refunded automatically'
       end,
       coalesce(p_meta, '{}'::jsonb) || jsonb_build_object(

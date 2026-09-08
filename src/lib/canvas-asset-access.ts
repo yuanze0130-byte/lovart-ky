@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-const ASSET_PATH = /^\/media\/canvas\/([0-9a-f-]{36})\/([0-9a-f]{64}\.(?:png|jpg|webp|gif|avif|mp4|webm|mov))$/i;
+const ASSET_PATH = /^\/media\/canvas\/([0-9a-f-]{36})\/([0-9a-f]{64}\.(?:png|jpg|webp|gif|avif|mp4|webm|mov|mp3|wav|flac))$/i;
 const DEFAULT_TTL_SECONDS = 24 * 60 * 60;
 
 function getSigningSecret() {

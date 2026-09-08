@@ -629,6 +629,7 @@ export function useCanvasGeneration({
           model: modelVariant,
           promptPreview: effectivePrompt,
           referenceCount: effectiveReferences.length,
+          referenceLabels: connectedInputs?.referenceLabels,
         });
         const result = await requestImageGeneration({
           prompt: effectivePrompt,
@@ -914,6 +915,7 @@ export function useCanvasGeneration({
               model: 'pro',
               promptPreview: prompt,
               referenceCount: referenceImages.length,
+              referenceLabels: connectedInputs.referenceLabels,
             });
 
             try {

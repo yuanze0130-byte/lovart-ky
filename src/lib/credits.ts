@@ -40,6 +40,8 @@ export type CreditAction =
   | 'upscale'
   | 'signup_bonus'
   | 'agent_chat'
+  | 'generate_audio'
+  | 'generate_music'
   | 'script_writing'
   | 'video_breakdown'
   | 'manual_adjust'

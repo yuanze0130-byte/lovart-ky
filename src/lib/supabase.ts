@@ -566,6 +566,7 @@ export interface Database {
           model: string | null;
           prompt_preview: string | null;
           reference_count: number | null;
+          reference_labels: string[] | null;
           error: string | null;
           created_at: string;
           updated_at: string;
@@ -586,6 +587,7 @@ export interface Database {
           model?: string | null;
           prompt_preview?: string | null;
           reference_count?: number | null;
+          reference_labels?: string[] | null;
           error?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -603,6 +605,7 @@ export interface Database {
           model?: string | null;
           prompt_preview?: string | null;
           reference_count?: number | null;
+          reference_labels?: string[] | null;
           error?: string | null;
           created_at?: string;
           updated_at?: string;

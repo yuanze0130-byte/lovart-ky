@@ -1,7 +1,7 @@
 # Doodleverse 生产环境交接文档
 
-> 最后更新：2026-08-14  
-> 当前生产版本：`a3e93d7`  
+> 最后更新：2026-09-08
+> 当前生产版本：`main`（2026-09-08 画布 AI 节点与快捷素材引用发布）
 > 适用环境：Ubuntu Server 24.04 LTS / 2 核 4 GB / 自托管 Next.js
 
 ## 1. 项目概况
@@ -46,6 +46,24 @@ Doodleverse 是一套基于无限画布的 AI 图片、视频与创作工具平�
 | Supabase 项目 ID | `dlmrurongzvjwycpzogm` |
 | AI 中转地址 | `https://ai.comfly.org` |
 | 积分购买页 | `https://pay.ldxp.cn/item/v0rkqv` |
+
+### 2.1 2026-09-08 生产发布状态
+
+上一版生产发布包含两个提交：
+
+- `6295958`：修复 Turnstile 登录状态恢复及验证码发送流程。
+- `9135e8d`：校正图片模型名称、上游 ID、接口类型、尺寸与比例映射。
+
+发布后已确认：
+
+- 服务器代码版本为 `9135e8d`，分支为 `main`。
+- PM2 进程 `lovart-ky` 状态为 `online`。
+- `https://doodleverse.cn/` 与 `https://doodleverse.cn/lovart` 均返回 HTTP 200。
+- 生产环境明确配置 `GEMINI_BASE_URL=https://ai.comfly.org/v1`。
+- 生产依赖执行 `npm audit --omit=dev` 后为 0 个已知漏洞。
+- Comfly 密钥的模型分组权限已全部开放。
+
+2026-09-08 发布新增 AI 文本、Agent、AI 表格、语音、Suno 音乐、音频素材、快捷素材引用与引用日志。发布需要执行最新版 `sql/async-generation-jobs.sql` 和 `sql/canvas-task-logs.sql`；部署后仍不自动发起会产生上游费用的真实生成任务。
 
 ## 3. 访问与权限
 
@@ -222,6 +240,43 @@ CANVAS_REMOTE_ASSET_TIMEOUT_MS=45000
 
 除非明确启用官方渠道，否则不要在前端暴露任何上游密钥。
 
+生产环境的 `.env.production` 是最终配置来源。仓库 `.env.example` 中的地址只是新环境示例，不会覆盖生产环境当前的 Comfly 地址。
+
+### 5.5 当前图片模型映射
+
+图片模型目录以 `src/lib/image-models.ts` 为唯一事实来源。界面选择、上游路由、支持分辨率和计价必须使用同一条模型定义，不要通过旧环境变量单独覆盖模型 ID。
+
+| 画布模型 | 上游模型 | 请求方式 | 可用分辨率 |
+| --- | --- | --- | --- |
+| Nano Banana 2 | `nano-banana-2` / `-2k` / `-4k` | OpenAI 兼容聊天接口 | 1K / 2K / 4K |
+| Nano Banana 2 Lite | `gemini-3.1-flash-lite-image` | OpenAI 兼容聊天接口 | 1K |
+| Nano Banana Pro | `nano-banana-pro` / `-2k` / `-4k` | OpenAI 兼容聊天接口 | 1K / 2K / 4K |
+| Gemini 3.1 Flash Image | `gemini-3.1-flash-image-preview` 系列 | OpenAI 兼容聊天接口 | 1K / 2K / 4K |
+| Gemini 3.1 Flash 正式版 | `gemini-3.1-flash-image` 系列 | OpenAI 兼容聊天接口 | 1K / 2K / 4K |
+| Gemini 3 Pro 高质量版 | `gemini-3-pro-image` 系列 | OpenAI 兼容聊天接口 | 1K / 2K / 4K |
+| Gemini 2.5 Flash 稳定版 | `gemini-2.5-flash-image` | OpenAI 兼容聊天接口 | 1K |
+| GPT Image 2 低价版（1K） | `gpt-image-2-all` | 异步图片任务 | 1K |
+| GPT Image 2 高质量版 | `gpt-image-2` | 异步图片任务 | 1K / 2K / 4K |
+| Seedream 5.0 Pro API | `seedream-v5-pro` | `/v1/images/generations` | 1K / 2K |
+| Seedream 4.5 API | `doubao-seedream-4-5-251128` | `/v1/images/generations` | 2K / 4K |
+| Seedream 5.0 API | `doubao-seedream-5-0-260128` | `/v1/images/generations` | 2K / 3K |
+
+关键分流规则：
+
+- GPT Image 2 高质量版无参考图时调用 `/v1/images/generations?async=true`。
+- GPT Image 2 高质量版有参考图时调用 `/v1/images/edits?async=true`，使用 multipart 上传。
+- 禁止为了调用改图接口而自动补一张空白参考图。
+- Seedream 三个 API 模型直接调用同步 `/v1/images/generations`，不得发送到 `/v1/chat/completions`。
+- Seedream 只显示模型实际支持的比例；5.0 的 3K 和带参考图 2K 使用独立尺寸映射。
+
+相关实现：
+
+- `src/lib/image-models.ts`
+- `src/lib/image-upstream-request.ts`
+- `src/app/api/generate-image/route.ts`
+- `src/components/lovart/ImageGeneratorPanel.tsx`
+- `scripts/test-image-models.mjs`
+
 ## 6. 素材存储与签名访问
 
 ### 6.1 正式目录
@@ -291,6 +346,10 @@ Supabase 负责：
 
 - `ai_cost_reservations`
 - `async_generation_jobs`
+
+音乐生成上线前需重新执行最新版 `sql/async-generation-jobs.sql`。它会把异步任务类型扩展到 `music`，并更新失败退款结算函数；只发布前端代码而不执行该 SQL 时，音乐任务无法创建。
+
+Suno 音乐与图片、语音共用 `XAI_API_KEY` 和 `XAI_BASE_URL`。代码会自动去掉 Base URL 末尾的 `/v1`，再调用 `/suno/submit/music` 与 `/suno/fetch/{task_id}`，无需把密钥发到浏览器。
 - `credit_orders`
 - `credit_packages`
 - `payment_events`
@@ -457,6 +516,24 @@ sudo ufw status numbered
 - 检查浏览器控制台和 PM2 中的 `generate-image` 日志。
 - 检查生成节点是否在结果写回前被删除。
 - 不要仅凭上游显示成功就手工退款，先确认任务账本状态。
+
+### GPT Image 2 文生图失败或提示缺少图片
+
+- 确认运行版本不低于 `9135e8d`。
+- 无参考图请求必须进入 `/v1/images/generations`，不能进入 `/v1/images/edits`。
+- 有参考图请求才使用 `/v1/images/edits` 和 multipart。
+- 检查 PM2 日志中的 `modelVariant`、`model` 和 `referenceCount`，不要记录 API Key。
+
+### Seedream 返回文字、没有图片或尺寸不正确
+
+- 确认 Seedream 没有被发送到 `/v1/chat/completions`。
+- 5.0 Pro 只允许 1K/2K，4.5 只允许 2K/4K，5.0 只允许 2K/3K。
+- 检查请求是否包含 `size`、`response_format=b64_json` 和 `watermark=false`。
+- 有参考图时检查 `image` 字段，但不要把参考图 Base64 内容写入日志。
+
+### 部署后出现 Failed to find Server Action
+
+这通常是用户浏览器仍保留旧部署页面导致的版本不一致。先让用户强制刷新或重新打开画布，再观察是否继续出现。只要 PM2 保持 online、页面返回 200 且新请求不持续报错，就不需要回滚。
 
 ### 画布显示离线或无法保存
 

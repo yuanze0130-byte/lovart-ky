@@ -16,6 +16,7 @@ export interface CanvasTaskLogEntry {
   model?: string;
   promptPreview?: string;
   referenceCount?: number;
+  referenceLabels?: string[];
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -37,6 +38,7 @@ export interface CanvasTaskLogServerRow {
   model: string | null;
   prompt_preview: string | null;
   reference_count: number | null;
+  reference_labels: string[] | null;
   error: string | null;
   created_at: string;
   updated_at: string;
@@ -75,6 +77,15 @@ function cleanText(value: unknown, maxLength: number) {
   return cleaned ? cleaned.slice(0, maxLength) : undefined;
 }
 
+function cleanTextList(value: unknown, maxItems: number, maxItemLength: number) {
+  if (!Array.isArray(value)) return undefined;
+  const cleaned = Array.from(new Set(value
+    .map((item) => cleanText(item, maxItemLength))
+    .filter((item): item is string => Boolean(item))))
+    .slice(0, maxItems);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
 function defaultLevel(status: GenerationJobStatus): CanvasTaskLogLevel {
   if (status === 'failed') return 'error';
   if (status === 'cancelled') return 'warning';
@@ -109,6 +120,7 @@ export function mergeCanvasTaskLogEntry(
     referenceCount: typeof update.referenceCount === 'number'
       ? Math.max(0, Math.round(update.referenceCount))
       : existing?.referenceCount,
+    referenceLabels: cleanTextList(update.referenceLabels, 20, 80) ?? existing?.referenceLabels,
     error: cleanText(update.error, 1_000) ?? (status === 'failed' ? existing?.error : undefined),
     createdAt: existing?.createdAt || update.createdAt || now,
     updatedAt: now,
@@ -156,6 +168,7 @@ export function canvasTaskLogEntryToServerRow(entry: CanvasTaskLogEntry, userId:
     model: entry.model || null,
     prompt_preview: entry.promptPreview || null,
     reference_count: typeof entry.referenceCount === 'number' ? entry.referenceCount : null,
+    reference_labels: entry.referenceLabels || null,
     error: entry.error || null,
     created_at: entry.createdAt,
     updated_at: entry.updatedAt,
@@ -181,6 +194,7 @@ export function canvasTaskLogServerRowToEntry(row: CanvasTaskLogServerRow): Canv
     model: row.model || undefined,
     promptPreview: row.prompt_preview || undefined,
     referenceCount: typeof row.reference_count === 'number' ? row.reference_count : undefined,
+    referenceLabels: cleanTextList(row.reference_labels, 20, 80),
     error: row.error || undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

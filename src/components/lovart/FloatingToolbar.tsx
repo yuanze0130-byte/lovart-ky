@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush, Axis3D, Globe2, PersonStanding, Table2, Film, ScanSearch, AlignHorizontalSpaceAround } from 'lucide-react';
+import { MousePointer2, PlusSquare, Square, Type, Pencil, Image as ImageIcon, Video, Circle, Triangle, Hand, MapPin, Sparkles, Columns2, Paintbrush, Axis3D, Globe2, PersonStanding, Table2, Film, ScanSearch, AlignHorizontalSpaceAround, Volume2, Music2 } from 'lucide-react';
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { getCreateMenuNodeDefinitions, type NodeCreateAction } from '@/lib/node-definitions';
 
@@ -11,6 +11,9 @@ interface FloatingToolbarProps {
     onAddImage: (file: File) => void;
     onAddVideo: (file: File) => void;
     onAddText: () => void;
+    onCreateAiNode?: (type: 'ai-text' | 'ai-agent') => void;
+    onCreateSpeechNode?: () => void;
+    onCreateMusicNode?: () => void;
     onAddShape: (type: 'square' | 'circle' | 'triangle' | 'star' | 'message' | 'arrow-left' | 'arrow-right') => void;
     onOpenImageGenerator: () => void;
     onOpenImageCompare?: () => void;
@@ -25,7 +28,7 @@ interface FloatingToolbarProps {
     onOpenVideoGenerator?: () => void;
 }
 
-export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpen3DDirector, onOpenGlobalView, onOpenMotionTransfer, onOpenTableEditor, onOpenVideoFrames, onOpenVideoBreakdown, onOpenNodeAlignment, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
+export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVideo, onAddText, onCreateAiNode, onCreateSpeechNode, onCreateMusicNode, onAddShape, onOpenImageGenerator, onOpenImageCompare, onOpen3DDirector, onOpenGlobalView, onOpenMotionTransfer, onOpenTableEditor, onOpenVideoFrames, onOpenVideoBreakdown, onOpenNodeAlignment, onOpenInpaint, onOpenVideoGenerator }: FloatingToolbarProps) {
     const [showUploadMenu, setShowUploadMenu] = useState(false);
     const [showShapeMenu, setShowShapeMenu] = useState(false);
     const [showSelectMenu, setShowSelectMenu] = useState(false);
@@ -36,8 +39,12 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
     const createMenuDefinitions = isFeatureEnabled('nodeRegistryMenus') ? getCreateMenuNodeDefinitions() : [];
 
     const createActions: Partial<Record<NodeCreateAction, (() => void) | undefined>> = {
+        'ai-text': onCreateAiNode ? () => onCreateAiNode('ai-text') : undefined,
+        'ai-agent': onCreateAiNode ? () => onCreateAiNode('ai-agent') : undefined,
         'image-generator': onOpenImageGenerator,
         'video-generator': onOpenVideoGenerator,
+        'speech-generator': onCreateSpeechNode,
+        'music-generator': onCreateMusicNode,
         'image-compare': onOpenImageCompare,
         'global-view': onOpenGlobalView,
         'motion-transfer': onOpenMotionTransfer,
@@ -47,7 +54,9 @@ export function FloatingToolbar({ activeTool, onToolChange, onAddImage, onAddVid
         inpaint: onOpenInpaint,
     };
 
-    const createMenuIcon = (icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'table' | 'frames' | 'breakdown' | 'paintbrush') => {
+    const createMenuIcon = (icon: 'sparkles' | 'video' | 'compare' | 'globe' | 'motion' | 'table' | 'frames' | 'breakdown' | 'paintbrush' | 'audio' | 'music') => {
+        if (icon === 'music') return <Music2 size={16} />;
+        if (icon === 'audio') return <Volume2 size={16} />;
         if (icon === 'video') return <Video size={16} />;
         if (icon === 'compare') return <Columns2 size={16} />;
         if (icon === 'globe') return <Globe2 size={16} />;

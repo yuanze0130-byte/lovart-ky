@@ -8,14 +8,18 @@ import {
   CircleHelp,
   Coins,
   ImageIcon,
+  Music2,
   Search,
   ShieldCheck,
   Sparkles,
   Video,
+  Volume2,
 } from 'lucide-react';
 import { DashboardSidebar } from '@/components/lovart/DashboardSidebar';
 import type { ModelPricingCatalog, PricingMediaType } from '@/lib/model-pricing-catalog';
 import { AI_TOOL_CREDIT_COSTS } from '@/lib/ai-tool-pricing';
+import { quoteSpeechCredits, SPEECH_MODELS } from '@/lib/speech-pricing';
+import { MUSIC_MODEL, MUSIC_VERSIONS, quoteMusicCredits } from '@/lib/music-pricing';
 
 type MediaFilter = 'all' | PricingMediaType;
 
@@ -209,6 +213,50 @@ export default function ModelPricingClient({ catalog }: { catalog: ModelPricingC
                   <span className="rounded-full bg-violet-50 px-3 py-1 text-sm font-semibold text-violet-700">{credits} 积分/次</span>
                 </div>
                 <p className="mt-4 text-sm leading-6 text-slate-600">{description}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="pt-14">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-100 text-violet-700"><Music2 size={20} /></span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">Text to Music</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight">Suno 音乐积分</h2>
+              <p className="mt-2 text-sm text-slate-500">灵感模式、自定义歌词和纯音乐使用同一价格；一次任务通常返回两首候选音乐。</p>
+            </div>
+          </div>
+          <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="grid grid-cols-[minmax(0,1fr)_110px_110px] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500">
+              <span>模型与版本</span><span>上游单价</span><span>站内积分</span>
+            </div>
+            <div className="grid grid-cols-[minmax(0,1fr)_110px_110px] gap-3 px-5 py-4 text-sm">
+              <div><div className="font-medium text-slate-950">{MUSIC_MODEL.label}</div><div className="mt-1 text-[11px] text-slate-400">{MUSIC_VERSIONS.map((item) => item.label).join(' / ')}</div></div>
+              <span className="self-center text-slate-600">฿{MUSIC_MODEL.priceUnitsPerRequest}/次</span>
+              <span className="self-center font-semibold text-violet-700">{quoteMusicCredits().credits} 积分</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="pt-14">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-fuchsia-100 text-fuchsia-700"><Volume2 size={20} /></span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-fuchsia-600">Text to Speech</p>
+              <h2 className="mt-1 text-2xl font-semibold tracking-tight">MiniMax 语音积分</h2>
+              <p className="mt-2 text-sm text-slate-500">按实际字符数计费，生成按钮会显示本次准确积分；下表按 10000 字符展示。</p>
+            </div>
+          </div>
+          <div className="mt-5 overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="grid grid-cols-[minmax(0,1fr)_110px_110px] gap-3 border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500">
+              <span>模型</span><span>上游单价</span><span>站内积分</span>
+            </div>
+            {SPEECH_MODELS.map((model) => (
+              <div key={model.id} className="grid grid-cols-[minmax(0,1fr)_110px_110px] gap-3 border-b border-slate-100 px-5 py-4 text-sm last:border-b-0">
+                <div><div className="font-medium text-slate-950">{model.label}</div><div className="mt-1 truncate font-mono text-[11px] text-slate-400">{model.id}</div></div>
+                <span className="self-center text-slate-600">฿{model.priceUnitsPer10kCharacters}/万字符</span>
+                <span className="self-center font-semibold text-fuchsia-700">{quoteSpeechCredits(model.id, 10_000).credits} 积分</span>
               </div>
             ))}
           </div>

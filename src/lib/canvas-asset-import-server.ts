@@ -157,7 +157,7 @@ function downloadFromAddress(
       servername: isIP(hostname) ? undefined : hostname,
       rejectUnauthorized: true,
       headers: {
-        Accept: 'video/*, image/*, application/octet-stream;q=0.9',
+        Accept: 'video/*, image/*, audio/*, application/octet-stream;q=0.9',
         'Accept-Encoding': 'identity',
         Host: url.host,
         'User-Agent': 'Doodleverse-Canvas-Asset-Importer/1.0',

@@ -11,5 +11,6 @@ assert.match(sql, /FOR UPDATE[\s\S]*USING[\s\S]*WITH CHECK/i);
 assert.match(sql, /REFERENCES public\.projects\(id\) ON DELETE CASCADE/i);
 assert.match(sql, /REVOKE ALL ON TABLE public\.canvas_task_logs FROM PUBLIC, anon/i);
 assert.match(sql, /PRIMARY KEY \(project_id, id\)/i);
+assert.match(sql, /ADD COLUMN IF NOT EXISTS reference_labels TEXT\[\]/i);
 
 console.log('Canvas task log security tests passed.');

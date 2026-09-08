@@ -307,6 +307,14 @@ function LovartCanvasContent() {
 
         let createdElement: CanvasElement | null = null;
         switch (request.action) {
+            case 'ai-text':
+            case 'ai-agent':
+                createdElement = {
+                    id: uuidv4(), type: request.action, x: request.x, y: request.y,
+                    width: 440, height: request.action === 'ai-agent' ? 520 : 460,
+                    content: '', aiInstruction: '',
+                };
+                break;
             case 'text':
                 createdElement = {
                     id: uuidv4(),
@@ -323,6 +331,12 @@ function LovartCanvasContent() {
                 break;
             case 'video-generator':
                 createdElement = createVideoGeneratorElement();
+                break;
+            case 'speech-generator':
+                createdElement = { id: uuidv4(), type: 'speech-generator', x: request.x, y: request.y, width: 430, height: 520, speechModel: 'minimax/speech-02-turbo', speechSpeed: 1, speechPitch: 0, speechAudioFormat: 'mp3', prompt: '' };
+                break;
+            case 'music-generator':
+                createdElement = { id: uuidv4(), type: 'music-generator', x: request.x, y: request.y, width: 440, height: 610, musicMode: 'inspiration', musicVersion: 'chirp-fenix', musicInstrumental: false, prompt: '' };
                 break;
             case 'image-compare':
                 createdElement = createImageCompareElement();
@@ -446,6 +460,9 @@ function LovartCanvasContent() {
                 connectorFrom: element.connectorFrom ? idMap.get(element.connectorFrom) : undefined,
                 connectorTo: element.connectorTo ? idMap.get(element.connectorTo) : undefined,
                 referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) : undefined,
+                assetReferenceIds: element.assetReferenceIds
+                    ?.map((id) => idMap.get(id))
+                    .filter((id): id is string => Boolean(id)),
                 hotspotTargetId: element.hotspotTargetId ? idMap.get(element.hotspotTargetId) : undefined,
             };
         });
@@ -3242,6 +3259,8 @@ function LovartCanvasContent() {
                     onMotionTransferComplete={handleMotionTransferComplete}
                     onVideoGeneratorComplete={handleVideoGeneratorNodeComplete}
                     onVideoGeneratorTaskUpdate={recordTask}
+                    onSpeechGeneratorTaskUpdate={recordTask}
+                    onMusicGeneratorTaskUpdate={recordTask}
                     onVideoFramesComplete={handleVideoFramesComplete}
                     annotationImageId={annotationImageId}
                     annotationObject={annotationObject}
@@ -3351,6 +3370,9 @@ function LovartCanvasContent() {
                     onAddImage={handleAddImage}
                     onAddVideo={handleAddVideo}
                     onAddText={handleAddText}
+                    onCreateAiNode={(type) => handleCreateNodeAt({ action: type, x: (viewportSize.width / 2 - pan.x) / scale - 220, y: (viewportSize.height / 2 - pan.y) / scale - 230 })}
+                    onCreateSpeechNode={() => handleCreateNodeAt({ action: 'speech-generator', x: (viewportSize.width / 2 - pan.x) / scale - 220, y: (viewportSize.height / 2 - pan.y) / scale - 260 })}
+                    onCreateMusicNode={() => handleCreateNodeAt({ action: 'music-generator', x: (viewportSize.width / 2 - pan.x) / scale - 220, y: (viewportSize.height / 2 - pan.y) / scale - 305 })}
                     onAddShape={handleAddShape}
                     onOpenImageGenerator={handleOpenImageGenerator}
                     onOpenImageCompare={handleOpenImageCompare}

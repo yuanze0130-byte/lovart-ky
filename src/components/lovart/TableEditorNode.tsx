@@ -4,8 +4,14 @@ import { Download, RefreshCw, Rows3 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { CanvasElement } from './CanvasArea';
 import { parseTableContent, tableToCsv, tableToMarkdown } from '@/lib/table-editor';
+import { CanvasAiControls } from './CanvasAiControls';
+import { renderTableImage } from '@/lib/table-image';
 
 interface TableEditorNodeProps {
+  aiModel?: string;
+  aiInstruction?: string;
+  onRunningChange?: (running: boolean) => void;
+  onExportImage?: (image: { content: string; width: number; height: number }) => void;
   connectedContent?: string;
   columns: string[];
   rows: string[][];
@@ -116,6 +122,10 @@ type ActiveEditorTarget =
   | { kind: 'markdown' };
 
 export function TableEditorNode({
+  aiModel,
+  aiInstruction,
+  onRunningChange,
+  onExportImage,
   connectedContent,
   columns,
   rows,
@@ -125,6 +135,7 @@ export function TableEditorNode({
   onConfigChange,
 }: TableEditorNodeProps) {
   const initialColumns = columns.length > 0 ? columns : ['#'];
+  const [exportError, setExportError] = useState('');
   const activeEditorRef = useRef<ActiveEditor | null>(null);
   const draftColumnsRef = useRef<string[]>([...initialColumns]);
   const draftRowsRef = useRef<string[][]>(rows.map((row) => [...row]));
@@ -226,11 +237,24 @@ export function TableEditorNode({
           <div className="mt-0.5 text-[10px] text-white/40">连接文本节点后可刷新解析</div>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-white/65">智能解析</span>
+          <span className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] text-white/65">格式解析</span>
           <button type="button" onClick={refresh} title="刷新解析" className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-white/60 hover:bg-white/8 hover:text-white"><RefreshCw size={13} /></button>
           <button type="button" onClick={downloadCsv} title="下载 CSV" className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 text-white/60 hover:bg-white/8 hover:text-white"><Download size={13} /></button>
         </div>
       </div>
+
+      <CanvasAiControls mode="table" model={aiModel} instruction={aiInstruction}
+        source={connectedContent?.trim() || markdown}
+        outputKey={JSON.stringify([columns, rows, markdown])}
+        onConfigChange={onConfigChange} onRunningChange={onRunningChange}
+        onResult={(result) => { if (result.table) saveTable(result.table.columns, result.table.rows); }} />
+      {onExportImage && <button type="button" className="shrink-0 border-b border-white/10 px-3 py-2 text-xs text-sky-200" onClick={() => {
+        try {
+          const table = view === 'markdown' ? parseTableContent(draftMarkdownRef.current) : { columns: draftColumnsRef.current, rows: draftRowsRef.current };
+          onExportImage(renderTableImage(table.columns, table.rows)); setExportError('');
+        } catch (error) { setExportError(error instanceof Error ? error.message : '导出失败'); }
+      }}>输出白底表格图片到画布</button>}
+      {exportError && <p role="alert" className="px-3 text-xs text-rose-300">{exportError}</p>}
 
       <div className="flex items-center justify-between border-b border-white/10 px-3 py-2">
         <div className="flex items-center gap-1">

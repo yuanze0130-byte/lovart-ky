@@ -16,12 +16,16 @@ CREATE TABLE IF NOT EXISTS public.canvas_task_logs (
   model TEXT,
   prompt_preview TEXT,
   reference_count INTEGER CHECK (reference_count IS NULL OR reference_count >= 0),
+  reference_labels TEXT[],
   error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   completed_at TIMESTAMPTZ,
   PRIMARY KEY (project_id, id)
 );
+
+ALTER TABLE public.canvas_task_logs
+  ADD COLUMN IF NOT EXISTS reference_labels TEXT[];
 
 CREATE INDEX IF NOT EXISTS canvas_task_logs_user_project_updated_idx
   ON public.canvas_task_logs(user_id, project_id, updated_at DESC);

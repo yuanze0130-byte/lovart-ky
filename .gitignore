@@ -50,4 +50,6 @@ next-env.d.ts
 
 # local agent / scratch artifacts
 /.hermes/
+/.analysis-tools/
+/.tmp-analysis/
 redeem-codes.csv

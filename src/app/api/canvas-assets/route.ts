@@ -21,7 +21,7 @@ function getDeclaredBytes(request: NextRequest) {
 
 async function saveRequestAsset(request: NextRequest, userId: string) {
   const contentType = request.headers.get('content-type')?.toLowerCase() ?? '';
-  const maxBytes = Math.max(getCanvasAssetMaxBytes('image'), getCanvasAssetMaxBytes('video'));
+  const maxBytes = Math.max(getCanvasAssetMaxBytes('image'), getCanvasAssetMaxBytes('video'), getCanvasAssetMaxBytes('audio'));
 
   if (contentType.startsWith('multipart/form-data')) {
     if (process.env.CANVAS_ASSET_ALLOW_MULTIPART !== 'true') {
@@ -34,8 +34,8 @@ async function saveRequestAsset(request: NextRequest, userId: string) {
     return saveCanvasAsset(userId, new Uint8Array(await file.arrayBuffer()));
   }
 
-  if (!contentType.startsWith('image/') && !contentType.startsWith('video/') && contentType !== 'application/octet-stream') {
-    throw new CanvasAssetStorageError('素材请求必须使用图片、视频或二进制格式', 415);
+  if (!contentType.startsWith('image/') && !contentType.startsWith('video/') && !contentType.startsWith('audio/') && contentType !== 'application/octet-stream') {
+    throw new CanvasAssetStorageError('素材请求必须使用图片、视频、音频或二进制格式', 415);
   }
 
   assertDeclaredBodySize(request, maxBytes);

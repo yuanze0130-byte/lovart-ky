@@ -124,3 +124,12 @@ export const CanvasVideoMedia = memo(function CanvasVideoMedia({
     </div>
   );
 });
+
+export const CanvasAudioMedia = memo(function CanvasAudioMedia({ source }: { source: string }) {
+  return (
+    <div className="flex h-full w-full flex-col justify-center gap-3 rounded-xl bg-gradient-to-br from-fuchsia-50 to-violet-100 p-4 dark:from-fuchsia-950/40 dark:to-violet-950/50">
+      <div className="text-xs font-semibold text-fuchsia-700 dark:text-fuchsia-200">音频素材</div>
+      <audio src={source} controls preload="metadata" className="w-full" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} />
+    </div>
+  );
+});

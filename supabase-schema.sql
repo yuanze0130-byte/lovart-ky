@@ -86,7 +86,7 @@ CREATE TABLE IF NOT EXISTS redeem_code_redemptions (
 CREATE TABLE IF NOT EXISTS async_generation_jobs (
   request_id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('upscale', 'motion_transfer')),
+  kind TEXT NOT NULL CHECK (kind IN ('upscale', 'motion_transfer', 'music')),
   task_id TEXT,
   credit_type TEXT NOT NULL,
   charged_credits INTEGER NOT NULL CHECK (charged_credits > 0),

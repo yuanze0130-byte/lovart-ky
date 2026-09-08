@@ -82,6 +82,10 @@ export function CanvasTaskLogPanel({ entries, syncState, onClose, onClear, onLoc
                   {entry.model && <span className="max-w-48 truncate rounded-full bg-white px-2 py-0.5 text-[9px] text-gray-400 shadow-sm dark:bg-white/8" title={entry.model}>{entry.model}</span>}
                 </div>
                 {entry.error && <div className="mt-1.5 rounded-lg bg-rose-50 px-2.5 py-1.5 text-[10px] leading-4 text-rose-700 dark:bg-rose-400/10 dark:text-rose-200">{entry.error}</div>}
+                {entry.referenceLabels && entry.referenceLabels.length > 0 && <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[9px] text-violet-600 dark:text-violet-200">
+                  <span className="text-gray-400">本次引用</span>
+                  {entry.referenceLabels.map((label, index) => <span key={`${label}-${index}`} className="max-w-40 truncate rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 dark:border-violet-400/25 dark:bg-violet-400/10" title={label}>@{label}</span>)}
+                </div>}
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[9px] text-gray-400">
                   <span>{new Date(entry.updatedAt).toLocaleString()}</span>
                   {entry.provider && <span>渠道：{entry.provider}</span>}

@@ -48,21 +48,29 @@ try {
 
   const definitions = listNodeDefinitions();
   assert.deepEqual(definitions.map((definition) => definition.type).sort(), [
-    'connector', 'global-view', 'image', 'image-compare', 'image-generator', 'inpaint', 'motion-transfer',
-    'path', 'script-writer', 'shape', 'table-editor', 'text', 'video', 'video-breakdown', 'video-frames', 'video-generator',
+    'ai-agent', 'ai-text', 'audio', 'connector', 'global-view', 'image', 'image-compare', 'image-generator', 'inpaint', 'motion-transfer', 'music-generator',
+    'path', 'script-writer', 'shape', 'speech-generator', 'table-editor', 'text', 'video', 'video-breakdown', 'video-frames', 'video-generator',
   ]);
   assert.deepEqual(getCreateMenuNodeDefinitions().map((definition) => definition.type), [
-    'image-generator', 'video-generator', 'image-compare', 'global-view', 'motion-transfer', 'table-editor', 'video-frames', 'video-breakdown', 'inpaint',
+    'ai-text', 'ai-agent',
+    'image-generator', 'video-generator', 'speech-generator', 'music-generator', 'image-compare', 'global-view', 'motion-transfer', 'table-editor', 'video-frames', 'video-breakdown', 'inpaint',
   ]);
   assert.equal(getNodeDefaultState('image-compare').imageCompareSplit, 50);
   assert.equal(getNodeDefaultState('inpaint').inpaintFeather, 4);
   assert.deepEqual(getNodeDefaultState('table-editor').tableColumns, ['#']);
   assert.equal(getNodeDefaultState('video-frames').videoFrameCount, 6);
   assert.equal(getNodeDefaultState('script-writer').scriptDurationMinutes, 3);
-  assert.equal(getNodeTypeForQdmyImport('custom-agent'), 'text');
+  assert.equal(getNodeTypeForQdmyImport('custom-agent'), 'ai-agent');
+  const aiText = { id: 'ai-text', type: 'ai-text', x: 0, y: 0, content: 'generated prompt' };
+  const aiAgent = { id: 'ai-agent', type: 'ai-agent', x: 500, y: 0, content: 'agent result' };
+  assert(canConnectPorts(getNodePorts(aiText).find((port) => port.id === 'prompt-out'), getNodePorts(aiAgent).find((port) => port.id === 'prompt-in')));
+  assert.equal(getNodePorts(aiText).find((port) => port.id === 'reference-in').multiple, true);
+  const aiEdge = { id: 'ai-edge', type: 'connector', connectorFrom: aiText.id, connectorTo: aiAgent.id, connectorSourcePort: 'prompt-out', connectorTargetPort: 'prompt-in' };
+  assert.deepEqual(resolveConnectedNodeContents(aiAgent.id, 'prompt-in', [aiText, aiAgent, aiEdge]), ['generated prompt']);
+  assert(wouldCreateConnectionCycle([aiText, aiAgent, aiEdge], aiAgent.id, aiText.id));
   assert.equal(getNodeTypeForQdmyImport('comfy-ui'), 'image-generator');
-  assert.equal(getNodeTypeForQdmyImport('gen-music'), 'text');
-  assert.equal(getNodeTypeForQdmyImport('gen-speech'), 'text');
+  assert.equal(getNodeTypeForQdmyImport('gen-music'), 'music-generator');
+  assert.equal(getNodeTypeForQdmyImport('gen-speech'), 'speech-generator');
   assert.equal(getQdmyExportType('image-compare'), 'image-compare');
   assert.equal(getQdmyExportType('inpaint'), 'inpaint-menu');
   assert.equal(getNodeTypeForQdmyImport('global-perspective'), 'global-view');
@@ -124,6 +132,16 @@ try {
     resolveConnectedNodeContents('generator', 'prompt-in', connectedContentsElements),
     resolveConnectedNodeContentsFromIndex('generator', 'prompt-in', connectedContentsIndex),
   );
+
+  const shortcutGenerator = { ...generator, id: 'shortcut-generator', assetReferenceIds: ['prompt', 'reference'] };
+  const shortcutElements = [textNode, imageNode, shortcutGenerator];
+  const shortcutInputs = resolveConnectedInputs(shortcutGenerator.id, shortcutElements);
+  assert.equal(shortcutInputs.prompt, 'cinematic portrait');
+  assert.deepEqual(shortcutInputs.references, ['data:image/png;base64,abc']);
+  assert.deepEqual(shortcutInputs.referenceLabels, ['文字 1', '图片 2']);
+  const shortcutIndex = buildConnectedNodeContentsIndex(shortcutElements);
+  assert.deepEqual(resolveConnectedNodeContentsFromIndex(shortcutGenerator.id, 'prompt-in', shortcutIndex), ['cinematic portrait']);
+  assert.deepEqual(resolveConnectedNodeContentsFromIndex(shortcutGenerator.id, 'reference-in', shortcutIndex), ['data:image/png;base64,abc']);
 
   let batchId = 0;
   const batchConnectors = buildBatchConnections(

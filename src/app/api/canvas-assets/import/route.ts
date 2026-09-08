@@ -69,8 +69,8 @@ async function readImportRequest(request: NextRequest) {
   if (typeof url !== 'string' || !url.trim()) {
     throw new ImportRequestError('缺少远程素材地址');
   }
-  if (kind !== 'image' && kind !== 'video') {
-    throw new ImportRequestError('素材类型必须是 image 或 video');
+  if (kind !== 'image' && kind !== 'video' && kind !== 'audio') {
+    throw new ImportRequestError('素材类型必须是 image、video 或 audio');
   }
 
   return { url: url.trim(), kind: kind as CanvasAssetKind };
