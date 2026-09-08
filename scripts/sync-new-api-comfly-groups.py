@@ -8,8 +8,10 @@ pass --apply to commit the generated configuration in one transaction.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -29,6 +31,27 @@ BACKUP_DIR = "/opt/new-api/backups/auto-sync"
 HEALTH_URL = "http://127.0.0.1:6868/api/status"
 AUTO_MIN_MODEL_COUNT = 500
 AUTO_MAX_REMOVAL_PERCENT = Decimal("10")
+
+DEFAULT_VENDOR_RULES = (
+    (("gpt", "dall-e", "whisper", "o1", "o3"), "OpenAI"),
+    (("claude",), "Anthropic"),
+    (("gemini",), "Google"),
+    (("moonshot", "kimi"), "Moonshot"),
+    (("chatglm", "glm-"), "智谱"),
+    (("qwen",), "阿里巴巴"),
+    (("deepseek",), "DeepSeek"),
+    (("abab", "minimax"), "MiniMax"),
+    (("hunyuan",), "腾讯"),
+    (("yi",), "零一万物"),
+    (("jina",), "Jina"),
+    (("mistral",), "Mistral"),
+    (("grok",), "xAI"),
+    (("llama",), "Meta"),
+    (("doubao",), "字节跳动"),
+    (("kling",), "快手"),
+    (("jimeng",), "即梦"),
+    (("vidu",), "Vidu"),
+)
 
 # This order must match the Doodleverse.fun token order in Comfly. A model is
 # assigned to the first enabled group in this list.
@@ -178,6 +201,151 @@ def encoded_json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
+def normalized_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
+    if isinstance(value, list):
+        return [str(item).strip().lower() for item in value if str(item).strip()]
+    return []
+
+
+def chinese_model_description(record: dict) -> str:
+    raw = html.unescape(str(record.get("description") or ""))
+    raw = re.sub(r"<[^>]+>", " ", raw)
+    raw = " ".join(raw.split()).strip()
+    if re.search(r"[\u3400-\u9fff]", raw):
+        return raw[:2000]
+
+    name = str(record["model_name"])
+    inputs = normalized_list(record.get("input_modalities"))
+    outputs = normalized_list(record.get("output_modalities"))
+    categories = normalized_list(record.get("categories"))
+    tags = normalized_list(record.get("tags"))
+    combined = set(inputs + outputs + categories + tags)
+    lowered_name = name.lower()
+
+    if "video" in combined or any(word in lowered_name for word in ("video", "i2v", "t2v", "kf2v")):
+        kind = "视频生成与处理模型"
+    elif "image" in combined or any(word in lowered_name for word in ("image", "imagine", "flux", "midjourney")):
+        kind = "图像生成与处理模型"
+    elif "audio" in combined or any(word in lowered_name for word in ("audio", "speech", "voice", "music", "suno")):
+        kind = "音频生成与处理模型"
+    elif "embedding" in lowered_name or "embedding" in combined:
+        kind = "文本向量嵌入模型"
+    elif "rerank" in lowered_name or "rerank" in combined:
+        kind = "文本相关性重排序模型"
+    elif "moderation" in lowered_name:
+        kind = "内容安全审核模型"
+    elif "code" in lowered_name or "coder" in lowered_name:
+        kind = "代码理解与生成模型"
+    elif "reasoning" in combined or "推理" in tags:
+        kind = "对话与推理模型"
+    else:
+        kind = "通用人工智能模型"
+
+    modality_names = {
+        "text": "文本",
+        "image": "图像",
+        "video": "视频",
+        "audio": "音频",
+        "file": "文件",
+        "files": "文件",
+    }
+    input_labels = list(dict.fromkeys(modality_names[item] for item in inputs if item in modality_names))
+    output_labels = list(dict.fromkeys(modality_names[item] for item in outputs if item in modality_names))
+    details = []
+    if input_labels:
+        details.append("支持" + "、".join(input_labels) + "输入")
+    if output_labels:
+        details.append("输出" + "、".join(output_labels) + "内容")
+    capability = "，".join(details)
+    if capability:
+        capability = "，" + capability
+    return f"{name} 是{kind}{capability}。具体参数、限制与可用能力以当前渠道文档为准。"
+
+
+def infer_vendor_name(model_name: str) -> str | None:
+    lowered = model_name.lower()
+    for patterns, vendor_name in DEFAULT_VENDOR_RULES:
+        if any(pattern in lowered for pattern in patterns):
+            return vendor_name
+    return None
+
+
+def build_model_metadata(records: dict[str, dict]) -> list[dict[str, object]]:
+    return [
+        {
+            "model_name": name,
+            "description": chinese_model_description(record),
+            "source_has_chinese": bool(
+                re.search(
+                    r"[\u3400-\u9fff]", str(record.get("description") or "")
+                )
+            ),
+            "vendor_name": infer_vendor_name(name),
+        }
+        for name, record in sorted(records.items())
+    ]
+
+
+def metadata_json(metadata: list[dict[str, object]]) -> str:
+    return json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+
+
+def count_model_metadata_drift(metadata: list[dict[str, object]]) -> int:
+    if not metadata:
+        return 0
+    payload = sql_literal(metadata_json(metadata))
+    result = query(
+        "WITH incoming AS ("
+        f"SELECT * FROM jsonb_to_recordset({payload}::jsonb) "
+        "AS item(model_name text, description text, source_has_chinese boolean, vendor_name text)) "
+        "SELECT COUNT(*) FROM incoming LEFT JOIN models AS model "
+        "ON incoming.model_name = model.model_name AND model.deleted_at IS NULL "
+        "WHERE model.id IS NULL OR ((COALESCE(BTRIM(model.description), '') = '' "
+        "OR model.description !~ '[㐀-鿿]' "
+        "OR incoming.source_has_chinese) "
+        "AND model.description IS DISTINCT FROM incoming.description);"
+    )
+    return int(result or 0)
+
+
+def build_metadata_sql(metadata: list[dict[str, object]], commit: bool = True) -> str:
+    statements = ["BEGIN;"]
+    if metadata:
+        payload = sql_literal(metadata_json(metadata))
+        statements.append(
+            "WITH incoming AS ("
+            f"SELECT * FROM jsonb_to_recordset({payload}::jsonb) "
+            "AS item(model_name text, description text, source_has_chinese boolean, vendor_name text)), "
+            "missing AS ("
+            "SELECT incoming.*, vendor.id AS vendor_id FROM incoming "
+            "LEFT JOIN vendors AS vendor ON vendor.name = incoming.vendor_name "
+            "WHERE NOT EXISTS (SELECT 1 FROM models AS existing "
+            "WHERE existing.model_name = incoming.model_name AND existing.deleted_at IS NULL)) "
+            "INSERT INTO models (model_name, description, vendor_id, status, sync_official, "
+            "created_time, updated_time, name_rule) "
+            "SELECT model_name, description, vendor_id, 1, 1, "
+            "EXTRACT(EPOCH FROM NOW())::bigint, EXTRACT(EPOCH FROM NOW())::bigint, 0 "
+            "FROM missing;"
+        )
+        statements.append(
+            "WITH incoming AS ("
+            f"SELECT * FROM jsonb_to_recordset({payload}::jsonb) "
+            "AS item(model_name text, description text, source_has_chinese boolean, vendor_name text)) "
+            "UPDATE models AS model SET description = incoming.description, "
+            "updated_time = EXTRACT(EPOCH FROM NOW())::bigint FROM incoming "
+            "WHERE model.model_name = incoming.model_name "
+            "AND model.deleted_at IS NULL "
+            "AND (COALESCE(BTRIM(model.description), '') = '' "
+            "OR model.description !~ '[㐀-鿿]' "
+            "OR incoming.source_has_chinese) "
+            "AND model.description IS DISTINCT FROM incoming.description;"
+        )
+    statements.append("COMMIT;" if commit else "ROLLBACK;")
+    return "\n".join(statements) + "\n"
+
+
 def load_pricing() -> dict:
     with urllib.request.urlopen(PRICING_URL, timeout=30) as response:
         payload = json.load(response)
@@ -213,6 +381,7 @@ def report_has_drift(report: dict) -> bool:
             "missing_abilities",
             "unexpected_abilities",
             "duplicate_abilities",
+            "metadata_drift_total",
         )
     )
 
@@ -661,6 +830,7 @@ def main() -> None:
     updated_raw, details = build_configuration(payload, current_raw, old_models)
     models = set(details["records"])
     routes = details["routes"]
+    metadata = build_model_metadata(details["records"])
     expected_abilities = {(routes[model], model) for model in models}
     current_ability_set = set(current_abilities)
     expected_models_by_group = {
@@ -710,6 +880,7 @@ def main() -> None:
             "token_group_drift": sum(
                 count for group, count in token_groups.items() if group != "auto"
             ),
+            "metadata_drift_total": count_model_metadata_drift(metadata),
             "mode": (
                 "apply"
                 if args.apply
@@ -741,6 +912,7 @@ def main() -> None:
                 update_tokens=False,
             )
         )
+        execute(build_metadata_sql(metadata, commit=False))
         execute(
             build_sql(
                 base_channel,
@@ -754,6 +926,7 @@ def main() -> None:
         )
         restart_new_api()
         wait_for_health()
+        execute(build_metadata_sql(metadata, commit=True))
         post_report = load_post_sync_report()
         if report_has_drift(post_report):
             raise RuntimeError(
@@ -789,6 +962,7 @@ def main() -> None:
                 commit=args.apply,
             )
         )
+        execute(build_metadata_sql(metadata, commit=args.apply))
 
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=False))
 
