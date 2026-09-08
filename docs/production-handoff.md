@@ -1,7 +1,7 @@
 # Doodleverse 生产环境交接文档
 
 > 最后更新：2026-09-08
-> 当前生产版本：`main`（2026-09-08 画布 AI 节点与快捷素材引用发布）
+> 当前应用版本：`d2bee2d`（2026-09-08 画布 AI 节点与快捷素材引用发布）
 > 适用环境：Ubuntu Server 24.04 LTS / 2 核 4 GB / 自托管 Next.js
 
 ## 1. 项目概况
@@ -64,6 +64,17 @@ Doodleverse 是一套基于无限画布的 AI 图片、视频与创作工具平�
 - Comfly 密钥的模型分组权限已全部开放。
 
 2026-09-08 发布新增 AI 文本、Agent、AI 表格、语音、Suno 音乐、音频素材、快捷素材引用与引用日志。发布需要执行最新版 `sql/async-generation-jobs.sql` 和 `sql/canvas-task-logs.sql`；部署后仍不自动发起会产生上游费用的真实生成任务。
+
+本次发布已完成：
+
+- 发布前备份：`supabase-2026-09-08T072214-103Z.json.gz`、`canvas-20260908T072211Z.tar.gz`。
+- Supabase 迁移：`extend_async_generation_jobs_for_music_20260908`、`add_canvas_task_reference_labels_20260908`。
+- 数据库核验：异步任务允许 `music`，原子结算函数存在，日志表包含 `reference_labels`；服务端任务账本未向浏览器角色开放。
+- 雨云服务器完成 `npm ci`、Next.js 生产构建和 PM2 重启，应用提交为 `d2bee2d`。
+- `https://doodleverse.fun/`、`/lovart`、`/lovart/canvas`、`/help` 均返回 HTTP 200，PM2 状态为 `online`。
+- 新增语音、音乐、画布 AI 接口的未登录请求均返回 HTTP 401，认证边界正常。
+- `npm audit --omit=dev` 为 0 个已知漏洞。
+- 未执行会产生上游费用的真实图片、语音或音乐生成任务。
 
 ## 3. 访问与权限
 
