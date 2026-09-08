@@ -1,0 +1,14 @@
+[Unit]
+Description=Synchronize Comfly models and pricing into New API
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/new-api
+ExecStart=/usr/bin/flock -n /run/lock/new-api-comfly-sync.lock /usr/bin/python3 /opt/new-api/scripts/sync-new-api-comfly-groups.py --auto
+StandardOutput=journal
+StandardError=journal
+Nice=10
+

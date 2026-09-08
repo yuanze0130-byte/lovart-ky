@@ -9,16 +9,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
+import sys
+import time
 import urllib.request
 from collections import Counter
+from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 
 
 PRICING_URL = "https://ai.comfly.org/api/pricing"
 POSTGRES_CONTAINER = "new-api-postgres"
 CHANNEL_NAME = "Comfly-Default"
 ROUTE_CHANNEL_PREFIX = "Comfly-Route-"
+COMPOSE_FILE = "/opt/new-api/compose.yaml"
+BACKUP_DIR = "/opt/new-api/backups/auto-sync"
+HEALTH_URL = "http://127.0.0.1:6868/api/status"
+AUTO_MIN_MODEL_COUNT = 500
+AUTO_MAX_REMOVAL_PERCENT = Decimal("10")
 
 # This order must match the Doodleverse.fun token order in Comfly. A model is
 # assigned to the first enabled group in this list.
@@ -73,7 +83,7 @@ EXPECTED_GROUP_RATIOS = {
     "sd-global": Decimal("1.00"),
     "veo&grok-备用2": Decimal("1.00"),
     "image2-4k": Decimal("2.00"),
-    "fal.ai-all": Decimal("3.40"),
+    "fal.ai-all": Decimal("5.00"),
     "gpt-image-2-official-mix": Decimal("1.00"),
     "azure特价组": Decimal("7.50"),
 }
@@ -179,14 +189,113 @@ def load_pricing() -> dict:
 def load_current_options() -> dict[str, str]:
     keys = sorted(set(PRICING_OPTION_FIELDS) | GROUP_OPTION_KEYS)
     sql_keys = ",".join(sql_literal(key) for key in keys)
-    rows = query(f"SELECT key, value FROM options WHERE key IN ({sql_keys});")
+    raw = query(
+        "SELECT COALESCE(json_object_agg(key, value)::text, '{}') "
+        f"FROM options WHERE key IN ({sql_keys});"
+    )
+    rows = json.loads(raw or "{}")
+    if not isinstance(rows, dict):
+        raise RuntimeError("New API options query did not return a JSON object")
     current = {key: "" for key in keys}
-    for row in rows.splitlines():
-        if not row:
-            continue
-        key, value = row.split("\t", 1)
-        current[key] = value
+    for key, value in rows.items():
+        if key in current:
+            current[key] = "" if value is None else str(value)
     return current
+
+
+def report_has_drift(report: dict) -> bool:
+    return any(
+        int(report.get(key, 0)) > 0
+        for key in (
+            "pricing_drift_total",
+            "option_drift_total",
+            "channel_drift_total",
+            "missing_abilities",
+            "unexpected_abilities",
+            "duplicate_abilities",
+        )
+    )
+
+
+def validate_auto_safety(report: dict) -> None:
+    model_count = int(report.get("models", 0))
+    previous_count = int(report.get("previous_channel_models", 0))
+    removed_count = int(report.get("removed_channel_models", 0))
+    if model_count < AUTO_MIN_MODEL_COUNT:
+        raise RuntimeError(
+            f"Automatic sync refused: upstream only returned {model_count} models "
+            f"(minimum {AUTO_MIN_MODEL_COUNT})"
+        )
+    if previous_count:
+        removal_percent = Decimal(removed_count * 100) / Decimal(previous_count)
+        if removal_percent > AUTO_MAX_REMOVAL_PERCENT:
+            raise RuntimeError(
+                "Automatic sync refused: model removal ratio is "
+                f"{removal_percent:.2f}% (maximum {AUTO_MAX_REMOVAL_PERCENT}%)"
+            )
+
+
+def create_database_backup() -> str:
+    backup_dir = Path(BACKUP_DIR)
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    backup_path = backup_dir / f"pre-comfly-auto-sync-{stamp}.sql"
+    user = docker_output("printenv", "POSTGRES_USER")
+    database = docker_output("printenv", "POSTGRES_DB")
+    with backup_path.open("wb") as output:
+        subprocess.run(
+            [
+                "sudo",
+                "docker",
+                "exec",
+                POSTGRES_CONTAINER,
+                "pg_dump",
+                "-U",
+                user,
+                database,
+            ],
+            check=True,
+            stdout=output,
+        )
+    os.chmod(backup_path, 0o600)
+    if backup_path.stat().st_size < 1024:
+        raise RuntimeError(f"Database backup is unexpectedly small: {backup_path}")
+    return str(backup_path)
+
+
+def restart_new_api() -> None:
+    subprocess.run(
+        ["sudo", "docker", "compose", "-f", COMPOSE_FILE, "restart", "new-api"],
+        check=True,
+    )
+
+
+def wait_for_health(timeout_seconds: int = 90) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_error = ""
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(HEALTH_URL, timeout=5) as response:
+                if 200 <= response.status < 300:
+                    return
+                last_error = f"HTTP {response.status}"
+        except Exception as exc:
+            last_error = str(exc)
+        time.sleep(3)
+    raise RuntimeError(f"New API did not become healthy: {last_error}")
+
+
+def load_post_sync_report() -> dict:
+    result = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve())],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    report = json.loads(result.stdout)
+    if not isinstance(report, dict):
+        raise RuntimeError("Post-sync verification did not return a JSON report")
+    return report
 
 
 def route_channel_name(group: str) -> str:
@@ -425,6 +534,7 @@ def build_sql(
     routes: dict[str, str],
     options: dict[str, str],
     commit: bool = True,
+    update_tokens: bool = True,
 ) -> str:
     statements = ["BEGIN;"]
     for key, value in options.items():
@@ -516,10 +626,11 @@ def build_sql(
         f"WHERE channel.name IN ({active_name_list}) "
         "AND COALESCE(channel.models, '') <> '';"
     )
-    statements.append(
-        "UPDATE tokens SET \"group\" = 'auto', auto_groups = '' "
-        "WHERE deleted_at IS NULL AND COALESCE(\"group\", '') IN ('', 'default');"
-    )
+    if update_tokens:
+        statements.append(
+            "UPDATE tokens SET \"group\" = 'auto', auto_groups = '' "
+            "WHERE deleted_at IS NULL AND COALESCE(\"group\", '') IN ('', 'default');"
+        )
     statements.append("COMMIT;" if commit else "ROLLBACK;")
     return "\n".join(statements) + "\n"
 
@@ -532,9 +643,14 @@ def main() -> None:
         action="store_true",
         help="execute the complete SQL transaction and roll it back",
     )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="safely apply detected drift, restart New API, and verify the result",
+    )
     args = parser.parse_args()
-    if args.apply and args.validate_transaction:
-        parser.error("--apply and --validate-transaction are mutually exclusive")
+    if sum((args.apply, args.validate_transaction, args.auto)) > 1:
+        parser.error("--apply, --validate-transaction and --auto are mutually exclusive")
 
     payload = load_pricing()
     current_raw = load_current_options()
@@ -599,10 +715,68 @@ def main() -> None:
                 if args.apply
                 else "validate-transaction"
                 if args.validate_transaction
+                else "auto"
+                if args.auto
                 else "dry-run"
             ),
         }
     )
+
+    if args.auto:
+        validate_auto_safety(report)
+        if not report_has_drift(report):
+            report["mode"] = "auto-noop"
+            report["changed"] = False
+            print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=False))
+            return
+        backup_path = create_database_backup()
+        execute(
+            build_sql(
+                base_channel,
+                route_channels,
+                models,
+                routes,
+                updated_raw,
+                commit=False,
+                update_tokens=False,
+            )
+        )
+        execute(
+            build_sql(
+                base_channel,
+                route_channels,
+                models,
+                routes,
+                updated_raw,
+                commit=True,
+                update_tokens=False,
+            )
+        )
+        restart_new_api()
+        wait_for_health()
+        post_report = load_post_sync_report()
+        if report_has_drift(post_report):
+            raise RuntimeError(
+                "Post-sync verification still reports drift; backup retained at "
+                + backup_path
+                + ": "
+                + encoded_json(post_report)
+            )
+        print(
+            json.dumps(
+                {
+                    "mode": "auto-applied",
+                    "changed": True,
+                    "backup": backup_path,
+                    "before": report,
+                    "after": post_report,
+                },
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=False,
+            )
+        )
+        return
 
     if args.apply or args.validate_transaction:
         execute(

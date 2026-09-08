@@ -428,6 +428,26 @@ Comfly 价格发生变化时，建议按以下流程处理：
 
 同步工具会在同一事务中更新价格配置、分组倍率、路由渠道、渠道模型列表、`abilities` 模型可用性索引和当前令牌分组，并保留非 Comfly 的已有定价。
 
+### 11.1 自动同步
+
+生产环境使用 `new-api-comfly-sync.timer` 每 5 分钟检查一次 Comfly 价格接口。同步器使用文件锁防止并发执行；没有差异时不会备份、写库或重启。检测到差异时依次执行数据库备份、回滚式事务验证、正式事务、New API 重启和健康检查。
+
+自动同步具有以下熔断条件：
+
+- 上游可同步模型少于 500 个；
+- 相比当前配置一次移除超过 10% 的模型；
+- 24 个获准分组的倍率与审核配置不一致。
+
+查看状态和日志：
+
+```bash
+sudo systemctl status new-api-comfly-sync.timer
+sudo systemctl status new-api-comfly-sync.service
+sudo journalctl -u new-api-comfly-sync.service -n 200 --no-pager
+```
+
+自动备份保存在 `/opt/new-api/backups/auto-sync`。
+
 ## 12. 已知注意事项
 
 1. Comfly 模型网页、令牌分组列表、`/v1/models` 和 `/api/pricing` 的模型及分组数量可能短时间不一致，应以令牌后台实际可选分组、当前 API 返回和调用测试共同判断。

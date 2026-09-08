@@ -1,0 +1,12 @@
+[Unit]
+Description=Check Comfly models and pricing every five minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=new-api-comfly-sync.service
+
+[Install]
+WantedBy=timers.target
