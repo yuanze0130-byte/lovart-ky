@@ -169,10 +169,12 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '更快的高质量生成与参考图编辑；分辨率会路由到对应的独立模型',
     transport: 'official-image-task',
     proxyModel: 'gpt-image-2.5-flare',
+    // Comfly selects the physical -2k/-4k route from the images API `size`.
+    // Sending an already suffixed model makes the gateway append it twice.
     upstreamModels: {
       '1K': 'gpt-image-2.5-flare',
-      '2K': 'gpt-image-2.5-flare-2k',
-      '4K': 'gpt-image-2.5-flare-4k',
+      '2K': 'gpt-image-2.5-flare',
+      '4K': 'gpt-image-2.5-flare',
     },
     supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
@@ -185,10 +187,11 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     description: '侧重高精度编辑与复杂指令；分辨率会路由到对应的独立模型',
     transport: 'official-image-task',
     proxyModel: 'gpt-image-2.5-sunburst',
+    // Resolution routing is driven by `size`; keep the API model unsuffixed.
     upstreamModels: {
       '1K': 'gpt-image-2.5-sunburst',
-      '2K': 'gpt-image-2.5-sunburst-2k',
-      '4K': 'gpt-image-2.5-sunburst-4k',
+      '2K': 'gpt-image-2.5-sunburst',
+      '4K': 'gpt-image-2.5-sunburst',
     },
     supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,

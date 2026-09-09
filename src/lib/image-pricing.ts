@@ -75,15 +75,11 @@ const FIXED_COSTS: Readonly<Record<string, { costUnits: number; group: ImagePric
   'gpt-image-1.5': { costUnits: 6_000, group: 'default' },
   'gpt-image-2-all': { costUnits: 4_000, group: 'default' },
   'gpt-image-2': { costUnits: 6_000, group: 'default' },
-  // Comfly's model cards currently advertise these six routes at 0.15/use.
+  // Comfly's model cards currently advertise these routes at 0.15/use.
   // Some pricing API records are lower or token-based, so use the higher,
   // user-visible fixed price until postpaid token reconciliation is available.
   'gpt-image-2.5-flare': { costUnits: 15_000, group: 'default' },
-  'gpt-image-2.5-flare-2k': { costUnits: 15_000, group: 'default' },
-  'gpt-image-2.5-flare-4k': { costUnits: 15_000, group: 'default' },
   'gpt-image-2.5-sunburst': { costUnits: 15_000, group: 'default' },
-  'gpt-image-2.5-sunburst-2k': { costUnits: 15_000, group: 'default' },
-  'gpt-image-2.5-sunburst-4k': { costUnits: 15_000, group: 'default' },
   'grok-4.1-image': { costUnits: 10_000, group: 'default' },
   'grok-4.2-image': { costUnits: 12_000, group: 'default' },
   'z-image-turbo': { costUnits: 7_000, group: 'domestic-special' },

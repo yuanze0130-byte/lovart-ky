@@ -36,11 +36,7 @@ try {
   assert.equal(quote('gpt-image-2-all').credits, 1);
   for (const model of [
     'gpt-image-2.5-flare',
-    'gpt-image-2.5-flare-2k',
-    'gpt-image-2.5-flare-4k',
     'gpt-image-2.5-sunburst',
-    'gpt-image-2.5-sunburst-2k',
-    'gpt-image-2.5-sunburst-4k',
   ]) {
     assert.equal(quote(model).credits, 3, `${model} should conservatively charge 3 credits`);
   }
