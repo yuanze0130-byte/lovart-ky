@@ -5,7 +5,7 @@ import type { CanvasPan } from '@/hooks/useCanvasViewport';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
 import { resolveConnectedInputs } from '@/lib/canvas-connections';
-import { isImageModelId, type ImageModelId } from '@/lib/image-models';
+import { getImageModelDefinition, isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { addGenerationHistoryItem } from '@/lib/generation-history';
 import { importRemoteCanvasVideo } from '@/lib/canvas-asset-upload';
 import { optimizeCanvasImageAsset } from '@/lib/canvas-media-optimization';
@@ -95,7 +95,7 @@ function buildGenerationMetadata({
     assetKind,
     resolution,
     aspectRatio,
-    ...(modelVariant === 'gpt-image-2-official'
+    ...(getImageModelDefinition(modelVariant).transport === 'official-image-task'
       ? {
           officialQuality: officialOptions?.quality || 'auto',
           officialBackground: officialOptions?.background || 'auto',

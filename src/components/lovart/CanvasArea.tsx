@@ -38,7 +38,7 @@ import {
     wouldCreateConnectionCycle,
     type CanvasPortDefinition,
 } from '@/lib/canvas-connections';
-import type { ImageGenerationExecutionMode, ImageModelId } from '@/lib/image-models';
+import { getImageModelDefinition, type ImageGenerationExecutionMode, type ImageModelId } from '@/lib/image-models';
 import { duplicateCanvasSelection, serializeCanvasSelection } from '@/lib/canvas-shortcuts';
 import type { CanvasFeatureSettings } from '@/lib/canvas-feature-settings';
 import type { ExtractedVideoFrame } from '@/lib/video-frame-extraction';
@@ -303,7 +303,9 @@ function getModelLabel(metadata?: GenerationMetadata) {
 }
 
 function getOfficialOptionChips(metadata?: GenerationMetadata) {
-    if (metadata?.modelVariant !== 'gpt-image-2-official') return [] as string[];
+    if (!metadata?.modelVariant || getImageModelDefinition(metadata.modelVariant).transport !== 'official-image-task') {
+        return [] as string[];
+    }
 
     const chips: string[] = [];
 

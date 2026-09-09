@@ -985,14 +985,14 @@ async function generateViaProxy(
 
         const rawText = await imageResponse.text();
         if (!imageResponse.ok) {
-          throw new KnownUpstreamFailureError(`gpt-image-2-official proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+          throw new KnownUpstreamFailureError(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
         }
 
         let submitPayload: Record<string, unknown>;
         try {
           submitPayload = JSON.parse(rawText) as Record<string, unknown>;
         } catch {
-          throw new Error(`gpt-image-2-official proxy returned non-JSON: ${rawText.slice(0, 500)}`);
+          throw new Error(`${proxyModel} proxy returned non-JSON: ${rawText.slice(0, 500)}`);
         }
 
         taskId = typeof submitPayload.task_id === 'string'
@@ -1002,7 +1002,7 @@ async function generateViaProxy(
             : undefined;
 
         if (!taskId) {
-          throw new Error(`gpt-image-2-official proxy missing task_id: ${rawText.slice(0, 500)}`);
+          throw new Error(`${proxyModel} proxy missing task_id: ${rawText.slice(0, 500)}`);
         }
 
         const taskResult = await pollGptImage2Task({

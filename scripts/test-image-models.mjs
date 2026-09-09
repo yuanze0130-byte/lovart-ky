@@ -51,13 +51,24 @@ await writeFile(upstreamRequestOutputPath, upstreamRequestTranspiled.outputText,
 
 try {
   const models = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
-  assert.equal(models.IMAGE_MODEL_OPTIONS.length, 12);
-  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.id)).size, 12);
-  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.proxyModel)).size, 12);
+  assert.equal(models.IMAGE_MODEL_OPTIONS.length, 14);
+  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.id)).size, 14);
+  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.proxyModel)).size, 14);
   assert.equal(models.normalizeImageModelId('standard'), 'nano-banana-2');
   assert.equal(models.normalizeImageModelId('pro'), 'nano-banana-pro');
   assert.equal(models.getImageModelDefinition('gpt-image-2-official').transport, 'official-image-task');
   assert.equal(models.getImageModelDefinition('gpt-image-2').label, 'GPT Image 2 低价版（1K）');
+  assert.equal(models.getImageModelDefinition('gpt-image-2.5-flare').transport, 'official-image-task');
+  assert.deepEqual(models.getImageModelDefinition('gpt-image-2.5-flare').upstreamModels, {
+    '1K': 'gpt-image-2.5-flare',
+    '2K': 'gpt-image-2.5-flare-2k',
+    '4K': 'gpt-image-2.5-flare-4k',
+  });
+  assert.deepEqual(models.getImageModelDefinition('gpt-image-2.5-sunburst').upstreamModels, {
+    '1K': 'gpt-image-2.5-sunburst',
+    '2K': 'gpt-image-2.5-sunburst-2k',
+    '4K': 'gpt-image-2.5-sunburst-4k',
+  });
   assert.equal(models.getImageModelDefinition('nano-banana-2-lite').proxyModel, 'gemini-3.1-flash-lite-image');
   assert.equal(models.getImageModelDefinition('gemini-3.1-flash-image-official').proxyModel, 'gemini-3.1-flash-image');
   assert.equal(models.getImageModelDefinition('seedream-5.0-pro-official').proxyModel, 'seedream-v5-pro');
@@ -94,6 +105,8 @@ try {
   assert.equal(routing.resolveImageUpstreamModel({ modelId: 'nano-banana-2', resolution: '2K' }), 'nano-banana-2-2k');
   assert.equal(routing.resolveImageUpstreamModel({ modelId: 'nano-banana-2', resolution: '4K' }), 'nano-banana-2-4k');
   assert.equal(routing.resolveImageUpstreamModel({ modelId: 'gpt-image-2', resolution: '1K' }), 'gpt-image-2-all');
+  assert.equal(routing.resolveImageUpstreamModel({ modelId: 'gpt-image-2.5-flare', resolution: '2K' }), 'gpt-image-2.5-flare-2k');
+  assert.equal(routing.resolveImageUpstreamModel({ modelId: 'gpt-image-2.5-sunburst', resolution: '4K' }), 'gpt-image-2.5-sunburst-4k');
   assert.throws(
     () => routing.resolveImageUpstreamModel({ modelId: 'gpt-image-2', resolution: '2K' }),
     { code: 'IMAGE_MODEL_RESOLUTION_UNSUPPORTED' },

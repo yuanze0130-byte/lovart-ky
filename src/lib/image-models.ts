@@ -25,6 +25,8 @@ export type ImageModelId =
   | 'gpt-image-1.5'
   | 'gpt-image-2'
   | 'gpt-image-2-official'
+  | 'gpt-image-2.5-flare'
+  | 'gpt-image-2.5-sunburst'
   | 'qwen-image-edit'
   | 'flux-kontext'
   | 'grok-4.1-image'
@@ -156,6 +158,38 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     transport: 'official-image-task',
     proxyModel: 'gpt-image-2',
     upstreamModels: { '1K': 'gpt-image-2', '2K': 'gpt-image-2', '4K': 'gpt-image-2' },
+    supportedResolutions: ['1K', '2K', '4K'],
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'gpt-image-2.5-flare',
+    label: 'GPT Image 2.5 Flare',
+    category: 'OpenAI',
+    description: '更快的高质量生成与参考图编辑；分辨率会路由到对应的独立模型',
+    transport: 'official-image-task',
+    proxyModel: 'gpt-image-2.5-flare',
+    upstreamModels: {
+      '1K': 'gpt-image-2.5-flare',
+      '2K': 'gpt-image-2.5-flare-2k',
+      '4K': 'gpt-image-2.5-flare-4k',
+    },
+    supportedResolutions: ['1K', '2K', '4K'],
+    supportsReferences: true,
+    supportsEditing: true,
+  },
+  {
+    id: 'gpt-image-2.5-sunburst',
+    label: 'GPT Image 2.5 Sunburst',
+    category: 'OpenAI',
+    description: '侧重高精度编辑与复杂指令；分辨率会路由到对应的独立模型',
+    transport: 'official-image-task',
+    proxyModel: 'gpt-image-2.5-sunburst',
+    upstreamModels: {
+      '1K': 'gpt-image-2.5-sunburst',
+      '2K': 'gpt-image-2.5-sunburst-2k',
+      '4K': 'gpt-image-2.5-sunburst-4k',
+    },
     supportedResolutions: ['1K', '2K', '4K'],
     supportsReferences: true,
     supportsEditing: true,

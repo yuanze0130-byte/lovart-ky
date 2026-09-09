@@ -185,7 +185,7 @@ function buildVideoItems(): ModelPricingCatalogItem[] {
 
 export function buildModelPricingCatalog(): ModelPricingCatalog {
   return {
-    updatedAt: '2026-08-14',
+    updatedAt: '2026-09-09',
     imagePriceVersion: IMAGE_PRICE_VERSION,
     videoPriceVersion: VIDEO_PRICE_VERSION,
     items: [...buildImageItems(), ...buildVideoItems()],
