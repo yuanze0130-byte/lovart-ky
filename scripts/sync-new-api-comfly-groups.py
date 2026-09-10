@@ -14,7 +14,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
@@ -26,9 +25,7 @@ PRICING_URL = "https://ai.comfly.org/api/pricing"
 POSTGRES_CONTAINER = "new-api-postgres"
 CHANNEL_NAME = "Comfly-Default"
 ROUTE_CHANNEL_PREFIX = "Comfly-Route-"
-COMPOSE_FILE = "/opt/new-api/compose.yaml"
 BACKUP_DIR = "/opt/new-api/backups/auto-sync"
-HEALTH_URL = "http://127.0.0.1:6868/api/status"
 AUTO_MIN_MODEL_COUNT = 500
 AUTO_MAX_REMOVAL_PERCENT = Decimal("10")
 
@@ -432,28 +429,6 @@ def create_database_backup() -> str:
     return str(backup_path)
 
 
-def restart_new_api() -> None:
-    subprocess.run(
-        ["sudo", "docker", "compose", "-f", COMPOSE_FILE, "restart", "new-api"],
-        check=True,
-    )
-
-
-def wait_for_health(timeout_seconds: int = 90) -> None:
-    deadline = time.monotonic() + timeout_seconds
-    last_error = ""
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(HEALTH_URL, timeout=5) as response:
-                if 200 <= response.status < 300:
-                    return
-                last_error = f"HTTP {response.status}"
-        except Exception as exc:
-            last_error = str(exc)
-        time.sleep(3)
-    raise RuntimeError(f"New API did not become healthy: {last_error}")
-
-
 def load_post_sync_report() -> dict:
     result = subprocess.run(
         [sys.executable, str(Path(__file__).resolve())],
@@ -815,7 +790,7 @@ def main() -> None:
     parser.add_argument(
         "--auto",
         action="store_true",
-        help="safely apply detected drift, restart New API, and verify the result",
+        help="safely apply detected drift without interrupting New API, then verify the result",
     )
     args = parser.parse_args()
     if sum((args.apply, args.validate_transaction, args.auto)) > 1:
@@ -924,8 +899,6 @@ def main() -> None:
                 update_tokens=False,
             )
         )
-        restart_new_api()
-        wait_for_health()
         execute(build_metadata_sql(metadata, commit=True))
         post_report = load_post_sync_report()
         if report_has_drift(post_report):

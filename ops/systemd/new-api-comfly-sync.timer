@@ -1,9 +1,9 @@
 [Unit]
-Description=Check Comfly models and pricing every five minutes
+Description=Check Comfly models and pricing every hour
 
 [Timer]
 OnBootSec=3min
-OnUnitActiveSec=5min
+OnUnitActiveSec=1h
 RandomizedDelaySec=30s
 Persistent=true
 Unit=new-api-comfly-sync.service
