@@ -31,6 +31,7 @@
     "test:video-models": "node scripts/test-video-models.mjs",
     "test:video-pricing": "node scripts/test-video-pricing.mjs",
     "test:video-billing-safety": "node scripts/test-video-billing-safety.mjs",
+    "sync:comfly-pricing": "node scripts/sync-comfly-pricing.mjs",
     "test:generation-jobs": "node scripts/test-generation-jobs.mjs",
     "test:canvas-task-log": "node scripts/test-canvas-task-log.mjs",
     "test:canvas-task-log-security": "node scripts/test-canvas-task-log-security.mjs",
