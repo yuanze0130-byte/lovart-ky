@@ -116,9 +116,9 @@ try {
   const parityProject = exportQdmyProject({
     title: '节点状态往返',
     elements: [
-      { id: 'ai-text-1', type: 'ai-text', x: 0, y: 0, aiModel: 'test-model', aiInstruction: '扩写', content: '结果' },
+      { id: 'ai-text-1', type: 'ai-text', x: 0, y: 0, aiModel: 'test-model', aiInstruction: '扩写', aiTextOutputFormat: 'json', content: '结果' },
       { id: 'ai-agent-1', type: 'ai-agent', x: 0, y: 0, aiModel: 'test-model', aiInstruction: '审核', aiSystemPrompt: '你是审核员', content: '审核结果' },
-      { id: 'compare-1', type: 'image-compare', x: 0, y: 0, width: 420, height: 300, imageCompareSplit: 37, imageCompareSwapped: true },
+      { id: 'compare-1', type: 'image-compare', x: 0, y: 0, width: 420, height: 300, imageCompareSplit: 37, imageCompareSwapped: true, imageCompareMode: 'overlay', colorPins: ['4EA8FF'], colorPinLabels: { '4EA8FF': '方案对比' } },
       { id: 'inpaint-1', type: 'inpaint', x: 500, y: 0, width: 440, height: 360, prompt: '替换天空', inpaintBrushSize: 48, inpaintFeather: 7, inpaintMask: 'data:image/png;base64,TUFDSw==' },
       { id: 'global-1', type: 'global-view', x: 0, y: 450, width: 420, height: 390, globalViewZoom: 1.3, globalViewOffsetX: 0.1, globalViewOffsetY: -0.05, globalViewRotation: 22 },
       { id: 'motion-1', type: 'motion-transfer', x: 500, y: 450, width: 420, height: 580, prompt: '保持人物身份', motionModel: 'kling-3.0', motionMode: 'pro', motionKeepAudio: false, motionOrientation: 'video', motionWatermark: true },
@@ -142,12 +142,16 @@ try {
   assert.equal(aiText.type, 'ai-text');
   assert.equal(aiText.aiModel, 'test-model');
   assert.equal(aiText.aiInstruction, '扩写');
+  assert.equal(aiText.aiTextOutputFormat, 'json');
   assert.equal(aiText.content, '结果');
   assert.equal(aiAgent.type, 'ai-agent');
   assert.equal(aiAgent.aiSystemPrompt, '你是审核员');
   assert.equal(aiAgent.content, '审核结果');
   assert.equal(compare?.imageCompareSplit, 37);
   assert.equal(compare?.imageCompareSwapped, true);
+  assert.equal(compare?.imageCompareMode, 'overlay');
+  assert.deepEqual(compare?.colorPins, ['4EA8FF']);
+  assert.equal(compare?.colorPinLabels?.['4EA8FF'], '方案对比');
   assert.equal(inpaint?.inpaintBrushSize, 48);
   assert.equal(inpaint?.inpaintFeather, 7);
   assert.equal(inpaint?.inpaintMask, 'data:image/png;base64,TUFDSw==');

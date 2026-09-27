@@ -142,6 +142,10 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
   const platformGroup = firstString(node.platformGroup, settings.platformGroup, data.platformGroup);
   const imageCompareSplit = firstNumber(node.imageCompareSplit, settings.imageCompareSplit);
   const imageCompareSwapped = node.imageCompareSwapped ?? settings.imageCompareSwapped;
+  const imageCompareMode = firstString(node.imageCompareMode, settings.imageCompareMode, settings.compareMode);
+  const colorPins = asArray(node.colorPins ?? settings.colorPins ?? settings.color_pins)
+    .filter((value): value is string => typeof value === 'string');
+  const colorPinLabels = asRecord(node.colorPinLabels ?? settings.colorPinLabels);
   const inpaintBrushSize = firstNumber(node.inpaintBrushSize, settings.inpaintBrushSize);
   const inpaintFeather = firstNumber(node.inpaintFeather, settings.inpaintFeather);
   const inpaintMask = firstString(node.inpaintMask, settings.inpaintMask);
@@ -228,6 +232,11 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
     videoQualityMode: type === 'video-generator' && ['std', 'pro'].includes(firstString(node.videoQualityMode, settings.videoQualityMode) || '') ? firstString(node.videoQualityMode, settings.videoQualityMode) as CanvasElement['videoQualityMode'] : undefined,
     imageCompareSplit: type === 'image-compare' ? imageCompareSplit : undefined,
     imageCompareSwapped: type === 'image-compare' && typeof imageCompareSwapped === 'boolean' ? imageCompareSwapped : undefined,
+    imageCompareMode: type === 'image-compare' && ['slider', 'sideBySide', 'overlay', 'tap'].includes(imageCompareMode || '')
+      ? imageCompareMode as CanvasElement['imageCompareMode'] : undefined,
+    aiTextOutputFormat: type === 'ai-text' && firstString(node.aiTextOutputFormat, settings.aiTextOutputFormat) === 'json' ? 'json' : undefined,
+    colorPins: colorPins.length ? colorPins : undefined,
+    colorPinLabels: Object.fromEntries(Object.entries(colorPinLabels).filter((entry): entry is [string, string] => typeof entry[1] === 'string')),
     inpaintBrushSize: type === 'inpaint' ? inpaintBrushSize : undefined,
     inpaintFeather: type === 'inpaint' ? inpaintFeather : undefined,
     inpaintMask: type === 'inpaint' ? inpaintMask : undefined,
@@ -362,6 +371,7 @@ export function exportQdmyProject(input: QdmyExportInput) {
         ...settings,
         aiModel: element.aiModel,
         aiInstruction: element.aiInstruction,
+        aiTextOutputFormat: element.aiTextOutputFormat,
         aiSystemPrompt: element.aiSystemPrompt,
         musicMode: element.musicMode,
         musicTitle: element.musicTitle,
@@ -390,6 +400,10 @@ export function exportQdmyProject(input: QdmyExportInput) {
         videoQualityMode: element.videoQualityMode,
         imageCompareSplit: element.imageCompareSplit,
         imageCompareSwapped: element.imageCompareSwapped,
+        imageCompareMode: element.imageCompareMode,
+        compareMode: element.imageCompareMode,
+        colorPins: element.colorPins,
+        colorPinLabels: element.colorPinLabels,
         inpaintBrushSize: element.inpaintBrushSize,
         inpaintFeather: element.inpaintFeather,
         inpaintMask: element.inpaintMask,

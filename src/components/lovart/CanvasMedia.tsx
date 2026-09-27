@@ -9,9 +9,10 @@ interface CanvasImageMediaProps {
   previewUrl?: string;
   thumbnailUrl?: string;
   lowDetail: boolean;
+  priority?: boolean;
 }
 
-function ResilientCanvasImage({ candidates }: { candidates: string[] }) {
+function ResilientCanvasImage({ candidates, priority }: { candidates: string[]; priority: boolean }) {
   const [candidateIndex, setCandidateIndex] = useState(0);
   const [loaded, setLoaded] = useState(false);
   const displaySource = candidates[candidateIndex];
@@ -32,7 +33,8 @@ function ResilientCanvasImage({ candidates }: { candidates: string[] }) {
       <img
         src={displaySource}
         alt="画布图片"
-        loading="eager"
+        loading={priority ? 'eager' : 'lazy'}
+        fetchPriority={priority ? 'high' : 'low'}
         decoding="async"
         draggable={false}
         onLoad={() => setLoaded(true)}
@@ -51,6 +53,7 @@ export const CanvasImageMedia = memo(function CanvasImageMedia({
   previewUrl,
   thumbnailUrl,
   lowDetail,
+  priority = false,
 }: CanvasImageMediaProps) {
   const candidates = useMemo(() => Array.from(new Set(
     (lowDetail
@@ -59,7 +62,7 @@ export const CanvasImageMedia = memo(function CanvasImageMedia({
     ).filter((value): value is string => Boolean(value)),
   )), [lowDetail, previewUrl, source, thumbnailUrl]);
   const candidateKey = candidates.join('\u0000');
-  return <ResilientCanvasImage key={candidateKey} candidates={candidates} />;
+  return <ResilientCanvasImage key={candidateKey} candidates={candidates} priority={priority} />;
 });
 
 interface CanvasVideoMediaProps {

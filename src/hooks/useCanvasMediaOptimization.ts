@@ -10,6 +10,7 @@ interface UseCanvasMediaOptimizationParams {
   scale: number;
   viewportWidth?: number;
   viewportHeight?: number;
+  priorityElementIds?: string[];
   enabled?: boolean;
 }
 
@@ -17,6 +18,7 @@ const OPTIMIZATION_OVERSCAN_PX = 300;
 const MEDIA_OPTIMIZATION_MAX_ATTEMPTS = 3;
 const MEDIA_OPTIMIZATION_RETRY_BASE_MS = 15_000;
 const MEDIA_FINGERPRINT_SAMPLES = 64;
+const EMPTY_PRIORITY_ELEMENT_IDS: string[] = [];
 
 interface MediaOptimizationFailure {
   attempts: number;
@@ -79,6 +81,7 @@ export function useCanvasMediaOptimization({
   scale,
   viewportWidth,
   viewportHeight,
+  priorityElementIds = EMPTY_PRIORITY_ELEMENT_IDS,
   enabled = true,
 }: UseCanvasMediaOptimizationParams) {
   const { x: panX, y: panY } = pan;
@@ -101,18 +104,31 @@ export function useCanvasMediaOptimization({
     if (runningKeysRef.current.size > 0) return;
     const now = Date.now();
     let nextRetryAt = Number.POSITIVE_INFINITY;
-    const candidate = elements.find((element) => {
-      if (!isMediaNearViewport(element, panX, panY, scale, viewportWidth, viewportHeight)) return false;
-      if (!needsImageOptimization(element) && !needsVideoOptimization(element)) return false;
+    const priorityIds = new Set(priorityElementIds);
+    const visibleWidth = viewportWidth && viewportWidth > 0 ? viewportWidth : window.innerWidth;
+    const visibleHeight = viewportHeight && viewportHeight > 0 ? viewportHeight : window.innerHeight;
+    let candidate: CanvasElement | undefined;
+    let candidateScore = Number.POSITIVE_INFINITY;
+    for (const element of elements) {
+      if (!isMediaNearViewport(element, panX, panY, scale, viewportWidth, viewportHeight)) continue;
+      if (!needsImageOptimization(element) && !needsVideoOptimization(element)) continue;
       const key = getMediaOptimizationKey(element);
-      if (runningKeysRef.current.has(key)) return false;
+      if (runningKeysRef.current.has(key)) continue;
       const failure = failedKeysRef.current.get(key);
-      if (!failure) return true;
-      if (failure.attempts >= MEDIA_OPTIMIZATION_MAX_ATTEMPTS) return false;
-      if (failure.retryAt <= now) return true;
-      nextRetryAt = Math.min(nextRetryAt, failure.retryAt);
-      return false;
-    });
+      if (failure?.attempts && failure.attempts >= MEDIA_OPTIMIZATION_MAX_ATTEMPTS) continue;
+      if (failure && failure.retryAt > now) {
+        nextRetryAt = Math.min(nextRetryAt, failure.retryAt);
+        continue;
+      }
+      const centerX = (element.x + (element.width || 480) / 2) * scale + panX;
+      const centerY = (element.y + (element.height || 360) / 2) * scale + panY;
+      const score = (priorityIds.has(element.id) ? -1_000_000 : 0)
+        + Math.hypot(centerX - visibleWidth / 2, centerY - visibleHeight / 2);
+      if (score < candidateScore) {
+        candidate = element;
+        candidateScore = score;
+      }
+    }
     if (!candidate?.content) {
       if (Number.isFinite(nextRetryAt)) {
         const retryTimer = window.setTimeout(
@@ -189,5 +205,5 @@ export function useCanvasMediaOptimization({
         else window.clearTimeout(idleId);
       }
     };
-  }, [elements, enabled, panX, panY, queueTick, scale, setElements, viewportHeight, viewportWidth]);
+  }, [elements, enabled, panX, panY, priorityElementIds, queueTick, scale, setElements, viewportHeight, viewportWidth]);
 }

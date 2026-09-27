@@ -19,6 +19,20 @@ export const PROMPT_LIBRARY_CATEGORIES: PromptLibraryCategory[] = [
 
 export const PROMPT_LIBRARY_ITEMS: PromptLibraryItem[] = [
   {
+    id: 'portrait-texture-default',
+    label: '人像质感调节',
+    category: '画质修复',
+    summary: '改善肤质、光影融合和细节，同时保留人物身份。',
+    prompt: '对参考图中的人物进行自然的质感优化。改善皮肤纹理、发丝、服装材质与人物和背景的光影融合，保留真实毛孔与自然明暗过渡，避免磨皮过度和数字锐化。严格保持人物身份、年龄、脸型、五官、发型、服装、姿态、构图及背景主体不变，不添加文字或水印。',
+  },
+  {
+    id: 'mood-adjust-default',
+    label: '情绪调节',
+    category: '风格创作',
+    summary: '调整人物表情与氛围，保留身份、构图和场景。',
+    prompt: '以参考图为基础，适度调整人物表情、眼神、肢体细节及场景光线，让画面呈现更明确的情绪。请依据我补充的情绪方向进行调整；若未补充，默认保持克制、自然、富有电影感。严格保留人物身份、年龄、脸型、服装、构图与背景结构，不夸张变形，不添加文字或水印。',
+  },
+  {
     id: 'grid-default',
     label: '九宫格分镜脚本',
     category: '分镜设计',

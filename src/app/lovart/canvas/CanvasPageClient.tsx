@@ -422,6 +422,7 @@ function LovartCanvasContent() {
         scale,
         viewportWidth: viewportSize.width,
         viewportHeight: viewportSize.height,
+        priorityElementIds: selectedIds,
         enabled: !isHydrating && Boolean(user),
     });
 
@@ -1213,6 +1214,30 @@ function LovartCanvasContent() {
         setSelectedIds([nextGenerator.id]);
         setActiveTool('select');
     }, [assetsCollapsed, createImageGeneratorElement, selectedIds, setActiveTool, setElements, setSelectedIds]);
+
+    const handleCreateImageJson = useCallback((source: CanvasElement) => {
+        if (!source.content) return;
+        const nodeId = uuidv4();
+        const textNode: CanvasElement = {
+            id: nodeId,
+            type: 'ai-text',
+            x: source.x + (source.width || 400) + 100,
+            y: source.y,
+            width: 440,
+            height: 500,
+            aiTextOutputFormat: 'json',
+            aiInstruction: '分析连接的参考图片，只返回一个合法 JSON 对象，不要 Markdown 代码块或额外说明。字段包括 scene（整体画面描述）、environment（周边环境）、lighting（光线和色温）、objects（数组，每项含 name、material、bbox，bbox 是 0–1000 范围的 [x1,y1,x2,y2]）、surfaces（吊顶、墙面、地面的材质说明）。无法判断的内容使用空字符串或空数组，不要编造。',
+        };
+        const connector: CanvasElement = {
+            id: uuidv4(), type: 'connector', x: 0, y: 0,
+            connectorFrom: source.id, connectorTo: nodeId,
+            connectorSourcePort: 'image-out', connectorTargetPort: 'reference-in',
+            connectorDataKind: 'image', connectorKind: 'reference', connectorStyle: 'solid',
+        };
+        setElements((current) => [...current, textNode, connector]);
+        setSelectedIds([nodeId]);
+        setActiveTool('select');
+    }, [setActiveTool, setElements, setSelectedIds]);
 
     const handleGeneratePanorama = useCallback((sourceImage: CanvasElement) => {
         if (!sourceImage.content) return;
@@ -3248,6 +3273,7 @@ function LovartCanvasContent() {
                     onDragStart={() => setIsDraggingElement(true)}
                     onDragEnd={() => setIsDraggingElement(false)}
                     onGenerateFromImage={handleGenerateFromImage}
+                    onCreateImageJson={handleCreateImageJson}
                     onOpenImageEditMode={handleOpenImageEditMode}
                     onConnectFlow={handleConnectFlow}
                     onGeneratePanorama={handleGeneratePanorama}

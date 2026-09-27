@@ -4,6 +4,7 @@ import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
 import { PanoramaViewer } from './PanoramaViewer';
 import { ImageCompareNode } from './ImageCompareNode';
+import { CanvasPinBar } from './CanvasPinBar';
 import { InpaintNode } from './InpaintNode';
 import { GlobalViewNode } from './GlobalViewNode';
 import { MotionTransferNode } from './MotionTransferNode';
@@ -208,6 +209,9 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     imageExecutionMode?: ImageGenerationExecutionMode;
     imageCompareSplit?: number;
     imageCompareSwapped?: boolean;
+    imageCompareMode?: 'slider' | 'sideBySide' | 'overlay' | 'tap';
+    colorPins?: string[];
+    colorPinLabels?: Record<string, string>;
     inpaintBrushSize?: number;
     inpaintFeather?: number;
     inpaintMask?: string;
@@ -222,6 +226,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     motionWatermark?: boolean;
     aiModel?: string;
     aiInstruction?: string;
+    aiTextOutputFormat?: 'json';
     aiSystemPrompt?: string;
     speechModel?: string;
     speechVoiceId?: string;
@@ -406,6 +411,7 @@ interface CanvasAreaProps {
     onDragStart?: () => void;
     onDragEnd?: () => void;
     onGenerateFromImage?: (element: CanvasElement) => void;
+    onCreateImageJson?: (element: CanvasElement) => void;
     onOpenImageEditMode?: (element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => void;
     onConnectFlow?: (element: CanvasElement) => void;
     onGeneratePanorama?: (element: CanvasElement) => void;
@@ -486,6 +492,7 @@ export function CanvasArea({
     onDragStart,
     onDragEnd,
     onGenerateFromImage,
+    onCreateImageJson,
     onOpenImageEditMode,
     onConnectFlow,
     onGeneratePanorama,
@@ -1648,6 +1655,19 @@ export function CanvasArea({
                 <div ref={followGlowRef} className="pointer-events-none absolute left-0 top-0 z-[5] h-48 w-48 rounded-full bg-[radial-gradient(circle,rgba(59,130,246,0.14),transparent_68%)] opacity-0 transition-opacity will-change-transform dark:bg-[radial-gradient(circle,rgba(56,189,248,0.16),transparent_68%)]" />
             )}
             {featureSettings.stopwatch && <CanvasStopwatch />}
+            <CanvasPinBar
+                elements={elements}
+                selectedIds={selectedIds}
+                scale={scale}
+                viewportWidth={viewportWidth}
+                viewportHeight={viewportHeight}
+                onUpdateMany={(changes) => {
+                    if (onElementsChange) onElementsChange(changes);
+                    else changes.forEach((change) => onElementChange(change.id, change.newAttrs));
+                }}
+                onSelect={onSelect}
+                onPanChange={onPanChange}
+            />
             {isDragOverCanvas && (
                 <div className="pointer-events-none absolute inset-0 z-[140] flex items-center justify-center bg-sky-500/10 backdrop-blur-[1px]">
                     <div className="rounded-2xl border border-sky-300 bg-white/92 px-5 py-3 text-sm font-medium text-sky-700 shadow-lg">
@@ -1713,6 +1733,7 @@ export function CanvasArea({
                         onUpdate={onElementChange}
                         onDelete={onDelete}
                         onGenerateFromImage={onGenerateFromImage}
+                        onCreateImageJson={onCreateImageJson}
                         onOpenImageEditMode={onOpenImageEditMode}
                         onConnectFlow={onConnectFlow}
                         onGeneratePanorama={onGeneratePanorama}
@@ -2389,6 +2410,10 @@ export function CanvasArea({
                                     return <MusicGeneratorNode element={el} connectedText={connectedText} referenceLabels={referenceLabels} onConfigChange={(updates) => onElementChange(el.id, updates)} onRunningChange={(running) => handleToolRunningChange(el.id, running)} onTaskUpdate={onMusicGeneratorTaskUpdate} />;
                                 })()}
 
+                                {Boolean(el.colorPins?.length) && <div className="pointer-events-none absolute -right-2 -top-2 z-30 flex gap-0.5 rounded-full border border-white/30 bg-slate-950/80 p-1 shadow-md" aria-label="节点颜色标签">
+                                    {el.colorPins?.filter((pin) => /^[0-9a-f]{6}$/i.test(pin)).slice(0, 6).map((pin) => <span key={pin} className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: `#${pin}` }} />)}
+                                </div>}
+
                                 {!selectedIdSet.has(el.id) && !isDrawing && (() => {
                                     const isLinked = linkedToSelectionIds.has(el.id);
                                     const isInSelectedGroup = Boolean(el.groupId && selectedGroupIds.has(el.groupId));
@@ -2443,6 +2468,7 @@ export function CanvasArea({
                                             secondImage={secondImage}
                                             split={el.imageCompareSplit ?? 50}
                                             swapped={el.imageCompareSwapped ?? false}
+                                            mode={el.imageCompareMode}
                                             onConfigChange={(updates) => onElementChange(el.id, updates)}
                                         />
                                     );
@@ -2677,6 +2703,10 @@ export function CanvasArea({
                                                 previewUrl={el.previewUrl}
                                                 thumbnailUrl={el.thumbnailUrl}
                                                 lowDetail={isLowDetail}
+                                                priority={selectedIdSet.has(el.id) || (
+                                                    Math.abs((el.x + (el.width || 480) / 2) * scale + pan.x - viewportWidth / 2) < viewportWidth / 3
+                                                    && Math.abs((el.y + (el.height || 360) / 2) * scale + pan.y - viewportHeight / 2) < viewportHeight / 3
+                                                )}
                                             />
                                             {layoutLabel && (
                                                 <div className="pointer-events-none absolute left-2.5 top-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-white/18 bg-slate-950/68 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md">

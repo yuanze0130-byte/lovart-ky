@@ -20,6 +20,7 @@ await writeFile(outputPath, transpiled.outputText, 'utf8');
 try {
   const library = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
   const expectedLabels = [
+    '人像质感调节', '情绪调节',
     '九宫格分镜脚本', '高清放大', 'GPT噪点消除', '糊图变高清', '产品转线稿',
     '风格复刻', '产品融图', '杂物消失', '精修产品', '情绪版', '分镜版', '角色板',
     '电影级角色身份板', '电影级场景身份板', '画板提示词',
@@ -31,6 +32,8 @@ try {
   assert.equal(library.PROMPT_LIBRARY_ITEMS.every((item) => item.prompt.length >= 40), true);
   assert.equal(library.PROMPT_LIBRARY_ITEMS.every((item) => library.PROMPT_LIBRARY_CATEGORIES.includes(item.category)), true);
   assert.equal(library.getPromptLibraryItem('storyboard-default')?.label, '分镜版');
+  assert.equal(library.getPromptLibraryItem('portrait-texture-default')?.label, '人像质感调节');
+  assert.equal(library.getPromptLibraryItem('mood-adjust-default')?.label, '情绪调节');
   assert.equal(library.getPromptLibraryItem('missing'), undefined);
   console.log('Prompt library tests passed.');
 } finally {

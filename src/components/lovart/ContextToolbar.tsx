@@ -3,6 +3,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw } from 'lucide-react';
 import { CREDIT_COSTS, getUpscaleCreditCost } from '@/lib/credits';
 import { CanvasElement } from './CanvasArea';
+import { getPromptLibraryItem } from '@/lib/prompt-library';
 
 interface ContextToolbarProps {
     element: CanvasElement;
@@ -10,6 +11,7 @@ interface ContextToolbarProps {
     onUpdate: (id: string, updates: Partial<CanvasElement>) => void;
     onDelete: (id: string) => void;
     onGenerateFromImage?: (element: CanvasElement) => void;
+    onCreateImageJson?: (element: CanvasElement) => void;
     onOpenImageEditMode?: (element: CanvasElement, mode: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle', prompt?: string) => void;
     onConnectFlow?: (element: CanvasElement) => void;
     onGeneratePanorama?: (element: CanvasElement) => void;
@@ -95,6 +97,7 @@ export function ContextToolbar({
     onUpdate,
     onDelete,
     onGenerateFromImage,
+    onCreateImageJson,
     onOpenImageEditMode,
     onConnectFlow,
     onGeneratePanorama,
@@ -423,8 +426,15 @@ export function ContextToolbar({
                             >
                                 <RotateCcw size={18} />
                             </button>
+                            <button type="button" onClick={() => onOpenImageEditMode(actionableImage, 'enhance', getPromptLibraryItem('portrait-texture-default')?.prompt || '')}
+                                className="rounded-lg px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8" title="人像质感调节 · 生成前可修改要求">质感</button>
+                            <button type="button" onClick={() => onOpenImageEditMode(actionableImage, 'restyle', getPromptLibraryItem('mood-adjust-default')?.prompt || '')}
+                                className="rounded-lg px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8" title="情绪调节 · 生成前可修改要求">情绪</button>
                         </>
                     )}
+
+                    {actionableImage && onCreateImageJson && <button type="button" onClick={() => onCreateImageJson(actionableImage)}
+                        className="rounded-lg px-2 py-1 text-[11px] font-semibold text-gray-700 hover:bg-gray-50 dark:text-slate-200 dark:hover:bg-white/8" title="连接图片并创建 AI 文本节点，生成结构化 JSON">JSON</button>}
 
                     {actionableImage && onStartObjectAnnotation && (
                         <button

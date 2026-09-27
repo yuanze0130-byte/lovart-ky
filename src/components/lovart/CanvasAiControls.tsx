@@ -32,7 +32,9 @@ export function CanvasAiControls(props: Props) {
   const requestRef = useRef<AbortController | null>(null);
   const latestRef = useRef(props);
   latestRef.current = props;
-  const selected = models.find((item) => item.id === props.model) || (!props.model ? models[0] : undefined);
+  const selected = models.find((item) => item.id === props.model) || (!props.model
+    ? ((props.images?.length || props.video) ? models.find((item) => item.vision) : undefined) || models[0]
+    : undefined);
   const inputKey = JSON.stringify([props.mode, props.model, props.instruction, props.systemPrompt, props.source, props.images, props.video, props.outputKey]);
   const inputKeyRef = useRef(inputKey);
   inputKeyRef.current = inputKey;
