@@ -36,7 +36,7 @@ import { useViewportSize } from '@/hooks/useViewportSize';
 import { useCanvasHistory } from '@/hooks/useCanvasHistory';
 import { useCanvasTaskLog } from '@/hooks/useCanvasTaskLog';
 import { useStoryboardManager } from '@/hooks/useStoryboardManager';
-import type { DraftCanvasElement, AgentMode, AgentPanelResponse, AgentActionResult, AgentImageLayout } from '@/lib/agent/actions';
+import type { DraftCanvasElement, AgentChatTurn, AgentMode, AgentPanelResponse, AgentActionResult, AgentImageLayout } from '@/lib/agent/actions';
 import { v4 as uuidv4 } from 'uuid';
 import { authedFetch } from '@/lib/authed-fetch';
 import { dispatchCanvasTaskRetry, type CanvasTaskLogEntry } from '@/lib/canvas-task-log';
@@ -2908,7 +2908,7 @@ function LovartCanvasContent() {
         createdAt: item.createdAt || new Date().toISOString(),
     }))), []);
 
-    const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode }): Promise<AgentPanelResponse> => {
+    const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[] }): Promise<AgentPanelResponse> => {
         const response = await runAgent(message, agentContext, options);
         const nextResult = response.result;
         const chat = response.chat;
@@ -3190,8 +3190,10 @@ function LovartCanvasContent() {
                 />
             )}
 
-            {agentPanelEnabled && showChat && (
+            {agentPanelEnabled && (
                 <AgentPanel
+                    key={projectId || 'unscoped-canvas'}
+                    visible={showChat}
                     onClose={() => setShowChat(false)}
                     onSubmit={handleUnifiedAgentSubmit}
                     isRunning={isAgentRunning}

@@ -2,7 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { authedFetch } from '@/lib/authed-fetch';
-import type { AgentActionResult, AgentChatResult, AgentContext, AgentMode, AgentRunResponse } from '@/lib/agent/actions';
+import type { AgentActionResult, AgentChatResult, AgentChatTurn, AgentContext, AgentMode, AgentRunResponse } from '@/lib/agent/actions';
 
 async function parseAgentRunError(response: Response): Promise<never> {
   const contentType = response.headers.get('content-type') || '';
@@ -23,7 +23,7 @@ export function useAgentRunner() {
   const [error, setError] = useState<string | null>(null);
   const activeRequestRef = useRef<AbortController | null>(null);
 
-  const runAgent = useCallback(async (message: string, context: AgentContext, options?: { mode?: AgentMode }) => {
+  const runAgent = useCallback(async (message: string, context: AgentContext, options?: { mode?: AgentMode; history?: AgentChatTurn[] }) => {
     if (activeRequestRef.current) {
       throw new Error('Agent 正在执行，请等待当前任务完成或先取消');
     }
@@ -38,7 +38,7 @@ export function useAgentRunner() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message, context, mode: options?.mode }),
+        body: JSON.stringify({ message, context, mode: options?.mode, history: options?.history }),
         signal: controller.signal,
       });
 

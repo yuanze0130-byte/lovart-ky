@@ -2,7 +2,7 @@
 
 import { Bot, Send, Square, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import type { AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
+import type { AgentChatTurn, AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
 import { AI_TOOL_CREDIT_COSTS } from '@/lib/ai-tool-pricing';
 
 type AgentPanelEntry = {
@@ -13,8 +13,9 @@ type AgentPanelEntry = {
 };
 
 interface AgentPanelProps {
+  visible: boolean;
   onClose: () => void;
-  onSubmit: (message: string, options?: { mode?: AgentMode }) => Promise<AgentPanelResponse>;
+  onSubmit: (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[] }) => Promise<AgentPanelResponse>;
   isRunning: boolean;
   onCancel: () => void;
 }
@@ -31,7 +32,7 @@ const STARTER_PROMPTS = [
   '生成 4 张不同方向的设计方案',
 ];
 
-export function AgentPanel({ onClose, onSubmit, isRunning, onCancel }: AgentPanelProps) {
+export function AgentPanel({ visible, onClose, onSubmit, isRunning, onCancel }: AgentPanelProps) {
   const [mode, setMode] = useState<AgentMode>('design');
   const [message, setMessage] = useState('');
   const [entries, setEntries] = useState<AgentPanelEntry[]>([]);
@@ -39,11 +40,15 @@ export function AgentPanel({ onClose, onSubmit, isRunning, onCancel }: AgentPane
   const submit = async (input: string) => {
     const normalized = input.trim();
     if (!normalized || isRunning) return;
+    const history: AgentChatTurn[] = entries
+      .filter((entry): entry is AgentPanelEntry & { role: 'user' | 'assistant' } => entry.role !== 'error')
+      .slice(-8)
+      .map((entry) => ({ role: entry.role, content: entry.content }));
     const userEntry: AgentPanelEntry = { id: crypto.randomUUID(), role: 'user', content: normalized };
     setEntries((previous) => [...previous, userEntry]);
     setMessage('');
     try {
-      const response = await onSubmit(normalized, { mode });
+      const response = await onSubmit(normalized, { mode, history });
       setEntries((previous) => [...previous, {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -60,11 +65,11 @@ export function AgentPanel({ onClose, onSubmit, isRunning, onCancel }: AgentPane
   };
 
   return (
-    <aside className="absolute bottom-4 right-4 top-20 z-[60] flex w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white/96 shadow-[0_28px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/92 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]">
+    <aside className={`absolute bottom-4 right-4 top-20 z-[60] w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white/96 shadow-[0_28px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/92 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)] ${visible ? 'flex' : 'hidden'}`}>
       <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/10">
         <div className="flex items-center gap-2.5">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-sky-500 text-white"><Bot size={18} /></div>
-          <div><div className="text-sm font-semibold text-gray-900 dark:text-white">Lovart Agent</div><div className="text-[11px] text-gray-500 dark:text-gray-400">读取当前画布、选择和分镜上下文 · 创意对话 {AI_TOOL_CREDIT_COSTS.agentChat} 积分</div></div>
+          <div><div className="text-sm font-semibold text-gray-900 dark:text-white">Lovart Agent</div><div className="text-[11px] text-gray-500 dark:text-gray-400">结合当前选择与分镜概况 · 创意对话 {AI_TOOL_CREDIT_COSTS.agentChat} 积分</div></div>
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => setEntries([])} disabled={entries.length === 0 || isRunning} className="grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-white/10" title="清空对话"><Trash2 size={15} /></button>
@@ -84,7 +89,7 @@ export function AgentPanel({ onClose, onSubmit, isRunning, onCancel }: AgentPane
         {entries.length === 0 && (
           <div className="space-y-4 py-6 text-center">
             <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-sky-50 text-sky-500 dark:bg-sky-400/10 dark:text-sky-300"><Bot size={26} /></div>
-            <div><div className="text-sm font-medium text-gray-800 dark:text-gray-100">告诉我你想在画布上完成什么</div><div className="mt-1 text-xs text-gray-500">Agent 会先分析上下文，再执行受支持的画布动作。</div></div>
+            <div><div className="text-sm font-medium text-gray-800 dark:text-gray-100">告诉我你想在画布上完成什么</div><div className="mt-1 text-xs text-gray-500">Agent 会结合当前选择与分镜回答；明确要求时执行支持的画布动作。</div></div>
             <div className="space-y-2 text-left">
               {STARTER_PROMPTS.map((prompt) => <button key={prompt} type="button" onClick={() => void submit(prompt)} className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-left text-xs text-gray-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 dark:border-white/10 dark:text-gray-300 dark:hover:bg-sky-400/10 dark:hover:text-sky-200">{prompt}</button>)}
             </div>

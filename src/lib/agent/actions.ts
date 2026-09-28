@@ -5,6 +5,11 @@ export type StoryboardVideoSize = '720x1280' | '1280x720' | '1024x1280' | '1024x
 
 export type AgentMode = 'design' | 'branding' | 'image-editing' | 'research';
 
+export type AgentChatTurn = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 export type AgentContext = {
   page: AgentPage;
   projectId?: string | null;
@@ -219,6 +224,7 @@ export type AgentRunRequest = {
   message: string;
   context: AgentContext;
   mode?: AgentMode;
+  history?: AgentChatTurn[];
 };
 
 export type AgentChatResult = {

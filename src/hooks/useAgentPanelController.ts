@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
+import type { AgentChatTurn, AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
 
 export type AgentStage = 'idle' | 'analyzing' | 'planning' | 'building' | 'done';
 
 export function useAgentPanelController(
-  run: (message: string, options?: { mode?: AgentMode }) => Promise<AgentPanelResponse>,
+  run: (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[] }) => Promise<AgentPanelResponse>,
 ) {
   const [agentStage, setAgentStage] = useState<AgentStage>('idle');
   const completionTimerRef = useRef<number | null>(null);
@@ -15,7 +15,7 @@ export function useAgentPanelController(
     if (completionTimerRef.current !== null) window.clearTimeout(completionTimerRef.current);
   }, []);
 
-  const submit = useCallback(async (message: string, options?: { mode?: AgentMode }) => {
+  const submit = useCallback(async (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[] }) => {
     const normalized = message.trim();
     if (!normalized) throw new Error('请输入 Agent 任务');
     if (completionTimerRef.current !== null) {
