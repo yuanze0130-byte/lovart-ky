@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { hashComflyCatalog, sameSkipped } from './comfly-pricing-state.mjs';
 
 const root = process.cwd();
 const apply = process.argv.includes('--apply');
+const acceptVersionMismatch = process.argv.includes('--accept-version-mismatch');
 const snapshot = process.argv.find((arg) => arg.startsWith('--snapshot='))?.slice(11);
 const endpoint = process.env.COMFLY_PRICING_URL || 'https://ai.comfly.org/api/pricing';
 const payload = snapshot
@@ -19,8 +21,34 @@ if (!Array.isArray(records) || records.length < 100 || !/^[a-f0-9]{32}$/.test(ve
 }
 const byName = new Map(records.map((record) => [record.model_name, record]));
 const groupRatios = payload.group_ratio || { default: 1, 'gemini优质': 2, '国产特价': 0.7 };
+const dataDir = path.join(root, '.local-data');
+async function readPrevious(name) {
+  try {
+    return JSON.parse(await fs.readFile(path.join(dataDir, name), 'utf8'));
+  } catch (error) {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  }
+}
+const previousReport = await readPrevious('comfly-pricing-report.json');
+const previousSnapshot = await readPrevious('comfly-pricing.json');
+const contentHash = hashComflyCatalog(records, groupRatios);
+const previousHash = previousSnapshot?.contentHash || (Array.isArray(previousSnapshot?.records)
+  ? hashComflyCatalog(previousSnapshot.records, previousSnapshot.group_ratio || {}) : null);
 const imageGroups = { default: 'default', 'gemini-premium': 'gemini优质', 'domestic-special': '国产特价' };
-const report = { version, checkedAt: new Date().toISOString(), changes: [], skipped: [] };
+const report = {
+  version,
+  checkedAt: new Date().toISOString(),
+  contentHash,
+  catalogChanged: previousHash === null ? null : previousHash !== contentHash,
+  versionChanged: previousSnapshot ? previousSnapshot.version !== version : null,
+  manualReviewRequired: false,
+  unresolvedCatalogHash: null,
+  skippedChanged: null,
+  changes: [],
+  skipped: [],
+  warnings: [],
+};
 const esc = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function quotedCost(model, key, rowKey, group = 'default') {
@@ -103,12 +131,28 @@ if (report.changes.length) {
   image = image.replace(/export const IMAGE_PRICE_VERSION = '[^']+';/, `export const IMAGE_PRICE_VERSION = 'comfly-api-${version}';`);
   video = video.replace(/export const VIDEO_PRICE_VERSION = '[^']+';/, `export const VIDEO_PRICE_VERSION = 'comfly-api-${version}';`);
 }
+const unresolvedFromPrior = previousReport?.unresolvedCatalogHash && previousReport.version === version;
+report.manualReviewRequired = !acceptVersionMismatch && Boolean(
+  (report.catalogChanged && !report.versionChanged) || unresolvedFromPrior,
+);
+report.unresolvedCatalogHash = report.manualReviewRequired ? contentHash : null;
+if (report.manualReviewRequired) {
+  report.warnings.push('Comfly catalog changed without a provider version change; manual review required');
+  report.skipped.push({ model: 'comfly-catalog', reason: 'Catalog changed with same provider version; review required' });
+  if (report.changes.length) {
+    report.blockedChanges = report.changes;
+    report.changes = [];
+  }
+}
+report.skippedChanged = previousReport ? !sameSkipped(report.skipped, previousReport.skipped) : null;
 console.log(JSON.stringify(report, null, 2));
 if (apply) {
-  const dataDir = path.join(root, '.local-data');
   await fs.mkdir(dataDir, { recursive: true });
+  if (previousReport) {
+    await fs.writeFile(path.join(dataDir, 'comfly-pricing-previous-report.json'), JSON.stringify(previousReport, null, 2) + '\n');
+  }
   await fs.writeFile(path.join(dataDir, 'comfly-pricing-report.json'), JSON.stringify(report, null, 2) + '\n');
-  await fs.writeFile(path.join(dataDir, 'comfly-pricing.json'), JSON.stringify({ endpoint, version, fetchedAt: report.checkedAt, group_ratio: groupRatios, records }, null, 2) + '\n');
+  await fs.writeFile(path.join(dataDir, 'comfly-pricing.json'), JSON.stringify({ endpoint, version, contentHash, fetchedAt: report.checkedAt, group_ratio: groupRatios, records }, null, 2) + '\n');
   if (report.changes.length) {
     await fs.writeFile(imagePath, image);
     await fs.writeFile(videoPath, video);

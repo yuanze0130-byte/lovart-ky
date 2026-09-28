@@ -678,7 +678,7 @@ function LovartCanvasContent() {
         });
 
         const sectionCards = Array.isArray(plan.sections)
-            ? plan.sections.flatMap((section, index) => {
+            ? plan.sections.slice(0, 8).flatMap((section, index) => {
                 const cardX = resolvedMode === 'research' ? preset.textX + (index % 2) * 360 : preset.textX;
                 const cardY = resolvedMode === 'research' ? preset.textY + Math.floor(index / 2) * preset.cardGapY : preset.textY + index * preset.cardGapY;
                 return [
@@ -714,7 +714,7 @@ function LovartCanvasContent() {
                         x: cardX,
                         y: cardY,
                         width: preset.cardWidth - 36,
-                        content: `${typeof section?.title === 'string' ? section.title : `Section ${index + 1}`}\n${typeof section?.body === 'string' ? section.body : ''}`,
+                        content: `${typeof section?.title === 'string' ? section.title.slice(0, 120) : `Section ${index + 1}`}\n${typeof section?.body === 'string' ? section.body.slice(0, 1500) : ''}`,
                         fontSize: 16,
                     },
                 ];
@@ -759,13 +759,13 @@ function LovartCanvasContent() {
             });
             nextNodes.push(...sectionCards);
         } else if (Array.isArray(plan.createTextNodes)) {
-            nextNodes.push(...plan.createTextNodes.map((item, index) => ({
+            nextNodes.push(...plan.createTextNodes.slice(0, 12).map((item, index) => ({
                 id: uuidv4(),
                 type: 'text' as const,
-                x: typeof item?.x === 'number' ? item.x : baseX,
-                y: typeof item?.y === 'number' ? item.y : baseY + index * 120,
-                content: typeof item?.content === 'string' ? item.content : 'New text',
-                fontSize: typeof item?.fontSize === 'number' ? item.fontSize : index === 0 ? 32 : 18,
+                x: typeof item?.x === 'number' && Number.isFinite(item.x) && Math.abs(item.x) <= 100_000 ? item.x : baseX,
+                y: typeof item?.y === 'number' && Number.isFinite(item.y) && Math.abs(item.y) <= 100_000 ? item.y : baseY + index * 120,
+                content: typeof item?.content === 'string' ? item.content.slice(0, 2000) : 'New text',
+                fontSize: typeof item?.fontSize === 'number' && Number.isFinite(item.fontSize) ? Math.max(8, Math.min(72, item.fontSize)) : index === 0 ? 32 : 18,
             })));
         }
 
@@ -2914,15 +2914,6 @@ function LovartCanvasContent() {
         const chat = response.chat;
 
         if (chat) {
-            if (chat.plan && Object.keys(chat.plan).length > 0) {
-                applyAgentPlanToCanvas({
-                    prompt: message,
-                    mode: options?.mode || 'design',
-                    reply: chat.reply,
-                    summary: chat.summary,
-                    plan: chat.plan,
-                });
-            }
             return {
                 kind: 'chat',
                 reply: chat.reply,
@@ -2930,9 +2921,8 @@ function LovartCanvasContent() {
                 plan: chat.plan || {},
                 meta: [],
                 followUps: [
-                    '把这个方向整理成可直接放到画布里的方案',
                     '基于这个思路继续给我 3 个不同风格方向',
-                    '按这个方向直接开始生成图片或分镜',
+                    '把执行步骤写得更具体',
                 ],
             };
         }
@@ -3009,7 +2999,7 @@ function LovartCanvasContent() {
             meta: buildAgentActionMeta(nextResult),
             followUps: buildAgentFollowUps(nextResult),
         };
-    }, [agentContext, applyAgentCanvasDrafts, applyAgentPlanToCanvas, buildAgentActionMeta, buildAgentFollowUps, buildAgentImageDrafts, buildEditedImageDraft, buildStoryboardItemsFromAgentResult, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent, setStoryboard, setStoryboardLayout, updateProjectThumbnail]);
+    }, [agentContext, applyAgentCanvasDrafts, buildAgentActionMeta, buildAgentFollowUps, buildAgentImageDrafts, buildEditedImageDraft, buildStoryboardItemsFromAgentResult, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent, setStoryboard, setStoryboardLayout, updateProjectThumbnail]);
     const { agentStage, submit: handleUnifiedAgentSubmit } = useAgentPanelController(handleAgentRun);
     if (isLoading) {
         return (
@@ -3196,6 +3186,7 @@ function LovartCanvasContent() {
                     visible={showChat}
                     onClose={() => setShowChat(false)}
                     onSubmit={handleUnifiedAgentSubmit}
+                    onApplyPlan={applyAgentPlanToCanvas}
                     isRunning={isAgentRunning}
                     onCancel={cancelAgent}
                 />

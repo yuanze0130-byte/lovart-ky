@@ -10,12 +10,16 @@ type AgentPanelEntry = {
   role: 'user' | 'assistant' | 'error';
   content: string;
   response?: AgentPanelResponse;
+  sourceMessage?: string;
+  mode?: AgentMode;
+  planApplied?: boolean;
 };
 
 interface AgentPanelProps {
   visible: boolean;
   onClose: () => void;
   onSubmit: (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[] }) => Promise<AgentPanelResponse>;
+  onApplyPlan: (input: { prompt: string; mode: AgentMode; reply: string; summary?: string; plan: Record<string, unknown> }) => void;
   isRunning: boolean;
   onCancel: () => void;
 }
@@ -32,7 +36,7 @@ const STARTER_PROMPTS = [
   '生成 4 张不同方向的设计方案',
 ];
 
-export function AgentPanel({ visible, onClose, onSubmit, isRunning, onCancel }: AgentPanelProps) {
+export function AgentPanel({ visible, onClose, onSubmit, onApplyPlan, isRunning, onCancel }: AgentPanelProps) {
   const [mode, setMode] = useState<AgentMode>('design');
   const [message, setMessage] = useState('');
   const [entries, setEntries] = useState<AgentPanelEntry[]>([]);
@@ -54,12 +58,34 @@ export function AgentPanel({ visible, onClose, onSubmit, isRunning, onCancel }: 
         role: 'assistant',
         content: response.reply,
         response,
+        sourceMessage: normalized,
+        mode,
       }]);
     } catch (error) {
       setEntries((previous) => [...previous, {
         id: crypto.randomUUID(),
         role: 'error',
         content: error instanceof Error ? error.message : 'Agent 执行失败',
+      }]);
+    }
+  };
+
+  const applyPlan = (entry: AgentPanelEntry) => {
+    if (isRunning || entry.planApplied || !entry.sourceMessage || !entry.mode || !entry.response?.plan) return;
+    try {
+      onApplyPlan({
+        prompt: entry.sourceMessage,
+        mode: entry.mode,
+        reply: entry.response.reply,
+        summary: entry.response.summary,
+        plan: entry.response.plan,
+      });
+      setEntries((previous) => previous.map((item) => item.id === entry.id ? { ...item, planApplied: true } : item));
+    } catch (error) {
+      setEntries((previous) => [...previous, {
+        id: crypto.randomUUID(),
+        role: 'error',
+        content: error instanceof Error ? error.message : '方案放入画布失败',
       }]);
     }
   };
@@ -98,6 +124,11 @@ export function AgentPanel({ visible, onClose, onSubmit, isRunning, onCancel }: 
         {entries.map((entry) => (
           <div key={entry.id} className={`rounded-2xl px-3.5 py-3 text-sm ${entry.role === 'user' ? 'ml-8 bg-gray-900 text-white dark:bg-white dark:text-black' : entry.role === 'error' ? 'mr-8 border border-red-200 bg-red-50 text-red-700 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-200' : 'mr-8 border border-gray-200 bg-gray-50 text-gray-700 dark:border-white/10 dark:bg-white/5 dark:text-gray-200'}`}>
             <div className="whitespace-pre-wrap leading-6">{entry.content}</div>
+            {entry.role === 'assistant' && entry.response?.kind === 'chat' && entry.response.plan && Object.keys(entry.response.plan).length > 0 && (
+              <button type="button" onClick={() => applyPlan(entry)} disabled={isRunning || entry.planApplied} className="mt-3 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-700 hover:bg-sky-100 disabled:cursor-default disabled:opacity-60 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200">
+                {entry.planApplied ? '已放到画布' : '将方案放到画布'}
+              </button>
+            )}
             {entry.response?.meta && entry.response.meta.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{entry.response.meta.map((item) => <span key={`${item.label}-${item.value}`} className="rounded-full border border-gray-200 bg-white px-2 py-1 text-[10px] text-gray-500 dark:border-white/10 dark:bg-white/5 dark:text-gray-300">{item.label}：{item.value}</span>)}</div>}
             {entry.response?.followUps && entry.response.followUps.length > 0 && <div className="mt-3 space-y-1.5">{entry.response.followUps.map((followUp) => <button key={followUp} type="button" onClick={() => void submit(followUp)} disabled={isRunning} className="block w-full rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2 text-left text-[11px] text-sky-700 hover:bg-sky-100 disabled:opacity-50 dark:border-sky-400/20 dark:bg-sky-400/10 dark:text-sky-200">{followUp}</button>)}</div>}
           </div>

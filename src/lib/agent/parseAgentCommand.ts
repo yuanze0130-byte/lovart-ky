@@ -93,15 +93,6 @@ function extractStoryboardOrder(message: string): number | undefined {
 }
 
 function resolveStoryboardTarget(context: AgentContext, explicitOrder?: number) {
-  if (context.selectedStoryboardItemId && context.storyboardItems?.some((item) => item.id === context.selectedStoryboardItemId)) {
-    const selected = context.storyboardItems.find((item) => item.id === context.selectedStoryboardItemId)!;
-    return {
-      storyboardItemId: selected.id,
-      storyboardOrder: selected.order + 1,
-      aspectRatio: selected.aspectRatio,
-    };
-  }
-
   if (typeof explicitOrder === 'number' && explicitOrder > 0) {
     const matched = context.storyboardItems?.find((item) => item.order === explicitOrder - 1);
     if (matched) {
@@ -111,6 +102,16 @@ function resolveStoryboardTarget(context: AgentContext, explicitOrder?: number) 
         aspectRatio: matched.aspectRatio,
       };
     }
+    return { storyboardItemId: undefined, storyboardOrder: explicitOrder, aspectRatio: undefined };
+  }
+
+  if (context.selectedStoryboardItemId && context.storyboardItems?.some((item) => item.id === context.selectedStoryboardItemId)) {
+    const selected = context.storyboardItems.find((item) => item.id === context.selectedStoryboardItemId)!;
+    return {
+      storyboardItemId: selected.id,
+      storyboardOrder: selected.order + 1,
+      aspectRatio: selected.aspectRatio,
+    };
   }
 
   return {

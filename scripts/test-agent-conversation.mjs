@@ -16,7 +16,7 @@ async function load(relativePath) {
     compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
     fileName: sourcePath,
   });
-  await writeFile(outputPath, output.outputText, 'utf8');
+  await writeFile(outputPath, output.outputText.replace(/from ['"](?:\.\/intent|@\/lib\/agent\/intent)['"]/g, "from './intent.mjs'"), 'utf8');
   return import(pathToFileURL(outputPath).href);
 }
 
@@ -49,6 +49,21 @@ try {
   });
   assert.match(summary, /选中分镜：第 1 镜，开场/);
   assert.doesNotMatch(summary, /SECRET|private\.example|node-1/);
+
+  const parser = await load('src/lib/agent/parseAgentCommand.ts');
+  const context = {
+    page: 'canvas', selectedStoryboardItemId: 'shot-1',
+    storyboardItems: [
+      { id: 'shot-1', order: 0, title: '开场' },
+      { id: 'shot-2', order: 1, title: '特写' },
+    ],
+  };
+  const explicit = await parser.parseAgentCommand({ message: '请生成第 2 镜图片', context, userId: 'test' });
+  assert.equal(explicit.type, 'generate_storyboard_image');
+  assert.equal(explicit.storyboardItemId, 'shot-2');
+  const missing = await parser.parseAgentCommand({ message: '请生成第 3 镜图片', context, userId: 'test' });
+  assert.equal(missing.storyboardItemId, undefined);
+  assert.equal(missing.storyboardOrder, 3);
   console.log('Agent conversation and intent tests passed.');
 } finally {
   await rm(tempDir, { recursive: true, force: true });
