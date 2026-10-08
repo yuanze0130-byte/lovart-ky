@@ -359,8 +359,13 @@ function normalizeProxyBaseURL(baseURL: string) {
   return `${trimmed}/v1`;
 }
 
-function getProxyTargets(group: ImagePriceQuote['group'] = 'default') {
-  const primaryBaseURL = normalizeProxyBaseURL(process.env.GEMINI_BASE_URL || 'https://doodleverse.fun/v1');
+function getProxyTargets(group: ImagePriceQuote['group'] = 'default', upstreamModel?: string) {
+  // Seedream V5 is priced by output pixels and reference count. The gateway
+  // currently has no default-group route or matching tiered billing for it.
+  const directSeedreamV5 = upstreamModel === 'seedream-v5-pro';
+  const primaryBaseURL = normalizeProxyBaseURL(directSeedreamV5
+    ? process.env.CANVAS_SEEDREAM_V5_BASE_URL || 'https://ai.comfly.org/v1'
+    : process.env.GEMINI_BASE_URL || 'https://doodleverse.fun/v1');
   const usesOwnGateway = isDoodleverseGateway(primaryBaseURL);
   const primaryApiKey = usesOwnGateway ? imageGatewayKeyForGroup(group) : process.env.GEMINI_API_KEY;
   const fallbackBaseURL = process.env.GEMINI_FALLBACK_BASE_URL
@@ -370,7 +375,7 @@ function getProxyTargets(group: ImagePriceQuote['group'] = 'default') {
 
   const targets = [
     primaryApiKey ? { label: 'primary' as const, baseURL: primaryBaseURL, apiKey: primaryApiKey } : null,
-    !usesOwnGateway && fallbackApiKey && fallbackBaseURL
+    !usesOwnGateway && !directSeedreamV5 && fallbackApiKey && fallbackBaseURL
       ? { label: 'fallback' as const, baseURL: fallbackBaseURL, apiKey: fallbackApiKey }
       : null,
   ].filter(Boolean) as Array<{ label: 'primary' | 'fallback'; baseURL: string; apiKey: string }>;
@@ -786,10 +791,11 @@ async function buildOfficialGptImage2FormData(params: {
 async function generateViaProxy(
   payload: GenerateImagePayload,
   group: ImagePriceQuote['group'],
+  upstreamModel: string,
   signal: AbortSignal,
   onSubmissionStart: () => void,
 ) {
-  const targets = getProxyTargets(group);
+  const targets = getProxyTargets(group, upstreamModel);
 
   if (targets.length === 0) {
     throw new Error(`图片分组 ${group} 的中转站密钥未配置`);
@@ -1320,7 +1326,7 @@ export async function POST(request: NextRequest) {
     const provider = getProvider();
     const modelDefinition = getImageModelDefinition(modelVariant);
     if ((provider === 'proxy' || modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat')
-      && getProxyTargets(priceQuote.group).length === 0) {
+      && getProxyTargets(priceQuote.group, priceQuote.upstreamModel).length === 0) {
       throw new Error(`图片分组 ${priceQuote.group} 的中转站密钥未配置`);
     }
     chargedQuote = priceQuote;
@@ -1408,13 +1414,13 @@ export async function POST(request: NextRequest) {
     };
 
     if (provider === 'proxy') {
-      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
+      const result = await generateViaProxy(payload, priceQuote.group, priceQuote.upstreamModel, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     }
 
     if (provider === 'official') {
       if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-        const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
+        const result = await generateViaProxy(payload, priceQuote.group, priceQuote.upstreamModel, request.signal, markUpstreamSubmissionStarted);
         return respondWithResult(result);
       }
       const result = await generateViaOfficial(payload, request.signal, markUpstreamSubmissionStarted);
@@ -1422,7 +1428,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
+      const result = await generateViaProxy(payload, priceQuote.group, priceQuote.upstreamModel, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     }
 
@@ -1432,7 +1438,7 @@ export async function POST(request: NextRequest) {
     } catch (officialError) {
       if (request.signal.aborted || (upstreamStarted && !isKnownUpstreamFailure(officialError))) throw officialError;
       console.warn('[generate-image] official provider failed; using proxy fallback', getSafeErrorLogDetails(officialError));
-      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
+      const result = await generateViaProxy(payload, priceQuote.group, priceQuote.upstreamModel, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult({
         ...result,
         providerMode: 'auto',
