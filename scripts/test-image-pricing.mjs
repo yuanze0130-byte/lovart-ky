@@ -46,9 +46,9 @@ try {
   assert.equal(quote('nano-banana-pro-4k', '4K').credits, 9);
   assert.equal(quote('gemini-3.1-flash-image-preview-4k', '4K').credits, 5);
   assert.equal(quote('qwen-image-edit').credits, 4);
-  assert.equal(quote('seedream-v5-pro', '1K', 0).credits, 5);
-  assert.equal(quote('seedream-v5-pro', '1K', 4).credits, 6);
-  assert.equal(quote('seedream-v5-pro', '4K', 4).credits, 10);
+  for (const removedModel of ['seedream-v5-pro', 'doubao-seedream-4-5-251128', 'doubao-seedream-5-0-260128']) {
+    assert.throws(() => quote(removedModel), { code: 'IMAGE_PRICE_UNAVAILABLE' });
+  }
   assert.equal(pricing.imageCreditsFromCostUnits(16_000), 3);
   assert.throws(() => quote('flux-kontext-pro'), { code: 'IMAGE_PRICE_UNAVAILABLE' });
   assert.throws(() => quote('midjourney'), { code: 'IMAGE_PRICE_UNAVAILABLE' });

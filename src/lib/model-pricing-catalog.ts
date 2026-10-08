@@ -56,7 +56,6 @@ function buildImageItems(): ModelPricingCatalogItem[] {
         return [{
           label: resolution,
           credits: quote.credits,
-          note: upstreamModel === 'seedream-v5-pro' ? '不含参考图附加积分' : undefined,
         }];
       } catch (error) {
         if (isImagePriceUnavailableError(error)) return [];
@@ -75,9 +74,7 @@ function buildImageItems(): ModelPricingCatalogItem[] {
       note: specs.length > 0
         ? model.requiresReference
           ? '需要至少 1 张参考图'
-          : model.id === 'seedream-5.0-pro-official'
-            ? '参考图按张追加积分，生成前会显示准确报价'
-            : undefined
+          : undefined
         : '当前上游价格无法可靠核验，已暂停生成以防错误扣分',
     };
   });

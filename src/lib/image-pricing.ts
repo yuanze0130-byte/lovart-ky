@@ -84,14 +84,10 @@ const FIXED_COSTS: Readonly<Record<string, { costUnits: number; group: ImagePric
   'grok-4.2-image': { costUnits: 12_000, group: 'default' },
   'z-image-turbo': { costUnits: 7_000, group: 'domestic-special' },
   'doubao-seedream-4-0-250828': { costUnits: 14_000, group: 'default' },
-  'doubao-seedream-4-5-251128': { costUnits: 15_000, group: 'default' },
-  'doubao-seedream-5-0-260128': { costUnits: 15_000, group: 'default' },
   'qwen-image-edit': { costUnits: 21_000, group: 'domestic-special' },
 };
 
 export function quoteImageCredits(input: ImagePriceInput): ImagePriceQuote {
-  const referenceCount = Math.max(0, Math.min(10, Math.floor(input.referenceCount || 0)));
-
   if (input.upstreamModel === 'gemini-3.1-flash-lite-image' && input.resolution !== '1K') {
     throw new ImagePriceUnavailableError('Nano Banana 2 Lite 当前只支持 1K');
   }
@@ -100,44 +96,24 @@ export function quoteImageCredits(input: ImagePriceInput): ImagePriceQuote {
     throw new ImagePriceUnavailableError('GPT Image 2 -All 当前只支持 1K');
   }
 
-  let costUnits: number;
-  let group: ImagePriceQuote['group'];
-  let breakdown: ImagePriceQuote['breakdown'] = { costType: 'per-request' };
-
-  if (input.upstreamModel === 'seedream-v5-pro') {
-    const outputCostUnits = input.resolution === '1K' ? 27_000 : 54_000;
-    const referenceCostUnits = referenceCount * 1_800;
-    costUnits = outputCostUnits + referenceCostUnits;
-    group = 'default';
-    breakdown = {
-      costType: 'tiered-output-plus-reference',
-      outputTier: input.resolution === '1K' ? '<2360k-px' : '>2360k-px',
-      outputCost: outputCostUnits / COMFLY_PRICE_SCALE,
-      referenceCount,
-      referenceCost: referenceCostUnits / COMFLY_PRICE_SCALE,
-    };
-  } else {
-    const fixed = FIXED_COSTS[input.upstreamModel];
-    if (!fixed) {
-      throw new ImagePriceUnavailableError(`Comfly 当前未列出 ${input.upstreamModel} 的可靠价格`);
-    }
-    costUnits = fixed.costUnits;
-    group = fixed.group;
+  const fixed = FIXED_COSTS[input.upstreamModel];
+  if (!fixed) {
+    throw new ImagePriceUnavailableError(`Comfly 当前未列出 ${input.upstreamModel} 的可靠价格`);
   }
 
   return {
     modelId: input.modelId,
     upstreamModel: input.upstreamModel,
     resolution: input.resolution,
-    group,
-    comflyCost: costUnits / COMFLY_PRICE_SCALE,
-    costUnits,
+    group: fixed.group,
+    comflyCost: fixed.costUnits / COMFLY_PRICE_SCALE,
+    costUnits: fixed.costUnits,
     markupRate: IMAGE_MARKUP_BPS / 10_000,
     pointsPerUnit: IMAGE_POINTS_PER_COMFLY_UNIT,
-    credits: imageCreditsFromCostUnits(costUnits),
+    credits: imageCreditsFromCostUnits(fixed.costUnits),
     currencyUnit: 'comfly-unit',
     priceVersion: IMAGE_PRICE_VERSION,
-    breakdown,
+    breakdown: { costType: 'per-request' },
   };
 }
 

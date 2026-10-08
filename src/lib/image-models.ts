@@ -6,7 +6,7 @@ export type ImageModelCategory =
   | 'ByteDance'
   | 'Alibaba'
   | 'Other';
-export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task' | 'image-generation';
+export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task';
 export type ImageModelResolution = '1K' | '2K' | '3K' | '4K';
 
 export type ImageModelId =
@@ -34,10 +34,7 @@ export type ImageModelId =
   | 'z-image-official'
   | 'midjourney'
   | 'seedream-4.0'
-  | 'seedream-4.5'
-  | 'seedream-5.0-pro-official'
-  | 'seedream-4.5-api'
-  | 'seedream-5.0-api';
+  | 'seedream-4.5';
 
 export interface ImageModelDefinition {
   id: Exclude<ImageModelId, 'standard' | 'pro'>;
@@ -197,42 +194,6 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     supportsReferences: true,
     supportsEditing: true,
   },
-  {
-    id: 'seedream-5.0-pro-official',
-    label: 'Seedream 5.0 Pro API',
-    category: 'ByteDance',
-    description: '高质量中文商业视觉与多参考图生成',
-    transport: 'image-generation',
-    proxyModel: 'seedream-v5-pro',
-    upstreamModels: { '1K': 'seedream-v5-pro', '2K': 'seedream-v5-pro' },
-    supportedResolutions: ['1K', '2K'],
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'seedream-4.5-api',
-    label: 'Seedream 4.5 API',
-    category: 'ByteDance',
-    description: '中转站火山方舟 Seedream 4.5 模型入口',
-    transport: 'image-generation',
-    proxyModel: 'doubao-seedream-4-5-251128',
-    upstreamModels: { '2K': 'doubao-seedream-4-5-251128', '4K': 'doubao-seedream-4-5-251128' },
-    supportedResolutions: ['2K', '4K'],
-    supportsReferences: true,
-    supportsEditing: true,
-  },
-  {
-    id: 'seedream-5.0-api',
-    label: 'Seedream 5.0 API',
-    category: 'ByteDance',
-    description: '中转站火山方舟 Seedream 5.0 模型入口',
-    transport: 'image-generation',
-    proxyModel: 'doubao-seedream-5-0-260128',
-    upstreamModels: { '2K': 'doubao-seedream-5-0-260128', '3K': 'doubao-seedream-5-0-260128' },
-    supportedResolutions: ['2K', '3K'],
-    supportsReferences: true,
-    supportsEditing: true,
-  },
 ];
 
 const MODEL_IDS = new Set<ImageModelId>([
@@ -268,7 +229,6 @@ export function supportsImageModelResolution(
 export const IMAGE_MODEL_CATEGORIES: ImageModelCategory[] = [
   'Google',
   'OpenAI',
-  'ByteDance',
 ];
 
 export type ImageGenerationExecutionMode = 'sequential' | 'parallel';

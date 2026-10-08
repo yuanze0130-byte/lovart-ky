@@ -51,9 +51,9 @@ await writeFile(upstreamRequestOutputPath, upstreamRequestTranspiled.outputText,
 
 try {
   const models = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
-  assert.equal(models.IMAGE_MODEL_OPTIONS.length, 14);
-  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.id)).size, 14);
-  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.proxyModel)).size, 14);
+  assert.equal(models.IMAGE_MODEL_OPTIONS.length, 11);
+  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.id)).size, 11);
+  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.proxyModel)).size, 11);
   assert.equal(models.normalizeImageModelId('standard'), 'nano-banana-2');
   assert.equal(models.normalizeImageModelId('pro'), 'nano-banana-pro');
   assert.equal(models.getImageModelDefinition('gpt-image-2-official').transport, 'official-image-task');
@@ -71,14 +71,6 @@ try {
   });
   assert.equal(models.getImageModelDefinition('nano-banana-2-lite').proxyModel, 'gemini-3.1-flash-lite-image');
   assert.equal(models.getImageModelDefinition('gemini-3.1-flash-image-official').proxyModel, 'gemini-3.1-flash-image');
-  assert.equal(models.getImageModelDefinition('seedream-5.0-pro-official').proxyModel, 'seedream-v5-pro');
-  assert.equal(models.getImageModelDefinition('seedream-5.0-pro-official').transport, 'image-generation');
-  assert.deepEqual(models.getImageModelDefinition('seedream-5.0-pro-official').supportedResolutions, ['1K', '2K']);
-  assert.equal(models.getImageModelDefinition('seedream-4.5-api').category, 'ByteDance');
-  assert.equal(models.getImageModelDefinition('seedream-4.5-api').transport, 'image-generation');
-  assert.deepEqual(models.getImageModelDefinition('seedream-4.5-api').supportedResolutions, ['2K', '4K']);
-  assert.equal(models.getImageModelDefinition('seedream-5.0-api').transport, 'image-generation');
-  assert.deepEqual(models.getImageModelDefinition('seedream-5.0-api').supportedResolutions, ['2K', '3K']);
   for (const removedModelId of [
     'nano-banana',
     'gpt-4o-image',
@@ -89,13 +81,16 @@ try {
     'grok-4.2-image',
     'seedream-4.0',
     'seedream-4.5',
+    'seedream-5.0-pro-official',
+    'seedream-4.5-api',
+    'seedream-5.0-api',
     'qwen-image-edit',
     'z-image-official',
     'midjourney',
   ]) {
     assert.equal(models.isImageModelId(removedModelId), false, `${removedModelId} should be disabled`);
   }
-  assert.deepEqual(models.IMAGE_MODEL_CATEGORIES, ['Google', 'OpenAI', 'ByteDance']);
+  assert.deepEqual(models.IMAGE_MODEL_CATEGORIES, ['Google', 'OpenAI']);
   assert.equal(models.isImageModelId('unknown-image-model'), false);
 
   const routing = await import(`${pathToFileURL(routingOutputPath).href}?v=${Date.now()}`);
@@ -138,28 +133,6 @@ try {
     upstreamRequest.buildImageApiEndpoint('https://doodleverse.fun/v1', 'edit', true),
     'https://doodleverse.fun/v1/images/edits?async=true',
   );
-  assert.equal(upstreamRequest.getSeedreamImageSize({
-    modelId: 'seedream-5.0-api', resolution: '3K', aspectRatio: '16:9', referenceCount: 0,
-  }), '4096x2304');
-  assert.equal(upstreamRequest.getSeedreamImageSize({
-    modelId: 'seedream-5.0-api', resolution: '2K', aspectRatio: '16:9', referenceCount: 1,
-  }), '2560x1440');
-  assert.deepEqual(upstreamRequest.buildSeedreamGenerationBody({
-    modelId: 'seedream-4.5-api',
-    model: 'doubao-seedream-4-5-251128',
-    prompt: 'test',
-    resolution: '4K',
-    aspectRatio: '3:2',
-    references: ['https://example.com/reference.png'],
-  }), {
-    model: 'doubao-seedream-4-5-251128',
-    prompt: 'test',
-    size: '4992x3328',
-    response_format: 'b64_json',
-    watermark: false,
-    sequential_image_generation: 'disabled',
-    image: 'https://example.com/reference.png',
-  });
 
   const preferences = await import(`${pathToFileURL(preferencesOutputPath).href}?v=${Date.now()}`);
   const sanitized = preferences.sanitizeImageModelPreferences({
