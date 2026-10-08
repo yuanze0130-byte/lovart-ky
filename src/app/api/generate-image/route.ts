@@ -7,6 +7,7 @@ import { consumeCredits, refundCredits } from '@/lib/credits';
 import { getImageModelDefinition, isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { isImageModelResolutionError, resolveImageUpstreamModel } from '@/lib/image-model-routing';
 import { isImagePriceUnavailableError, quoteImageCredits, type ImagePriceQuote } from '@/lib/image-pricing';
+import { imageGatewayKeyForGroup, isDoodleverseGateway } from '@/lib/image-gateway-routing';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 import { collectImageResponseCandidates } from '@/lib/image-response-candidates';
@@ -358,9 +359,10 @@ function normalizeProxyBaseURL(baseURL: string) {
   return `${trimmed}/v1`;
 }
 
-function getProxyTargets() {
+function getProxyTargets(group: ImagePriceQuote['group'] = 'default') {
   const primaryBaseURL = normalizeProxyBaseURL(process.env.GEMINI_BASE_URL || 'https://doodleverse.fun/v1');
-  const primaryApiKey = process.env.GEMINI_API_KEY;
+  const usesOwnGateway = isDoodleverseGateway(primaryBaseURL);
+  const primaryApiKey = usesOwnGateway ? imageGatewayKeyForGroup(group) : process.env.GEMINI_API_KEY;
   const fallbackBaseURL = process.env.GEMINI_FALLBACK_BASE_URL
     ? normalizeProxyBaseURL(process.env.GEMINI_FALLBACK_BASE_URL)
     : undefined;
@@ -368,10 +370,24 @@ function getProxyTargets() {
 
   const targets = [
     primaryApiKey ? { label: 'primary' as const, baseURL: primaryBaseURL, apiKey: primaryApiKey } : null,
-    fallbackApiKey && fallbackBaseURL ? { label: 'fallback' as const, baseURL: fallbackBaseURL, apiKey: fallbackApiKey } : null,
+    !usesOwnGateway && fallbackApiKey && fallbackBaseURL
+      ? { label: 'fallback' as const, baseURL: fallbackBaseURL, apiKey: fallbackApiKey }
+      : null,
   ].filter(Boolean) as Array<{ label: 'primary' | 'fallback'; baseURL: string; apiKey: string }>;
 
   return targets;
+}
+
+function getImageTaskPollTarget(target: { baseURL: string; apiKey: string }) {
+  // The gateway relays async image submission but does not expose Comfly's
+  // /images/tasks endpoint. Task lookup does not create a new billable request.
+  if (!isDoodleverseGateway(target.baseURL)) return target;
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is required to poll gateway image tasks');
+  return {
+    baseURL: normalizeProxyBaseURL(process.env.CANVAS_GATEWAY_IMAGE_TASK_POLL_BASE_URL || 'https://ai.comfly.org/v1'),
+    apiKey,
+  };
 }
 
 function extractImageFromGeminiResponse(response: GeminiOfficialResponse, baseResult: Record<string, unknown>) {
@@ -769,13 +785,14 @@ async function buildOfficialGptImage2FormData(params: {
 
 async function generateViaProxy(
   payload: GenerateImagePayload,
+  group: ImagePriceQuote['group'],
   signal: AbortSignal,
   onSubmissionStart: () => void,
 ) {
-  const targets = getProxyTargets();
+  const targets = getProxyTargets(group);
 
   if (targets.length === 0) {
-    throw new Error('GEMINI_API_KEY not configured');
+    throw new Error(`图片分组 ${group} 的中转站密钥未配置`);
   }
 
   const references = normalizeReferenceImages(payload.referenceImages, payload.referenceImage);
@@ -927,9 +944,10 @@ async function generateViaProxy(
           throw new Error(`${proxyModel} proxy missing task_id: ${rawText.slice(0, 500)}`);
         }
 
+        const pollTarget = getImageTaskPollTarget(target);
         const taskResult = await pollGptImage2Task({
-          baseURL: target.baseURL,
-          apiKey: target.apiKey,
+          baseURL: pollTarget.baseURL,
+          apiKey: pollTarget.apiKey,
           taskId,
           signal,
         });
@@ -1005,9 +1023,10 @@ async function generateViaProxy(
           throw new Error(`${proxyModel} proxy missing task_id: ${rawText.slice(0, 500)}`);
         }
 
+        const pollTarget = getImageTaskPollTarget(target);
         const taskResult = await pollGptImage2Task({
-          baseURL: target.baseURL,
-          apiKey: target.apiKey,
+          baseURL: pollTarget.baseURL,
+          apiKey: pollTarget.apiKey,
           taskId,
           signal,
         });
@@ -1298,6 +1317,12 @@ export async function POST(request: NextRequest) {
       resolution,
       referenceCount: normalizedReferences.length,
     });
+    const provider = getProvider();
+    const modelDefinition = getImageModelDefinition(modelVariant);
+    if ((provider === 'proxy' || modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat')
+      && getProxyTargets(priceQuote.group).length === 0) {
+      throw new Error(`图片分组 ${priceQuote.group} 的中转站密钥未配置`);
+    }
     chargedQuote = priceQuote;
     chargedAmount = priceQuote.credits;
     await reserveAiBudget({
@@ -1318,6 +1343,7 @@ export async function POST(request: NextRequest) {
       meta: {
         modelId: modelVariant,
         upstreamModel,
+        priceGroup: priceQuote.group,
         resolution,
         referenceCount: normalizedReferences.length,
         comflyCost: priceQuote.comflyCost,
@@ -1361,13 +1387,12 @@ export async function POST(request: NextRequest) {
       relight,
     };
 
-    const provider = getProvider();
-    const modelDefinition = getImageModelDefinition(modelVariant);
     const billing = {
       requestId,
       chargedCredits: priceQuote.credits,
       comflyCost: priceQuote.comflyCost,
       upstreamModel: priceQuote.upstreamModel,
+      priceGroup: priceQuote.group,
       priceVersion: priceQuote.priceVersion,
     };
     const respondWithResult = async (result: Record<string, unknown>) => {
@@ -1383,13 +1408,13 @@ export async function POST(request: NextRequest) {
     };
 
     if (provider === 'proxy') {
-      const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
+      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     }
 
     if (provider === 'official') {
       if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-        const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
+        const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
         return respondWithResult(result);
       }
       const result = await generateViaOfficial(payload, request.signal, markUpstreamSubmissionStarted);
@@ -1397,7 +1422,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-      const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
+      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult(result);
     }
 
@@ -1407,7 +1432,7 @@ export async function POST(request: NextRequest) {
     } catch (officialError) {
       if (request.signal.aborted || (upstreamStarted && !isKnownUpstreamFailure(officialError))) throw officialError;
       console.warn('[generate-image] official provider failed; using proxy fallback', getSafeErrorLogDetails(officialError));
-      const result = await generateViaProxy(payload, request.signal, markUpstreamSubmissionStarted);
+      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
       return respondWithResult({
         ...result,
         providerMode: 'auto',

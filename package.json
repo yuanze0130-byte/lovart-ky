@@ -28,6 +28,7 @@
     "test:image-models": "node scripts/test-image-models.mjs",
     "test:image-response": "node scripts/test-image-response-candidates.mjs",
     "test:image-pricing": "node scripts/test-image-pricing.mjs",
+    "test:image-gateway-routing": "node scripts/test-image-gateway-routing.mjs",
     "test:video-models": "node scripts/test-video-models.mjs",
     "test:video-pricing": "node scripts/test-video-pricing.mjs",
     "test:video-billing-safety": "node scripts/test-video-billing-safety.mjs",
