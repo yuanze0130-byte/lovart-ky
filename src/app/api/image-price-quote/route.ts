@@ -10,7 +10,7 @@ import { isImagePriceUnavailableError, quoteImageCredits } from '@/lib/image-pri
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 
 function isResolution(value: unknown): value is ImageResolution {
-  return value === '1K' || value === '2K' || value === '4K';
+  return value === '1K' || value === '2K' || value === '3K' || value === '4K';
 }
 
 export async function POST(request: NextRequest) {
