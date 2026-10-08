@@ -3,7 +3,7 @@ import type { ImageResolution } from '@/lib/image-model-routing';
 
 export const IMAGE_POINTS_PER_COMFLY_UNIT = 15;
 export const IMAGE_MARKUP_BPS = 500;
-export const IMAGE_PRICE_VERSION = 'comfly-web-2026-09-09-v3';
+export const IMAGE_PRICE_VERSION = 'comfly-web-2026-10-08-v4';
 const COMFLY_PRICE_SCALE = 100_000;
 
 export interface ImagePriceInput {
@@ -48,6 +48,9 @@ export function imageCreditsFromCostUnits(costUnits: number) {
 }
 
 const FIXED_COSTS: Readonly<Record<string, { costUnits: number; group: ImagePriceQuote['group'] }>> = {
+  'gemini-nano-banana-2.1': { costUnits: 20_000, group: 'gemini-premium' },
+  'gemini-nano-banana-2.1-2k': { costUnits: 20_000, group: 'gemini-premium' },
+  'gemini-nano-banana-2.1-4k': { costUnits: 20_000, group: 'gemini-premium' },
   'nano-banana': { costUnits: 16_000, group: 'gemini-premium' },
   'nano-banana-hd': { costUnits: 24_000, group: 'gemini-premium' },
   'nano-banana-2': { costUnits: 40_000, group: 'gemini-premium' },

@@ -6,7 +6,7 @@ export type ImageModelCategory =
   | 'ByteDance'
   | 'Alibaba'
   | 'Other';
-export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task';
+export type ImageModelTransport = 'chat' | 'image-task' | 'official-image-task' | 'image-generation';
 export type ImageModelResolution = '1K' | '2K' | '3K' | '4K';
 
 export type ImageModelId =
@@ -14,6 +14,7 @@ export type ImageModelId =
   | 'pro'
   | 'nano-banana'
   | 'nano-banana-2'
+  | 'gemini-nano-banana-2.1'
   | 'nano-banana-2-lite'
   | 'nano-banana-pro'
   | 'gemini-3.1-flash-image-preview'
@@ -51,6 +52,22 @@ export interface ImageModelDefinition {
 }
 
 export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
+  {
+    id: 'gemini-nano-banana-2.1',
+    label: 'Nano Banana 2.1',
+    category: 'Google',
+    description: '图片生成接口，支持比例和参考图；1K、2K、4K 独立模型',
+    transport: 'image-generation',
+    proxyModel: 'gemini-nano-banana-2.1',
+    upstreamModels: {
+      '1K': 'gemini-nano-banana-2.1',
+      '2K': 'gemini-nano-banana-2.1-2k',
+      '4K': 'gemini-nano-banana-2.1-4k',
+    },
+    supportedResolutions: ['1K', '2K', '4K'],
+    supportsReferences: true,
+    supportsEditing: true,
+  },
   {
     id: 'nano-banana-2',
     label: 'Nano Banana 2',

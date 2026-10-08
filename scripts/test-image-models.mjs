@@ -51,9 +51,9 @@ await writeFile(upstreamRequestOutputPath, upstreamRequestTranspiled.outputText,
 
 try {
   const models = await import(`${pathToFileURL(outputPath).href}?v=${Date.now()}`);
-  assert.equal(models.IMAGE_MODEL_OPTIONS.length, 11);
-  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.id)).size, 11);
-  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.proxyModel)).size, 11);
+  assert.equal(models.IMAGE_MODEL_OPTIONS.length, 12);
+  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.id)).size, 12);
+  assert.equal(new Set(models.IMAGE_MODEL_OPTIONS.map((model) => model.proxyModel)).size, 12);
   assert.equal(models.normalizeImageModelId('standard'), 'nano-banana-2');
   assert.equal(models.normalizeImageModelId('pro'), 'nano-banana-pro');
   assert.equal(models.getImageModelDefinition('gpt-image-2-official').transport, 'official-image-task');
@@ -70,6 +70,12 @@ try {
     '4K': 'gpt-image-2.5-sunburst',
   });
   assert.equal(models.getImageModelDefinition('nano-banana-2-lite').proxyModel, 'gemini-3.1-flash-lite-image');
+  assert.equal(models.getImageModelDefinition('gemini-nano-banana-2.1').transport, 'image-generation');
+  assert.deepEqual(models.getImageModelDefinition('gemini-nano-banana-2.1').upstreamModels, {
+    '1K': 'gemini-nano-banana-2.1',
+    '2K': 'gemini-nano-banana-2.1-2k',
+    '4K': 'gemini-nano-banana-2.1-4k',
+  });
   assert.equal(models.getImageModelDefinition('gemini-3.1-flash-image-official').proxyModel, 'gemini-3.1-flash-image');
   for (const removedModelId of [
     'nano-banana',
@@ -133,6 +139,13 @@ try {
     upstreamRequest.buildImageApiEndpoint('https://doodleverse.fun/v1', 'edit', true),
     'https://doodleverse.fun/v1/images/edits?async=true',
   );
+  assert.deepEqual(upstreamRequest.buildNanoBananaGenerationBody({
+    model: 'gemini-nano-banana-2.1-2k', prompt: 'test', aspectRatio: '4:5', images: ['data:image/png;base64,abc'],
+  }), {
+    model: 'gemini-nano-banana-2.1-2k', prompt: 'test', aspect_ratio: '4:5',
+    response_format: 'b64_json', image: ['data:image/png;base64,abc'],
+  });
+  assert.equal(upstreamRequest.buildNanoBananaGenerationBody({ model: 'x', prompt: 'test', aspectRatio: 'auto' }).aspect_ratio, '1:1');
 
   const preferences = await import(`${pathToFileURL(preferencesOutputPath).href}?v=${Date.now()}`);
   const sanitized = preferences.sanitizeImageModelPreferences({

@@ -23,6 +23,14 @@ function looksLikeBase64(value: string) {
     && /^[A-Za-z0-9+/]+={0,2}$/.test(normalized);
 }
 
+export function detectBase64ImageMimeType(value: string) {
+  if (value.startsWith('/9j/')) return 'image/jpeg';
+  if (value.startsWith('iVBORw0KGgo')) return 'image/png';
+  if (value.startsWith('UklGR')) return 'image/webp';
+  if (value.startsWith('R0lGOD')) return 'image/gif';
+  return 'image/png';
+}
+
 export function collectImageResponseCandidates(input: unknown): ImageResponseCandidate[] {
   const candidates: Array<ImageResponseCandidate & { priority: number }> = [];
   const seenCandidates = new Set<string>();
@@ -44,7 +52,7 @@ export function collectImageResponseCandidates(input: unknown): ImageResponseCan
       add({ kind: 'data-url', value: match[0] }, priority);
     }
     if (key && BASE64_VALUE_KEYS.test(key) && looksLikeBase64(trimmed)) {
-      add({ kind: 'base64', value: trimmed, mimeType: 'image/png' }, priority + 1);
+      add({ kind: 'base64', value: trimmed, mimeType: detectBase64ImageMimeType(trimmed) }, priority + 1);
     }
     if (key && URL_VALUE_KEYS.test(key) && /^https?:\/\//i.test(trimmed)) {
       add({ kind: 'url', value: trimUrl(trimmed) }, priority + 2);

@@ -7,13 +7,14 @@ import { consumeCredits, refundCredits } from '@/lib/credits';
 import { getImageModelDefinition, isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { isImageModelResolutionError, resolveImageUpstreamModel } from '@/lib/image-model-routing';
 import { isImagePriceUnavailableError, quoteImageCredits, type ImagePriceQuote } from '@/lib/image-pricing';
-import { imageGatewayKeyForGroup, isDoodleverseGateway } from '@/lib/image-gateway-routing';
+import { gptImageBackupKeyForModel, imageGatewayKeyForGroup, isDoodleverseGateway, isGatewayPreDispatchFailure } from '@/lib/image-gateway-routing';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
-import { collectImageResponseCandidates } from '@/lib/image-response-candidates';
+import { collectImageResponseCandidates, detectBase64ImageMimeType } from '@/lib/image-response-candidates';
 import { saveCanvasAsset } from '@/lib/canvas-asset-server';
 import {
   buildImageApiEndpoint,
+  buildNanoBananaGenerationBody,
   resolveImageApiKind,
 } from '@/lib/image-upstream-request';
 
@@ -358,7 +359,7 @@ function normalizeProxyBaseURL(baseURL: string) {
   return `${trimmed}/v1`;
 }
 
-function getProxyTargets(group: ImagePriceQuote['group'] = 'default') {
+function getProxyTargets(group: ImagePriceQuote['group'] = 'default', modelId?: string) {
   const primaryBaseURL = normalizeProxyBaseURL(process.env.GEMINI_BASE_URL || 'https://doodleverse.fun/v1');
   const usesOwnGateway = isDoodleverseGateway(primaryBaseURL);
   const primaryApiKey = usesOwnGateway ? imageGatewayKeyForGroup(group) : process.env.GEMINI_API_KEY;
@@ -366,16 +367,22 @@ function getProxyTargets(group: ImagePriceQuote['group'] = 'default') {
     ? normalizeProxyBaseURL(process.env.GEMINI_FALLBACK_BASE_URL)
     : undefined;
   const fallbackApiKey = process.env.GEMINI_FALLBACK_API_KEY;
+  const gptBackupKey = usesOwnGateway && modelId
+    ? gptImageBackupKeyForModel(modelId, group)
+    : undefined;
 
   const targets = [
-    primaryApiKey ? { label: 'primary' as const, baseURL: primaryBaseURL, apiKey: primaryApiKey } : null,
+    primaryApiKey ? { label: 'primary' as const, baseURL: primaryBaseURL, apiKey: primaryApiKey, routeGroup: group } : null,
+    gptBackupKey ? { label: 'fallback' as const, baseURL: primaryBaseURL, apiKey: gptBackupKey, routeGroup: 'image2-4k' as const } : null,
     !usesOwnGateway && fallbackApiKey && fallbackBaseURL
-      ? { label: 'fallback' as const, baseURL: fallbackBaseURL, apiKey: fallbackApiKey }
+      ? { label: 'fallback' as const, baseURL: fallbackBaseURL, apiKey: fallbackApiKey, routeGroup: group }
       : null,
-  ].filter(Boolean) as Array<{ label: 'primary' | 'fallback'; baseURL: string; apiKey: string }>;
+  ].filter(Boolean) as Array<{ label: 'primary' | 'fallback'; baseURL: string; apiKey: string; routeGroup: string }>;
 
   return targets;
 }
+
+class GatewayPreDispatchFailureError extends KnownUpstreamFailureError {}
 
 function getImageTaskPollTarget(target: { baseURL: string; apiKey: string }) {
   // The gateway relays async image submission but does not expose Comfly's
@@ -526,7 +533,7 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
   const directB64 = response.data?.[0]?.b64_json || response.images?.[0]?.b64_json;
   if (directB64) {
     return {
-      imageData: `data:image/png;base64,${directB64}`,
+      imageData: `data:${detectBase64ImageMimeType(directB64)};base64,${directB64}`,
       textResponse: '',
       ...baseResult,
     };
@@ -556,7 +563,7 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
       }
       if (b64) {
         return {
-          imageData: `data:image/png;base64,${b64}`,
+          imageData: `data:${detectBase64ImageMimeType(b64)};base64,${b64}`,
           textResponse: '',
           ...baseResult,
         };
@@ -587,7 +594,7 @@ async function extractImageFromProxyResponse(response: GeminiChatCompletion, bas
     const trimmed = messageContent.trim();
     if (trimmed.length > 200 && !/\s/.test(trimmed)) {
       return {
-        imageData: `data:image/png;base64,${trimmed}`,
+        imageData: `data:${detectBase64ImageMimeType(trimmed)};base64,${trimmed}`,
         textResponse: '',
         ...baseResult,
       };
@@ -788,7 +795,7 @@ async function generateViaProxy(
   signal: AbortSignal,
   onSubmissionStart: () => void,
 ) {
-  const targets = getProxyTargets(group);
+  const targets = getProxyTargets(group, payload.modelVariant);
 
   if (targets.length === 0) {
     throw new Error(`图片分组 ${group} 的中转站密钥未配置`);
@@ -893,7 +900,8 @@ async function generateViaProxy(
 
         const rawText = await imageResponse.text();
         if (!imageResponse.ok) {
-          throw new KnownUpstreamFailureError(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+          const FailureType = isGatewayPreDispatchFailure(rawText) ? GatewayPreDispatchFailureError : KnownUpstreamFailureError;
+          throw new FailureType(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
         }
 
         let submitPayload: Record<string, unknown>;
@@ -923,6 +931,30 @@ async function generateViaProxy(
         response = taskResult.response;
         taskPayload = taskResult.taskPayload as Record<string, unknown>;
         taskMetadata = taskResult.pollMetadata;
+      } else if (modelDefinition.transport === 'image-generation') {
+        const endpoint = buildImageApiEndpoint(target.baseURL, 'generation');
+        markTargetSubmissionStarted();
+        const imageResponse = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${target.apiKey}` },
+          body: JSON.stringify(buildNanoBananaGenerationBody({
+            model: proxyModel,
+            prompt: translatedPrompt,
+            aspectRatio: normalizedAspectRatio,
+            images: referenceImagesToApiValues(references),
+          })),
+          signal: buildTimeoutSignal(DEFAULT_PROXY_IMAGE_TIMEOUT_MS, signal),
+        });
+        const rawText = await imageResponse.text();
+        if (!imageResponse.ok) {
+          const FailureType = isGatewayPreDispatchFailure(rawText) ? GatewayPreDispatchFailureError : KnownUpstreamFailureError;
+          throw new FailureType(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+        }
+        try {
+          response = JSON.parse(rawText) as GeminiChatCompletion;
+        } catch {
+          throw new Error(`${proxyModel} proxy returned non-JSON`);
+        }
       } else if (modelDefinition.transport === 'official-image-task') {
         const apiKind = resolveImageApiKind(references.length);
         const endpoint = buildImageApiEndpoint(target.baseURL, apiKind, true);
@@ -972,7 +1004,8 @@ async function generateViaProxy(
 
         const rawText = await imageResponse.text();
         if (!imageResponse.ok) {
-          throw new KnownUpstreamFailureError(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
+          const FailureType = isGatewayPreDispatchFailure(rawText) ? GatewayPreDispatchFailureError : KnownUpstreamFailureError;
+          throw new FailureType(`${proxyModel} proxy failed (${imageResponse.status}): ${rawText.slice(0, 500)}`);
         }
 
         let submitPayload: Record<string, unknown>;
@@ -1023,6 +1056,7 @@ async function generateViaProxy(
         editMode: payload.editMode || 'generate',
         referenceCount: references.length,
         proxyTarget: target.label,
+        routeGroup: target.routeGroup,
         ...(taskId ? { taskId } : {}),
         ...(taskMetadata ? taskMetadata : {}),
         ...(taskPayload ? { taskPayload } : {}),
@@ -1030,7 +1064,7 @@ async function generateViaProxy(
 
       return extractImageFromProxyResponse(response, baseResult, signal);
     } catch (error) {
-      if (signal.aborted || (targetSubmissionStarted && !isKnownUpstreamFailure(error))) throw error;
+      if (signal.aborted || (targetSubmissionStarted && !(error instanceof GatewayPreDispatchFailureError))) throw error;
       lastError = targetSubmissionStarted || isKnownUpstreamFailure(error)
         ? error
         : new KnownUpstreamFailureError(error instanceof Error ? error.message : 'Proxy preflight failed');
@@ -1289,7 +1323,7 @@ export async function POST(request: NextRequest) {
     const provider = getProvider();
     const modelDefinition = getImageModelDefinition(modelVariant);
     if ((provider === 'proxy' || modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat')
-      && getProxyTargets(priceQuote.group).length === 0) {
+      && getProxyTargets(priceQuote.group, modelVariant).length === 0) {
       throw new Error(`图片分组 ${priceQuote.group} 的中转站密钥未配置`);
     }
     chargedQuote = priceQuote;
@@ -1298,7 +1332,7 @@ export async function POST(request: NextRequest) {
       requestId,
       userId: user.id,
       scope: 'generate-image',
-      estimatedCostMicros: priceQuote.costUnits,
+      estimatedCostMicros: gptImageBackupKeyForModel(modelVariant, priceQuote.group) ? 16_000 : priceQuote.costUnits,
     });
     budgetReserved = true;
     releaseExecution = acquireAiExecution({ requestId, userId: user.id, scope: 'generate-image' });
@@ -1313,6 +1347,7 @@ export async function POST(request: NextRequest) {
         modelId: modelVariant,
         upstreamModel,
         priceGroup: priceQuote.group,
+        backupPriceGroup: gptImageBackupKeyForModel(modelVariant, priceQuote.group) ? 'image2-4k' : undefined,
         resolution,
         referenceCount: normalizedReferences.length,
         comflyCost: priceQuote.comflyCost,
@@ -1370,7 +1405,11 @@ export async function POST(request: NextRequest) {
         console.error('[generate-image] 无法完成成本预留记录', error);
       });
       budgetReserved = false;
-      return NextResponse.json({ ...persistedResult, billing });
+      const usedBackupGroup = result.routeGroup === 'image2-4k';
+      return NextResponse.json({ ...persistedResult, billing: {
+        ...billing,
+        ...(usedBackupGroup ? { priceGroup: 'image2-4k', comflyCost: 0.16 } : {}),
+      } });
     };
     const markUpstreamSubmissionStarted = () => {
       upstreamStarted = true;

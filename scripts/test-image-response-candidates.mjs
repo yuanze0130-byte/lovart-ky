@@ -46,6 +46,9 @@ try {
     collectImageResponseCandidates({ images: [{ image_base64: base64 }] })[0],
     { kind: 'base64', value: base64, mimeType: 'image/png' },
   );
+  const jpegBase64 = '/9j/' + 'A'.repeat(116);
+  assert.deepEqual(collectImageResponseCandidates({ data: [{ b64_json: jpegBase64 }] })[0],
+    { kind: 'base64', value: jpegBase64, mimeType: 'image/jpeg' });
 
   const duplicateCandidates = collectImageResponseCandidates({
     image_url: 'https://cdn.example.com/image',

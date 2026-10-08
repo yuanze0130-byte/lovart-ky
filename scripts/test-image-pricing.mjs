@@ -41,6 +41,12 @@ try {
     assert.equal(quote(model).credits, 3, `${model} should conservatively charge 3 credits`);
   }
   assert.equal(quote('nano-banana').credits, 3);
+  for (const model of ['gemini-nano-banana-2.1', 'gemini-nano-banana-2.1-2k', 'gemini-nano-banana-2.1-4k']) {
+    const imageQuote = quote(model);
+    assert.equal(imageQuote.credits, 4);
+    assert.equal(imageQuote.group, 'gemini-premium');
+    assert.equal(imageQuote.comflyCost, 0.2);
+  }
   assert.equal(quote('nano-banana-hd', '2K').credits, 4);
   assert.equal(quote('nano-banana-pro').credits, 7);
   assert.equal(quote('nano-banana-pro-4k', '4K').credits, 9);
