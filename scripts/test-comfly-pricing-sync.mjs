@@ -25,6 +25,7 @@ try {
   await writeFile(imagePath, `export const IMAGE_PRICE_VERSION = 'baseline';
 const FIXED_COSTS = {
   'nano-banana': { costUnits: 16_000, group: 'gemini-premium' },
+  'gpt-image-2': { costUnits: 6_000, group: 'default' },
 };
 `);
   await writeFile(videoPath, `export const VIDEO_PRICE_VERSION = 'baseline';
@@ -49,6 +50,7 @@ const HAILUO_COSTS = {
     group_ratio: { default: 1, 'gemini优质': 2 },
     records: [
       { model_name: 'nano-banana', quota_type: 1, model_price: 0.08, enable_groups: ['gemini优质'] },
+      { model_name: 'gpt-image-2', quota_type: 1, model_price: 0.30, enable_groups: ['default'] },
       ...Array.from({ length: 100 }, (_, index) => ({ model_name: `unused-${index}`, quota_type: 0, model_price: 0 })),
     ],
   };
@@ -67,6 +69,7 @@ const HAILUO_COSTS = {
   assert.equal(first.manualReviewRequired, true);
   assert.deepEqual(first.changes, []);
   assert.equal(first.blockedChanges.some((change) => change.model === 'nano-banana'), true);
+  assert.equal(first.skipped.some((item) => item.model === 'gpt-image-2' && item.reason.includes('gateway')), true);
   assert.equal(await readFile(imagePath, 'utf8'), originalImage);
 
   const second = run(snapshotPath);
@@ -80,6 +83,7 @@ const HAILUO_COSTS = {
   const accepted = run(snapshotPath, ['--accept-version-mismatch']);
   assert.equal(accepted.manualReviewRequired, false);
   assert.equal(accepted.changes.some((change) => change.model === 'nano-banana'), true);
+  assert.equal(accepted.changes.some((change) => change.model === 'gpt-image-2'), false);
   assert.notEqual(await readFile(imagePath, 'utf8'), originalImage);
   console.log('Comfly pricing sync safety tests passed.');
 } finally {

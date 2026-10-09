@@ -98,6 +98,13 @@ let video = await fs.readFile(videoPath, 'utf8');
 const imageTable = image.match(/const FIXED_COSTS[^=]*= \{([\s\S]*?)\n\};/);
 if (!imageTable) throw new Error('Image pricing table missing');
 for (const [, model, group] of imageTable[1].matchAll(/'([^']+)': \{ costUnits: \d[\d_]*, group: '([^']+)'/g)) {
+  if (model === 'gpt-image-2') {
+    // The public Comfly catalog currently lists 0.30, while the canvas's
+    // pinned default group is billed at 0.06 by the Doodleverse gateway.
+    // The nightly gateway price audit must verify this group-specific cost.
+    report.skipped.push({ model, reason: 'Public catalog price differs from the pinned gateway default group; verify gateway price' });
+    continue;
+  }
   if (model.startsWith('gpt-image-2.5-')) {
     report.skipped.push({ model, reason: 'Conflicting fixed and token-based prices require review' });
     continue;
