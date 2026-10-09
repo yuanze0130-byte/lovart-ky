@@ -64,7 +64,7 @@ export function useProjectPersistence({
   const supabase = useSupabase();
   const router = useRouter();
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(initialProjectId);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'local' | 'offline'>('saved');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'pending' | 'saving' | 'local' | 'offline' | 'load-error'>('saved');
   const [isLoading, setIsLoading] = useState(true);
   const [isHydrating, setIsHydrating] = useState(true);
 
@@ -73,20 +73,45 @@ export function useProjectPersistence({
   const hasLoadedRef = useRef(false);
   const isSavingRef = useRef(false);
   const needsSaveRef = useRef(false);
+  const hasPendingChangesRef = useRef(false);
+  const changeVersionRef = useRef(0);
+  const retryAttemptRef = useRef(0);
+  const observedDraftRef = useRef<{ elements: CanvasElement[]; title: string } | null>(null);
   const persistedTitleRef = useRef<string | null>(null);
   const persistedElementRefsRef = useRef(new Map<string, CanvasElement>());
   const rowIdsByElementIdRef = useRef(new Map<string, string[]>());
   const staleRowIdsRef = useRef<string[]>([]);
   const performSave = useCallback(async () => {
     if (user === undefined) return;
+    if (isSavingRef.current) {
+      needsSaveRef.current = true;
+      return;
+    }
+    const savingVersion = changeVersionRef.current;
+    const completeSave = (status: 'saved' | 'local') => {
+      retryAttemptRef.current = 0;
+      if (savingVersion === changeVersionRef.current) {
+        hasPendingChangesRef.current = false;
+        setSaveStatus(status);
+      } else {
+        hasPendingChangesRef.current = true;
+        needsSaveRef.current = true;
+        setSaveStatus('pending');
+      }
+    };
     if (!user) {
+      isSavingRef.current = true;
       try {
         setSaveStatus('saving');
         await saveLocalCanvasDraft({ title, elements });
-        setSaveStatus('local');
+        completeSave('local');
       } catch (error) {
         console.error('Failed to save local project:', error);
+        hasPendingChangesRef.current = true;
+        retryAttemptRef.current += 1;
         setSaveStatus('offline');
+      } finally {
+        isSavingRef.current = false;
       }
       return;
     }
@@ -95,11 +120,6 @@ export function useProjectPersistence({
     }
 
     if (currentProjectId && !isInitializedRef.current) {
-      return;
-    }
-
-    if (isSavingRef.current) {
-      needsSaveRef.current = true;
       return;
     }
 
@@ -145,7 +165,7 @@ export function useProjectPersistence({
         const hasElementChanges = dirtyElements.length > 0 || rowIdsToDelete.size > 0;
 
         if (!titleChanged && !hasElementChanges) {
-          setSaveStatus('saved');
+          completeSave('saved');
           return;
         }
 
@@ -236,14 +256,21 @@ export function useProjectPersistence({
         persistedTitleRef.current = title;
       }
 
-      setSaveStatus('saved');
+      completeSave('saved');
     } catch (error) {
       console.error('Failed to save project:', error);
+      hasPendingChangesRef.current = true;
+      retryAttemptRef.current += 1;
       setSaveStatus('offline');
     } finally {
       isSavingRef.current = false;
     }
   }, [currentProjectId, elements, onAssetsPersisted, router, supabase, title, user]);
+
+  const performSaveRef = useRef(performSave);
+  useEffect(() => {
+    performSaveRef.current = performSave;
+  }, [performSave]);
 
   const scheduleSave = useCallback(
     (delayMs = 2000) => {
@@ -252,6 +279,7 @@ export function useProjectPersistence({
       }
 
       saveTimeoutRef.current = setTimeout(async () => {
+        if (!hasPendingChangesRef.current) return;
         if (isSavingRef.current) {
           needsSaveRef.current = true;
           scheduleSave(300);
@@ -259,7 +287,7 @@ export function useProjectPersistence({
         }
 
         needsSaveRef.current = false;
-        await performSave();
+        await performSaveRef.current();
 
         if (needsSaveRef.current) {
           needsSaveRef.current = false;
@@ -267,7 +295,7 @@ export function useProjectPersistence({
         }
       }, delayMs);
     },
-    [performSave]
+    []
   );
 
   const loadProject = useCallback(
@@ -287,6 +315,10 @@ export function useProjectPersistence({
         setIsHydrating(true);
         setSaveStatus('saved');
         isInitializedRef.current = false;
+        hasPendingChangesRef.current = false;
+        observedDraftRef.current = null;
+        changeVersionRef.current = 0;
+        retryAttemptRef.current = 0;
         persistedElementRefsRef.current = new Map();
         rowIdsByElementIdRef.current = new Map();
         staleRowIdsRef.current = [];
@@ -367,7 +399,7 @@ export function useProjectPersistence({
         isInitializedRef.current = true;
       } catch (error) {
         console.error('Failed to load project:', error);
-        setSaveStatus('offline');
+        setSaveStatus('load-error');
       } finally {
         setIsLoading(false);
         setIsHydrating(false);
@@ -403,7 +435,7 @@ export function useProjectPersistence({
           })
           .catch((error) => {
             console.error('Failed to load local project:', error);
-            setSaveStatus('offline');
+            setSaveStatus('load-error');
           })
           .finally(() => {
             setIsLoading(false);
@@ -419,7 +451,7 @@ export function useProjectPersistence({
   }, [initialProjectId, loadProject, onProjectLoaded, supabase, user]);
 
   useEffect(() => {
-    if (user === undefined || isHydrating || !isInitializedRef.current || isInteractionActive) {
+    if (user === undefined || isHydrating || !isInitializedRef.current) {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
         saveTimeoutRef.current = null;
@@ -427,14 +459,63 @@ export function useProjectPersistence({
       return;
     }
 
-    scheduleSave(2000);
+    const changed = observedDraftRef.current?.elements !== elements || observedDraftRef.current?.title !== title;
+    observedDraftRef.current = { elements, title };
+    if (changed) {
+      changeVersionRef.current += 1;
+      hasPendingChangesRef.current = true;
+      setSaveStatus((current) => current === 'saving' ? current : 'pending');
+    }
+    if (isInteractionActive) {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      return;
+    }
+    if (hasPendingChangesRef.current) scheduleSave(2000);
 
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [elements, isHydrating, isInteractionActive, scheduleSave, title, user]);
+  }, [elements, isHydrating, isInteractionActive, scheduleSave, supabase, title, user]);
+
+  useEffect(() => {
+    if (saveStatus !== 'offline' || isHydrating || !isInitializedRef.current || user === undefined) return;
+
+    const delayMs = Math.min(5_000 * 2 ** Math.max(0, retryAttemptRef.current - 1), 60_000);
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const retry = () => {
+      if (!user || navigator.onLine) {
+        void performSaveRef.current();
+      } else {
+        retryTimer = setTimeout(retry, delayMs);
+      }
+    };
+    const retryWhenVisible = () => {
+      if (document.visibilityState === 'visible' && (!user || navigator.onLine)) {
+        if (retryTimer) clearTimeout(retryTimer);
+        retry();
+      }
+    };
+    retryTimer = setTimeout(retry, delayMs);
+    window.addEventListener('online', retry);
+    document.addEventListener('visibilitychange', retryWhenVisible);
+    return () => {
+      if (retryTimer) clearTimeout(retryTimer);
+      window.removeEventListener('online', retry);
+      document.removeEventListener('visibilitychange', retryWhenVisible);
+    };
+  }, [isHydrating, saveStatus, user]);
+
+  useEffect(() => {
+    if (isHydrating || !['pending', 'saving', 'offline'].includes(saveStatus)) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [isHydrating, saveStatus]);
 
   return {
     currentProjectId,

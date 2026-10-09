@@ -3014,11 +3014,26 @@ function LovartCanvasContent() {
         );
     }
 
+    if (saveStatus === 'load-error') {
+        return (
+            <div className="flex h-screen w-full items-center justify-center bg-slate-950 px-6 text-center text-white">
+                <div className="max-w-sm rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl">
+                    <CloudOff size={28} className="mx-auto text-rose-300" />
+                    <h1 className="mt-4 text-lg font-semibold">画布载入失败</h1>
+                    <p className="mt-2 text-sm text-slate-300">项目尚未完整载入，先重新载入，避免在空画布上覆盖原内容。</p>
+                    <button type="button" onClick={() => window.location.reload()} className="mt-5 rounded-xl bg-white px-5 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200">重新载入</button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="h-screen w-full relative overflow-hidden bg-[#F5F5F5] dark:bg-[#0F1115]">
             <header className="absolute top-0 left-0 z-50 flex h-14 w-full items-center justify-between px-4 pointer-events-none border-b border-transparent bg-transparent dark:border-white/8 dark:bg-black/28 dark:shadow-[0_12px_40px_rgba(0,0,0,0.22)] dark:backdrop-blur-xl">
                 <div className="flex items-center gap-2 pointer-events-auto">
-                    <Link href="/" className="flex items-center gap-1 rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-white/8">
+                    <Link href="/" onClick={(event) => {
+                        if (['pending', 'saving', 'offline'].includes(saveStatus) && !window.confirm('画布还有未保存的修改，确定离开吗？')) event.preventDefault();
+                    }} className="flex items-center gap-1 rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-white/8">
                         <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold dark:bg-gradient-to-br dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500">D</div>
                         <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
                     </Link>
@@ -3043,6 +3058,12 @@ function LovartCanvasContent() {
                                 <span>保存中...</span>
                             </>
                         )}
+                        {!isHydrating && saveStatus === 'pending' && (
+                            <>
+                                <Cloud size={14} className="text-amber-500" />
+                                <span className="text-amber-600 dark:text-amber-300">待保存...</span>
+                            </>
+                        )}
                         {!isHydrating && saveStatus === 'saved' && user && (
                             <>
                                 <Cloud size={14} className="text-emerald-400" />
@@ -3058,7 +3079,8 @@ function LovartCanvasContent() {
                         {!isHydrating && saveStatus === 'offline' && (
                             <>
                                 <CloudOff size={14} className="text-red-500" />
-                                <span className="text-red-600">离线</span>
+                                <span className="text-red-600 dark:text-red-300">保存失败，正在重试</span>
+                                <button type="button" onClick={() => void saveProject()} className="pointer-events-auto rounded-md px-1.5 py-0.5 font-medium text-red-700 underline hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-500/10">立即重试</button>
                             </>
                         )}
                         {!user && saveStatus !== 'local' && <span className="text-amber-600">未登录</span>}
