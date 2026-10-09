@@ -163,16 +163,16 @@ export function quoteVideoCredits(input: VideoPriceInput): VideoPriceQuote {
   }
 
   if (input.modelId.startsWith('google-veo3.1')) {
-    const upstreamModel = input.modelId === 'google-veo3.1-pro' && input.resolution === '4K'
+    const priceKey = input.modelId === 'google-veo3.1-pro' && input.resolution === '4K'
       ? 'google-veo3.1-pro-4k'
       : input.modelId;
-    if (input.resolution === '4K' && upstreamModel !== 'google-veo3.1-pro-4k') {
+    if (input.resolution === '4K' && priceKey !== 'google-veo3.1-pro-4k') {
       throw new VideoPriceUnavailableError('仅 Veo 3.1 Pro 已确认 4K 价格');
     }
     return quote(input, {
-      upstreamModel,
+      upstreamModel: priceKey.replace(/^google-/, ''),
       group: 'veo&grok-备用1',
-      costMicros: fixedSpecCost(VEO_COSTS, upstreamModel, 'Veo 当前规格暂未配置价格'),
+      costMicros: fixedSpecCost(VEO_COSTS, priceKey, 'Veo 当前规格暂未配置价格'),
       breakdown: { resolution: input.resolution || null, duration: input.duration },
     });
   }

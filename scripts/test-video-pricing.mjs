@@ -37,7 +37,15 @@ try {
   assert.equal(credits({ modelId: 'MiniMax-Hailuo-2.3-Fast', resolution: '768p', duration: 6 }), 22);
   assert.equal(credits({ modelId: 'google-veo3.1', duration: 8 }), 19);
   assert.equal(credits({ modelId: 'google-veo3.1-pro', duration: 8 }), 111);
-  assert.equal(pricing.quoteVideoCredits({ ...base, modelId: 'google-veo3.1-pro', duration: 8, resolution: '4K' }).upstreamModel, 'google-veo3.1-pro-4k');
+  assert.equal(pricing.quoteVideoCredits({ ...base, modelId: 'google-veo3.1-pro', duration: 8, resolution: '4K' }).upstreamModel, 'veo3.1-pro-4k');
+  for (const [modelId, upstreamModel] of [
+    ['google-veo3.1', 'veo3.1'],
+    ['google-veo3.1-pro', 'veo3.1-pro'],
+    ['google-veo3.1-fast', 'veo3.1-fast'],
+    ['google-veo3.1-lite', 'veo3.1-lite'],
+  ]) {
+    assert.equal(pricing.quoteVideoCredits({ ...base, modelId, duration: 8 }).upstreamModel, upstreamModel);
+  }
   assert.equal(pricing.creditsFromCostMicros(135_000), 22);
   assert.throws(() => pricing.quoteVideoCredits({ ...base, modelId: 'sora-2' }), { code: 'VIDEO_PRICE_UNAVAILABLE' });
   assert.throws(() => pricing.quoteVideoCredits({ ...base, modelId: 'wan2.6-i2v', resolution: '4K' }), { code: 'VIDEO_PRICE_UNAVAILABLE' });
