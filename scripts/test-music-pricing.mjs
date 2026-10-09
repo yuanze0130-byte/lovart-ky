@@ -19,4 +19,16 @@ assert.equal(quoteMusicCredits().credits, 8);
 assert.equal(quoteMusicCredits().costUnits, 50_000);
 assert.throws(() => quoteMusicCredits('unknown'));
 
+const upstreamSource = await readFile('src/lib/canvas-music-upstream.ts', 'utf8');
+const upstreamCode = ts.transpileModule(upstreamSource, {
+  compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const { getCanvasMusicUpstream } = await import(`data:text/javascript;base64,${Buffer.from(upstreamCode).toString('base64')}`);
+assert.deepEqual(getCanvasMusicUpstream({ CANVAS_GATEWAY_DEFAULT_API_KEY: 'gateway-token' }), {
+  apiKey: 'gateway-token', baseURL: 'https://doodleverse.fun', gateway: true,
+});
+assert.deepEqual(getCanvasMusicUpstream({ XAI_API_KEY: 'legacy-token', XAI_BASE_URL: 'https://ai.comfly.org/v1/' }), {
+  apiKey: 'legacy-token', baseURL: 'https://ai.comfly.org', gateway: false,
+});
+
 console.log('Music pricing and model mapping tests passed.');

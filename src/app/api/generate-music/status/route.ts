@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { enforceUserRateLimit, isAiToolRequestError } from '@/lib/ai-tool-request-guards';
 import { findOwnedAsyncGenerationJob, settleAsyncGenerationJob, updateAsyncGenerationJob } from '@/lib/async-generation-jobs';
-
-function normalizeBaseUrl(value: string) {
-  return value.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
-}
+import { getCanvasMusicUpstream } from '@/lib/canvas-music-upstream';
 
 function firstString(...values: unknown[]) {
   return values.find((value): value is string => typeof value === 'string' && value.trim().length > 0)?.trim();
@@ -42,16 +39,16 @@ export async function GET(request: NextRequest) {
     if (job.status === 'failed' || job.status === 'cancelled') {
       return NextResponse.json({ taskId, status: job.status, error: job.failure_reason || '音乐生成失败', chargedCredits: job.charged_credits, refundedCredits: job.refunded_credits });
     }
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) throw new Error('Missing upstream configuration');
-    const response = await fetch(`${normalizeBaseUrl(process.env.XAI_BASE_URL || 'https://ai.comfly.org')}/suno/fetch/${encodeURIComponent(taskId)}`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    const upstream = getCanvasMusicUpstream();
+    const response = await fetch(`${upstream.baseURL}/suno/fetch/${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${upstream.apiKey}` },
       signal: request.signal,
     });
     const rawText = await response.text();
     let payload: Record<string, unknown> = {};
     try { payload = rawText ? JSON.parse(rawText) as Record<string, unknown> : {}; } catch { payload = {}; }
     if (!response.ok) throw new Error(firstString(payload.message, payload.error, rawText) || '上游状态查询失败');
+    if (upstream.gateway && payload.code !== 'success') throw new Error('中转站未返回有效的音乐任务状态');
     const outer = payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data) ? payload.data as Record<string, unknown> : {};
     const rawStatus = firstString(outer.status, payload.status) || 'running';
     const normalized = rawStatus.toLowerCase();

@@ -11,6 +11,7 @@ import {
 } from '@/lib/async-generation-jobs';
 import { getMusicVersion, MUSIC_MODEL, MUSIC_VERSIONS, MusicPriceUnavailableError, quoteMusicCredits } from '@/lib/music-pricing';
 import type { AsyncGenerationJobRow } from '@/lib/supabase';
+import { getCanvasMusicUpstream } from '@/lib/canvas-music-upstream';
 
 export const runtime = 'nodejs';
 const MAX_BYTES = 64 * 1024;
@@ -23,10 +24,6 @@ function isTransportOutcomeUnknown(error: unknown) {
   const code = String((error as Error & { code?: unknown }).code || '').toUpperCase();
   return ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_SOCKET'].includes(code)
     || /fetch failed|network|socket|connection reset|timed? ?out/i.test(error.message);
-}
-
-function normalizeBaseUrl(value: string) {
-  return value.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
 }
 
 function firstString(...values: unknown[]) {
@@ -47,7 +44,7 @@ function failure(error: unknown) {
 export async function GET(request: NextRequest) {
   try {
     await requireUser(request);
-    const configured = Boolean(process.env.XAI_API_KEY);
+    const configured = Boolean(process.env.CANVAS_GATEWAY_DEFAULT_API_KEY || process.env.XAI_API_KEY);
     const quote = quoteMusicCredits();
     return NextResponse.json({
       configured,
@@ -90,8 +87,7 @@ export async function POST(request: NextRequest) {
     if (input.expectedCredits !== quote.credits) {
       return NextResponse.json({ error: '音乐价格已变更，请刷新后重试', code: 'MODEL_PRICE_CHANGED' }, { status: 409 });
     }
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) throw new Error('Missing upstream configuration');
+    const upstream = getCanvasMusicUpstream();
     const requestId = randomUUID();
     job = await createAsyncGenerationJob({
       requestId,
@@ -118,9 +114,9 @@ export async function POST(request: NextRequest) {
           ? { gpt_description_prompt: prompt, prompt: '', mv: version.id, make_instrumental: instrumental }
           : { prompt, tags: style, mv: version.id, title, make_instrumental: instrumental };
         submissionStarted = true;
-        const response = await fetch(`${normalizeBaseUrl(process.env.XAI_BASE_URL || 'https://ai.comfly.org')}/suno/submit/music`, {
+        const response = await fetch(`${upstream.baseURL}/suno/submit/music`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          headers: { Authorization: `Bearer ${upstream.apiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
           signal: request.signal,
         });
@@ -129,7 +125,7 @@ export async function POST(request: NextRequest) {
         try { data = rawText ? JSON.parse(rawText) as Record<string, unknown> : {}; } catch { data = {}; }
         if (!response.ok) throw new MusicUpstreamResponseError(firstString(data.message, data.error, rawText) || '上游拒绝了音乐任务');
         const nested = data.data && typeof data.data === 'object' && !Array.isArray(data.data) ? data.data as Record<string, unknown> : {};
-        acceptedTaskId = firstString(data.task_id, data.id, nested.task_id, nested.id) || '';
+        acceptedTaskId = firstString(data.task_id, data.id, nested.task_id, nested.id, upstream.gateway ? data.data : undefined) || '';
         const clips = Array.isArray(data.clips) ? data.clips : Array.isArray(nested.clips) ? nested.clips : [];
         if (!acceptedTaskId) throw new MusicUpstreamResponseError('上游未返回音乐任务 ID');
         job = await bindAsyncGenerationTask({ requestId, userId: user.id, kind: 'music', taskId: acceptedTaskId, status: 'queued' });
