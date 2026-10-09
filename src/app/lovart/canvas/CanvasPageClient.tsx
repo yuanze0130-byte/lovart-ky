@@ -10,6 +10,7 @@ import { useSearchParams } from 'next/navigation';
 import { FloatingToolbar } from '@/components/lovart/FloatingToolbar';
 import { CanvasArea, type CanvasElement, type CanvasNodeCreationRequest, type GenerationMetadata } from '@/components/lovart/CanvasArea';
 import { CanvasFeaturesMenu } from '@/components/lovart/CanvasFeaturesMenu';
+import { CanvasQuickHelp } from '@/components/lovart/CanvasQuickHelp';
 import { NodeAlignmentPanel } from '@/components/lovart/NodeAlignmentPanel';
 import { RhaiLibraryPanel } from '@/components/lovart/RhaiLibraryPanel';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
@@ -3625,6 +3626,7 @@ function LovartCanvasContent() {
                         <button onClick={() => zoomIn()} className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-sky-200">
                             <Plus size={16} />
                         </button>
+                        <CanvasQuickHelp />
                     </div>
                 </div>
             </div>
