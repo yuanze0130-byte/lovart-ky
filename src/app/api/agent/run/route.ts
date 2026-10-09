@@ -10,6 +10,7 @@ import { executeAgentAction } from '@/lib/agent/executeAgentAction';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { isAiSafetyError, runMeteredAiOperation } from '@/lib/ai-safety';
 import { AI_TOOL_CREDIT_COSTS, AI_TOOL_ESTIMATED_COST_MICROS } from '@/lib/ai-tool-pricing';
+import { getCanvasTextUpstream } from '@/lib/canvas-text-upstream';
 
 const CHAT_SYSTEM_PROMPTS: Record<AgentMode, string> = {
   design: "You are a professional design agent. Return a JSON object only. The JSON must include: summary (string), reply (string), and plan (object). plan may include: layout (string), sections (array of {title,body}), createTextNodes (array of {content,x,y,fontSize}), createImageGenerator (boolean), createVideoGenerator (boolean), recommendedTitle (string). Keep coordinates simple and canvas-friendly. When suggesting image generation, default to a single image unless the user explicitly asks for multiple outputs.",
@@ -19,18 +20,12 @@ const CHAT_SYSTEM_PROMPTS: Record<AgentMode, string> = {
 };
 
 async function runAgentChat(message: string, mode: string | undefined, context: AgentContext, history: AgentChatTurn[], signal: AbortSignal) {
-  const apiKey = process.env.XAI_API_KEY;
-  const baseURL = process.env.XAI_BASE_URL || 'https://ai.t8star.cn/v1';
-
-  if (!apiKey) {
-    throw new Error('XAI_API_KEY not configured');
-  }
+  const upstream = getCanvasTextUpstream();
 
   const resolvedMode = (typeof mode === 'string' && Object.prototype.hasOwnProperty.call(CHAT_SYSTEM_PROMPTS, mode) ? mode : 'design') as AgentMode;
 
   const client = new OpenAI({
-    apiKey,
-    baseURL,
+    ...upstream,
     timeout: 360000,
   });
 

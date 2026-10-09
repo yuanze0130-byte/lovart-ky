@@ -11,6 +11,7 @@ import {
 } from '@/lib/ai-tool-request-guards';
 import { isAiSafetyError, runMeteredAiOperation } from '@/lib/ai-safety';
 import { AI_TOOL_CREDIT_COSTS, AI_TOOL_ESTIMATED_COST_MICROS } from '@/lib/ai-tool-pricing';
+import { getCanvasTextUpstream } from '@/lib/canvas-text-upstream';
 
 const MAX_REQUEST_BYTES = 12 * 1024 * 1024;
 const RATE_LIMIT = { limit: 4, windowMs: 60_000 } as const;
@@ -46,8 +47,7 @@ export async function POST(request: NextRequest) {
     const body = parseVideoBreakdownRequest(await readLimitedJson(request, MAX_REQUEST_BYTES));
     const frames = body.frames;
 
-    const apiKey = process.env.XAI_API_KEY;
-    if (!apiKey) throw new Error('XAI_API_KEY not configured');
+    const upstream = getCanvasTextUpstream();
     const model = process.env.VIDEO_ANALYSIS_MODEL || process.env.XAI_MODEL || 'gpt-4o';
     const requestId = randomUUID();
     const { result, billing } = await runMeteredAiOperation({
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
       referenceType: 'video_breakdown',
       meta: { model, frameCount: frames.length },
       run: async () => {
-        const client = new OpenAI({ apiKey, baseURL: process.env.XAI_BASE_URL || 'https://ai.comfly.org/v1', timeout: 360000 });
+        const client = new OpenAI({ ...upstream, timeout: 360000 });
         const completion = await client.chat.completions.create({
           model,
           response_format: { type: 'json_object' },

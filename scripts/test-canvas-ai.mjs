@@ -13,6 +13,14 @@ const ai = await compile('src/lib/canvas-ai.ts', { './ai-tool-request-guards': g
 const pricing = await compile('src/lib/ai-tool-pricing.ts');
 const catalog = await compile('src/lib/canvas-ai-models.server.ts', { './ai-tool-pricing': pricing });
 const tables = await compile('src/lib/table-editor.ts');
+const upstreamModule = await compile('src/lib/canvas-text-upstream.ts');
+const { getCanvasTextUpstream } = await import(upstreamModule);
+assert.deepEqual(getCanvasTextUpstream({ CANVAS_GATEWAY_DEFAULT_API_KEY: 'gateway-token' }), {
+  apiKey: 'gateway-token', baseURL: 'https://doodleverse.fun/v1',
+});
+assert.deepEqual(getCanvasTextUpstream({ XAI_API_KEY: 'legacy-token', XAI_BASE_URL: 'https://ai.comfly.org/v1/' }), {
+  apiKey: 'legacy-token', baseURL: 'https://ai.comfly.org/v1',
+});
 const { parseCanvasAiRequest, parseAiTableResult } = await import(ai);
 const { getCanvasAiModels } = await import(catalog);
 const body = { mode: 'text', model: 'test-model', expectedCredits: 2, instruction: '改写', source: '', images: [] };
@@ -24,7 +32,7 @@ const table = { columns: ['镜号', '画面'], rows: [['1', '远景']] };
 assert.deepEqual(parseAiTableResult('```json\n' + JSON.stringify(table) + '\n```'), table);
 for (const invalid of ['{}', 'null', '{"columns":["A"],"rows":[]}', '{"columns":["A"],"rows":[[1]]}', '{"columns":["A"],"rows":[["1","2"]]}']) assert.throws(() => parseAiTableResult(invalid));
 
-const envKeys = ['CANVAS_AI_MODELS_JSON', 'XAI_API_KEY', 'CANVAS_TEXT_MODEL', 'XAI_MODEL', 'CANVAS_TEXT_VISION'];
+const envKeys = ['CANVAS_AI_MODELS_JSON', 'XAI_API_KEY', 'CANVAS_TEXT_MODEL', 'XAI_MODEL', 'CANVAS_TEXT_VISION', 'CANVAS_GATEWAY_DEFAULT_API_KEY'];
 const previous = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
 globalThis.__canvasAiTest = { calls: 0, charges: 0, refunds: 0, output: '模型输出' };
 const state = globalThis.__canvasAiTest;
@@ -37,12 +45,14 @@ const routeUrl = await compile('src/app/api/canvas-ai/route.ts', {
   '@/lib/require-user': fakeAuth, '@/lib/ai-tool-request-guards': guards,
   '@/lib/ai-safety': fakeMeter, '@/lib/canvas-ai': ai,
   '@/lib/canvas-ai-models.server': catalog, '@/lib/table-editor': tables,
+  '@/lib/canvas-text-upstream': upstreamModule,
 });
 const { GET, POST } = await import(routeUrl);
 const request = (data = body, auth = true) => new Request('http://localhost/api/canvas-ai', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer test' } : {}) }, body: JSON.stringify(data) });
 const resetRate = () => globalThis[Symbol.for('doodleverse.aiToolRateLimitBuckets')]?.clear();
 try {
   process.env.XAI_API_KEY = 'test-not-a-real-key';
+  delete process.env.CANVAS_GATEWAY_DEFAULT_API_KEY;
   process.env.CANVAS_AI_MODELS_JSON = JSON.stringify([{ id: 'test-model', label: 'Test', vision: false, credits: 2, estimatedCostMicros: 8000 }]);
   assert.equal(getCanvasAiModels()[0].credits, 2);
   assert.equal((await GET(new Request('http://localhost'))).status, 401);
