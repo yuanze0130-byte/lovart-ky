@@ -6,6 +6,7 @@ import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/l
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import { getVideoModelDefinition, normalizeVideoGenerationConfig, type VideoAspectRatio, type VideoAudioMode, type VideoQualityMode } from '@/lib/video-models';
 import { isVideoPriceUnavailableError, quoteVideoCredits, type VideoPriceQuote } from '@/lib/video-pricing';
+import { resolveCanvasVideoUpstream, VIDEO_GATEWAY_PRICE_SUFFIX } from '@/lib/canvas-video-upstream';
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 
 type VideoModelMode = 'standard' | 'fast';
@@ -254,6 +255,7 @@ export async function POST(request: NextRequest) {
       cameraFixed: body.cameraFixed,
     });
     quote = quoteVideoCredits(config);
+    const videoUpstream = resolveCanvasVideoUpstream(quote);
     chargedAmount = quote.credits;
     const definition = getVideoModelDefinition(config.modelId);
     const selectedMode: VideoModelMode = definition.id.toLowerCase().includes('fast') || definition.id.toLowerCase().includes('turbo') ? 'fast' : 'standard';
@@ -267,7 +269,9 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     if (existingError) throw existingError;
     if (existingJob) {
-      if (existingJob.model_id !== config.modelId || existingJob.charged_credits !== quote.credits || existingJob.price_version !== quote.priceVersion) {
+      const samePriceVersion = existingJob.price_version === quote.priceVersion
+        || existingJob.price_version === quote.priceVersion + VIDEO_GATEWAY_PRICE_SUFFIX;
+      if (existingJob.model_id !== config.modelId || existingJob.charged_credits !== quote.credits || !samePriceVersion) {
         return NextResponse.json({ error: '请求标识已用于其他视频配置', code: 'VIDEO_REQUEST_CONFLICT' }, { status: 409 });
       }
       const existingResponse = responseFromExistingJob(existingJob);
@@ -290,7 +294,7 @@ export async function POST(request: NextRequest) {
       model_id: config.modelId,
       upstream_model: quote.upstreamModel,
       price_group: quote.group,
-      price_version: quote.priceVersion,
+      price_version: videoUpstream.priceVersion,
       duration: config.duration,
       resolution: config.resolution || null,
       quality_mode: config.qualityMode,
@@ -338,9 +342,8 @@ export async function POST(request: NextRequest) {
       ? [firstFrame, ...suppliedReferences].filter((image, index, list): image is string => Boolean(image) && list.indexOf(image) === index).slice(0, definition.maxReferenceImages || 1)
       : [];
 
-    const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
-    const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || 'https://ai.comfly.org');
-    if (!apiKey) throw new Error('VIDEO_API_KEY 未配置');
+    const apiKey = videoUpstream.apiKey;
+    const baseUrl = normalizeVideoBaseURL(videoUpstream.baseURL);
 
     const publicOrigin = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
     const images = effectiveReferences.map((image) => normalizeImageReference(image, publicOrigin));

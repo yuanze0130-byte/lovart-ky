@@ -64,6 +64,7 @@ const HAILUO_COSTS = {
   await writeFile(path.join(dataDir, 'comfly-pricing-report.json'), JSON.stringify({ version: baseline.version, skipped: [] }));
 
   const first = run(snapshotPath);
+  assert.equal(JSON.parse(await readFile(path.join(dataDir, 'comfly-pricing-previous.json'), 'utf8')).records.find((record) => record.model_name === 'nano-banana')?.model_price, 0.08);
   assert.equal(first.catalogChanged, true);
   assert.equal(first.versionChanged, false);
   assert.equal(first.manualReviewRequired, true);

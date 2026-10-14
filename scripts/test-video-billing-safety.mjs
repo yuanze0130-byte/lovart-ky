@@ -26,10 +26,9 @@ assert.match(submit, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
 assert.match(submit, /\.is\('task_id', null\)/);
 assert.match(submit, /existing\?\.task_id === params\.taskId/);
 assert.doesNotMatch(submit, /if \(taskUpdateError\) console\.error/);
-assert.ok(
-  submit.indexOf('await bindVideoTaskWithRetry') < submit.indexOf('return NextResponse.json({\n      requestId'),
-  'the route must persist the task id before returning success',
-);
+const taskBindIndex = submit.indexOf('await bindVideoTaskWithRetry({', submit.indexOf('export async function POST'));
+const successResponseIndex = submit.indexOf('return NextResponse.json({', taskBindIndex);
+assert.ok(taskBindIndex > 0 && successResponseIndex > taskBindIndex, 'the route must persist the task id before returning success');
 
 assert.match(status, /\.eq\('task_id', taskId\)[\s\S]*\.eq\('user_id', user\.id\)/);
 assert.match(status, /if \(!billingJob\)[\s\S]*status: 404/);

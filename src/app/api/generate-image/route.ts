@@ -385,9 +385,9 @@ function getProxyTargets(group: ImagePriceQuote['group'] = 'default', modelId?: 
 class GatewayPreDispatchFailureError extends KnownUpstreamFailureError {}
 
 function getImageTaskPollTarget(target: { baseURL: string; apiKey: string }) {
-  // The gateway relays async image submission but does not expose Comfly's
-  // /images/tasks endpoint. Task lookup does not create a new billable request.
   if (!isDoodleverseGateway(target.baseURL)) return target;
+  if (process.env.CANVAS_GATEWAY_IMAGE_TASK_POLL_ENABLED === 'true') return target;
+  // Keep direct polling available while rolling out the read-only gateway route.
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is required to poll gateway image tasks');
   return {
@@ -661,6 +661,7 @@ async function maybeTranslatePromptWithProxy(prompt: string, signal: AbortSignal
 async function pollGptImage2Task(params: {
   baseURL: string;
   apiKey: string;
+  model: string;
   taskId: string;
   signal: AbortSignal;
   timeoutMs?: number;
@@ -669,12 +670,14 @@ async function pollGptImage2Task(params: {
   const {
     baseURL,
     apiKey,
+    model,
     taskId,
     signal,
     timeoutMs = DEFAULT_GPT_IMAGE_2_POLL_TIMEOUT_MS,
     intervalMs = DEFAULT_GPT_IMAGE_2_POLL_INTERVAL_MS,
   } = params;
-  const queryUrl = `${baseURL.replace(/\/+$/, '')}/images/tasks/${taskId}`;
+  const queryUrl = `${baseURL.replace(/\/+$/, '')}/images/tasks/${encodeURIComponent(taskId)}`
+    + (isDoodleverseGateway(baseURL) ? `?model=${encodeURIComponent(model)}` : '');
   const startedAt = Date.now();
   let attemptCount = 0;
   let lastPayload: unknown = null;
@@ -925,6 +928,7 @@ async function generateViaProxy(
         const taskResult = await pollGptImage2Task({
           baseURL: pollTarget.baseURL,
           apiKey: pollTarget.apiKey,
+          model: proxyModel,
           taskId,
           signal,
         });
@@ -1029,6 +1033,7 @@ async function generateViaProxy(
         const taskResult = await pollGptImage2Task({
           baseURL: pollTarget.baseURL,
           apiKey: pollTarget.apiKey,
+          model: proxyModel,
           taskId,
           signal,
         });

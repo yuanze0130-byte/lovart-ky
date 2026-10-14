@@ -12,12 +12,15 @@ const { countSpeechCharacters, getSpeechModel, quoteSpeechCredits, SPEECH_MODELS
 assert.equal(SPEECH_MODELS.length, 6);
 assert.equal(getSpeechModel('minimax/speech-02-turbo').upstreamModel, 'speech-02-turbo');
 assert.equal(getSpeechModel('speech-2.8-hd'), undefined);
-assert.equal(countSpeechCharacters('你好🙂'), 3);
+assert.equal(countSpeechCharacters('你好🙂'), 5);
+assert.equal(countSpeechCharacters('hello'), 5);
+assert.equal(getSpeechModel('minimax/speech-2.6-turbo').priceUnitsPer10kCharacters, 2);
 assert.equal(quoteSpeechCredits('minimax/speech-02-turbo', 1).credits, 1);
 assert.equal(quoteSpeechCredits('minimax/speech-02-turbo', 5_000).credits, 16);
 assert.equal(quoteSpeechCredits('minimax/speech-02-turbo', 10_000).credits, 32);
 assert.equal(quoteSpeechCredits('minimax/speech-02-hd', 10_000).credits, 56);
 assert.throws(() => quoteSpeechCredits('speech-2.8-hd', 100));
-assert.throws(() => quoteSpeechCredits('minimax/speech-02-hd', 10_001));
+assert.equal(quoteSpeechCredits('minimax/speech-02-hd', 20_000).credits, 111);
+assert.throws(() => quoteSpeechCredits('minimax/speech-02-hd', 20_001));
 
 console.log('Speech pricing and model mapping tests passed.');

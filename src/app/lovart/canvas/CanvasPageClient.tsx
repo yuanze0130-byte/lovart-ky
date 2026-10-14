@@ -157,7 +157,7 @@ function LovartCanvasContent() {
                 return [];
         }
     }, []);
-    const { user } = useAuth();
+    const { user, loading: isAuthLoading } = useAuth();
     const supabase = useSupabase();
     const searchParams = useSearchParams();
     const projectId = searchParams.get('id');
@@ -245,7 +245,7 @@ function LovartCanvasContent() {
         isHydrating,
         saveProject,
     } = useProjectPersistence({
-        user,
+        user: isAuthLoading ? undefined : user,
         initialProjectId: projectId,
         elements,
         title,

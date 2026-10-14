@@ -1,6 +1,6 @@
 export const SPEECH_POINTS_PER_COMFLY_UNIT = 15;
 export const SPEECH_MARKUP_BPS = 500;
-export const SPEECH_PRICE_VERSION = 'comfly-web-2026-09-08-v1';
+export const SPEECH_PRICE_VERSION = 'comfly-web-2026-10-09-v2';
 const COMFLY_PRICE_SCALE = 100_000;
 
 export const SPEECH_MODELS = [
@@ -9,7 +9,7 @@ export const SPEECH_MODELS = [
   { id: 'minimax/speech-02-hd', upstreamModel: 'speech-02-hd', label: 'MiniMax Speech 02 HD', priceUnitsPer10kCharacters: 3.5 },
   { id: 'minimax/speech-02-turbo', upstreamModel: 'speech-02-turbo', label: 'MiniMax Speech 02 Turbo', priceUnitsPer10kCharacters: 2 },
   { id: 'minimax/speech-2.6-hd', upstreamModel: 'speech-2.6-hd', label: 'MiniMax Speech 2.6 HD', priceUnitsPer10kCharacters: 3.5 },
-  { id: 'minimax/speech-2.6-turbo', upstreamModel: 'speech-2.6-turbo', label: 'MiniMax Speech 2.6 Turbo', priceUnitsPer10kCharacters: 3.5 },
+  { id: 'minimax/speech-2.6-turbo', upstreamModel: 'speech-2.6-turbo', label: 'MiniMax Speech 2.6 Turbo', priceUnitsPer10kCharacters: 2 },
 ] as const;
 
 export type SpeechModelId = typeof SPEECH_MODELS[number]['id'];
@@ -27,14 +27,14 @@ export function getSpeechModel(modelId: string) {
 }
 
 export function countSpeechCharacters(text: string) {
-  return Array.from(text).length;
+  return Array.from(text).reduce((count, character) => count + (/\p{Script=Han}/u.test(character) ? 2 : 1), 0);
 }
 
 export function quoteSpeechCredits(modelId: string, characterCount: number) {
   const model = getSpeechModel(modelId);
   if (!model) throw new SpeechPriceUnavailableError();
-  if (!Number.isSafeInteger(characterCount) || characterCount < 1 || characterCount > 10_000) {
-    throw new SpeechPriceUnavailableError('语音文本长度必须为 1 到 10000 个字符');
+  if (!Number.isSafeInteger(characterCount) || characterCount < 1 || characterCount > 20_000) {
+    throw new SpeechPriceUnavailableError('语音计费字符数必须为 1 到 20000');
   }
   const costUnits = Math.max(1, Math.ceil(
     (model.priceUnitsPer10kCharacters * COMFLY_PRICE_SCALE * characterCount) / 10_000,

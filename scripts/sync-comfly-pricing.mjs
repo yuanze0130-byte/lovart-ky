@@ -158,6 +158,9 @@ if (apply) {
   if (previousReport) {
     await fs.writeFile(path.join(dataDir, 'comfly-pricing-previous-report.json'), JSON.stringify(previousReport, null, 2) + '\n');
   }
+  if (previousSnapshot) {
+    await fs.writeFile(path.join(dataDir, 'comfly-pricing-previous.json'), JSON.stringify(previousSnapshot, null, 2) + '\n');
+  }
   await fs.writeFile(path.join(dataDir, 'comfly-pricing-report.json'), JSON.stringify(report, null, 2) + '\n');
   await fs.writeFile(path.join(dataDir, 'comfly-pricing.json'), JSON.stringify({ endpoint, version, contentHash, fetchedAt: report.checkedAt, group_ratio: groupRatios, records }, null, 2) + '\n');
   if (report.changes.length) {

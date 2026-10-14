@@ -23,7 +23,7 @@ function numberValue(value: unknown, fallback: number, min: number, max: number,
 export async function GET(request: NextRequest) {
   try {
     await requireUser(request);
-    const configured = Boolean(process.env.XAI_API_KEY);
+    const configured = Boolean(process.env.XAI_API_KEY || (process.env.CANVAS_GATEWAY_SPEECH_ENABLED === 'true' && process.env.CANVAS_GATEWAY_DEFAULT_API_KEY));
     return NextResponse.json({ configured, models: configured ? SPEECH_MODELS.map(({ id, label, priceUnitsPer10kCharacters }) => ({ id, label, priceUnitsPer10kCharacters })) : [] }, { headers: { 'Cache-Control': 'no-store' } });
   }
   catch (error) { return failure(error); }
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     const input = body as Record<string, unknown>;
     const text = typeof input.text === 'string' ? input.text.trim() : '';
     const characterCount = countSpeechCharacters(text);
-    if (!text || characterCount > 10_000) throw new AiToolRequestError('语音文本不能为空且不能超过 10000 字', 400, 'INVALID_REQUEST');
+    if (!text || Array.from(text).length > 10_000) throw new AiToolRequestError('语音文本不能为空且不能超过 10000 字', 400, 'INVALID_REQUEST');
     const selected = typeof input.model === 'string' ? getSpeechModel(input.model) : undefined;
     if (!selected) throw new AiToolRequestError('该语音模型未开放，请重新选择', 400, 'MODEL_NOT_ALLOWED');
     const quote = quoteSpeechCredits(selected.id, characterCount);
@@ -48,15 +48,41 @@ export async function POST(request: NextRequest) {
     const speed = numberValue(input.speed, 1, 0.5, 2, '语速');
     const pitch = numberValue(input.pitch, 0, -12, 12, '音调');
     const format = input.format === 'wav' || input.format === 'flac' ? input.format : 'mp3';
-    const apiKey = process.env.XAI_API_KEY;
+    const gateway = process.env.CANVAS_GATEWAY_SPEECH_ENABLED === 'true' && Boolean(process.env.CANVAS_GATEWAY_DEFAULT_API_KEY);
+    const apiKey = gateway ? process.env.CANVAS_GATEWAY_DEFAULT_API_KEY : process.env.XAI_API_KEY;
     if (!apiKey) throw new Error('Missing upstream configuration');
-    const base = (process.env.XAI_BASE_URL || 'https://ai.comfly.org/v1').replace(/\/+$/, '');
-    const endpoint = `${base}/minimax/v1/t2a_v2`;
+    const base = gateway
+      ? (process.env.CANVAS_SPEECH_GATEWAY_BASE_URL || 'https://doodleverse.fun').replace(/\/+$/, '').replace(/\/v1$/i, '')
+      : (process.env.CANVAS_SPEECH_DIRECT_BASE_URL || process.env.XAI_BASE_URL || 'https://ai.comfly.org').replace(/\/+$/, '').replace(/\/v1$/i, '');
+    const endpoint = gateway ? `${base}/v1/audio/speech` : `${base}/minimax/v1/t2a_v2`;
     const { result, billing } = await runMeteredAiOperation({
       requestId: randomUUID(), userId: user.id, scope: 'canvas-speech', creditCost: quote.credits, estimatedCostMicros: quote.costUnits,
-      creditType: 'generate_audio', description: '画布语音生成', referenceType: 'canvas_speech', meta: { model: selected.id, upstreamModel: selected.upstreamModel, voiceId, format, characterCount, priceVersion: quote.priceVersion },
+      creditType: 'generate_audio', description: '画布语音生成', referenceType: 'canvas_speech', meta: { model: selected.id, upstreamModel: selected.upstreamModel, voiceId, format, characterCount, priceVersion: quote.priceVersion, transport: gateway ? 'gateway' : 'direct' },
       run: async () => {
-        const response = await fetch(endpoint, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ model: selected.upstreamModel, text, stream: false, output_format: 'url', voice_setting: { voice_id: voiceId, speed, vol: 1, pitch }, audio_setting: { sample_rate: 32_000, bitrate: 128_000, format, channel: 1 } }), signal: request.signal });
+        const speechPayload = { model: selected.upstreamModel, text, stream: false, output_format: 'url', voice_setting: { voice_id: voiceId, speed, vol: 1, pitch }, audio_setting: { sample_rate: 32_000, bitrate: 128_000, format, channel: 1 } };
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify(gateway ? {
+            model: selected.upstreamModel,
+            input: text,
+            voice: voiceId,
+            speed,
+            response_format: 'url',
+            metadata: {
+              output_format: 'url',
+              voice_setting: speechPayload.voice_setting,
+              audio_setting: speechPayload.audio_setting,
+            },
+          } : speechPayload),
+          redirect: gateway ? 'manual' : 'follow',
+          signal: request.signal,
+        });
+        if (gateway && response.status === 302) {
+          const location = response.headers.get('location');
+          if (!location || !/^https:\/\//i.test(location)) throw new Error('Gateway speech response has no secure audio URL');
+          return { audioUrl: location, model: selected.id, voiceId, format, quote };
+        }
         const payload = await response.json().catch(() => ({})) as { data?: { audio?: string }; base_resp?: { status_code?: number; status_msg?: string } };
         if (!response.ok || !payload.data?.audio) throw new Error(payload.base_resp?.status_msg || 'Upstream speech response invalid');
         return { audioUrl: payload.data.audio, model: selected.id, voiceId, format, quote };

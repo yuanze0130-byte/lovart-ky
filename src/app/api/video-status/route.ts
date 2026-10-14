@@ -8,6 +8,7 @@ import {
 } from '@/lib/generation-jobs';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import { enforceUserRateLimit, isAiToolRequestError } from '@/lib/ai-tool-request-guards';
+import { resolveExistingVideoUpstream } from '@/lib/canvas-video-upstream';
 
 type VideoTerminalStatus = 'succeeded' | 'failed' | 'cancelled';
 
@@ -70,6 +71,8 @@ interface VideoStatusResponse {
   };
   data?: {
     status?: string;
+    progress?: string | number;
+    result_url?: string;
     duration?: string;
     output?: string;
     fail_reason?: string;
@@ -100,7 +103,7 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceRoleSupabaseClient();
     const { data: billingJob, error: billingLookupError } = await supabase
       .from('video_generation_jobs')
-      .select('request_id,user_id,task_id,charged_credits,refunded_credits,status,failure_reason')
+      .select('request_id,user_id,task_id,charged_credits,refunded_credits,status,failure_reason,price_version,price_group')
       .eq('task_id', taskId)
       .eq('user_id', user.id)
       .maybeSingle();
@@ -124,12 +127,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const apiKey = process.env.VIDEO_API_KEY || process.env.GEMINI_API_KEY;
-    const baseUrl = normalizeVideoBaseURL(process.env.VIDEO_API_BASE_URL || 'https://ai.comfly.org');
-
-    if (!apiKey) {
-      return NextResponse.json({ error: 'VIDEO_API_KEY or GEMINI_API_KEY not configured' }, { status: 500 });
-    }
+    const upstream = resolveExistingVideoUpstream(billingJob.price_version, billingJob.price_group);
+    const apiKey = upstream.apiKey;
+    const baseUrl = normalizeVideoBaseURL(upstream.baseURL);
 
     const response = await fetch(`${baseUrl}/v2/videos/generations/${taskId}`, {
       method: 'GET',
@@ -164,6 +164,7 @@ export async function GET(request: NextRequest) {
       data.output?.url ||
       data.urls?.[0] ||
       data.output?.urls?.[0] ||
+      data.data?.result_url ||
       data.data?.output ||
       data.data?.content?.video_url ||
       data.data?.content?.url ||
@@ -198,11 +199,11 @@ export async function GET(request: NextRequest) {
     const persistedFailure = persistedStatus === 'failed' || persistedStatus === 'cancelled';
 
     return NextResponse.json({
-      id: data.id || data.task_id,
+      id: data.id || data.task_id || taskId,
       status: persistedFailure || persistedStatus === 'succeeded' ? persistedStatus : normalizedStatus || data.status,
       jobStatus: persistedStatus,
       failureKind: persistedFailure ? getGenerationJobFailureKind(persistedStatus) : undefined,
-      progress: normalizeGenerationProgress(data.progress, persistedStatus),
+      progress: normalizeGenerationProgress(data.data?.progress ?? data.progress, persistedStatus),
       videoUrl: persistedStatus === 'succeeded' ? resolvedVideoUrl : undefined,
       model: data.model,
       createdAt: data.created_at,
