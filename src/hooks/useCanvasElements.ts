@@ -132,7 +132,9 @@ export function useCanvasElements({
 
   const handleElementChange = useCallback(
     (id: string, newAttrs: Partial<CanvasElement>) => {
-      setElements((prev) => prev.map((el) => (el.id === id ? { ...el, ...newAttrs } : el)));
+      const attrs={...newAttrs};
+      if(Object.hasOwn(attrs,'referenceImageId') && !Object.hasOwn(attrs,'referenceImageVersionId'))attrs.referenceImageVersionId=undefined;
+      setElements((prev) => prev.map((el) => (el.id === id ? { ...el, ...attrs } : el)));
     },
     [setElements]
   );
@@ -143,7 +145,7 @@ export function useCanvasElements({
       const changeMap = new Map(changes.map((change) => [change.id, change.newAttrs]));
       setElements((prev) => prev.map((el) => {
         const nextAttrs = changeMap.get(el.id);
-        return nextAttrs ? { ...el, ...nextAttrs } : el;
+        return nextAttrs ? { ...el,...(Object.hasOwn(nextAttrs,'referenceImageId') && !Object.hasOwn(nextAttrs,'referenceImageVersionId')?{referenceImageVersionId:undefined}:{}), ...nextAttrs } : el;
       }));
     },
     [setElements]

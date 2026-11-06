@@ -1,4 +1,5 @@
-import { useCallback, type Dispatch, type SetStateAction } from 'react';
+import { resolveImageReference, groupNewImageEdits } from '@/lib/image-versions';
+import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement, GenerationMetadata } from '@/components/lovart/CanvasArea';
 import type { CanvasPan } from '@/hooks/useCanvasViewport';
@@ -11,6 +12,9 @@ import { importRemoteCanvasVideo } from '@/lib/canvas-asset-upload';
 import { optimizeCanvasImageAsset } from '@/lib/canvas-media-optimization';
 import { uploadReferenceImages } from '@/lib/reference-image-upload';
 import type { CanvasTaskLogUpdate } from '@/lib/canvas-task-log';
+import { runQueuedImageRequest, ImageQueueCancelledError, type ImageQueueOptions } from '@/lib/image-request-queue';
+import { imageGenerationContract, type ExpectedGenerationPrice } from '@/lib/generation-contract';
+import { imageQueueKey, type ImageSubmission } from '@/lib/image-submission';
 
 export type ImageEditMode = 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
 type OfficialImageOptions = {
@@ -42,6 +46,8 @@ function isAspectRatio(value: unknown): value is AspectRatio {
 }
 
 interface UseCanvasGenerationParams {
+  projectId?: string | null;
+  owner?: string;
   pan: CanvasPan;
   elements: CanvasElement[];
   selectedIds: string[];
@@ -122,7 +128,19 @@ async function readResponsePayload(response: Response): Promise<Record<string, u
   }
 }
 
-export async function requestImageGeneration(input: {
+export class ImageGenerationRequestError extends Error {
+  constructor(message: string, readonly code?: string, readonly billingState?: string, readonly outcome?: string) { super(message); this.name = 'ImageGenerationRequestError'; }
+}
+
+type ImageGenerationInput = {
+  submission?: ImageSubmission;
+  signal?: AbortSignal;
+  onQueueState?: ImageQueueOptions['onState'];
+  taskSource?: 'canvas-image' | 'chat' | 'table';
+  requestId?: string;
+  projectId?: string;
+  expectedPrice?: ExpectedGenerationPrice;
+  generatorId?: string;
   prompt: string;
   resolution: Resolution;
   aspectRatio: AspectRatio;
@@ -135,7 +153,28 @@ export async function requestImageGeneration(input: {
   promptDebug?: string;
   officialOptions?: OfficialImageOptions;
   relight?: RelightRequestPayload;
-}) {
+};
+
+export function requestImageGeneration(input: ImageGenerationInput) {
+  const projectId = input.projectId || (typeof window === 'undefined' ? undefined : new URLSearchParams(window.location.search).get('id') || undefined);
+  if (typeof window !== 'undefined' && !projectId) return Promise.reject(new Error('请等待项目显示“已保存”后再生成图片'));
+  const requestId = input.requestId || uuidv4();
+  const modelId = input.modelVariant || 'pro';
+  // Capture the quote before waiting; a later catalog change must require a new confirmation.
+  const current = imageGenerationContract(modelId, input.resolution, input.referenceImages?.length || 0).expectedPrice;
+  const expectedPrice = { ...current, ...input.expectedPrice };
+  const { signal, onQueueState, ...payload } = input;
+  const key = imageQueueKey(projectId, requestId, input.generatorId, input.taskSource === 'table' || Boolean(input.submission));
+  return runQueuedImageRequest(() => executeImageGeneration({ ...payload, requestId, projectId, expectedPrice }), {
+    key, projectId, signal, onState: onQueueState,
+    fingerprint: JSON.stringify({ ...payload, requestId: undefined, expectedPrice }),
+  }).catch(error => {
+    if (error instanceof ImageQueueCancelledError) throw new ImageGenerationRequestError(error.message, error.code, error.billingState, error.outcome);
+    throw error;
+  });
+}
+
+async function executeImageGeneration(input: ImageGenerationInput) {
   const {
     prompt,
     resolution,
@@ -166,6 +205,10 @@ export async function requestImageGeneration(input: {
     aspectRatio,
     officialOptions,
   });
+  const requestId = input.requestId || uuidv4();
+  generationMetadata.recoveryRequestId = requestId;
+  const projectId = input.projectId || (typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('id'));
+  if (typeof window !== 'undefined' && !projectId) throw new Error('请等待项目显示“已保存”后再生成图片');
   const uploadedReferenceImages = await uploadReferenceImages(referenceImages);
 
   const response = await authedFetch('/api/generate-image', {
@@ -174,7 +217,8 @@ export async function requestImageGeneration(input: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      requestId: uuidv4(),
+      requestId, projectId, generatorId: input.generatorId, taskSource: input.taskSource, submission: input.submission,
+      expectedPrice: input.expectedPrice,
       prompt: finalPrompt,
       resolution,
       aspectRatio,
@@ -189,12 +233,15 @@ export async function requestImageGeneration(input: {
   const data = await readResponsePayload(response);
 
   if (!response.ok) {
-    throw new Error(
+    throw new ImageGenerationRequestError(
       typeof data.details === 'string'
         ? data.details
         : typeof data.error === 'string'
           ? data.error
-          : '生成失败'
+          : '生成失败',
+      typeof data.code === 'string' ? data.code : undefined,
+      typeof data.billingState === 'string' ? data.billingState : undefined,
+      typeof data.outcome === 'string' ? data.outcome : undefined,
     );
   }
 
@@ -396,6 +443,7 @@ function createGeneratedImageResultElement({
     requestedAspectRatio: result.requestedAspectRatio,
     requestedResolution: result.requestedResolution,
     referenceImageId: generatorElement.referenceImageId,
+    sourceImageId:generatorElement.initialEditMode && generatorElement.initialEditMode!=='generate'?generatorElement.referenceImageId:undefined,
     prompt: result.finalPrompt,
     generationMetadata: buildGeneratedImageMetadata(generatorElement, result),
     content: result.imageData,
@@ -427,16 +475,42 @@ function createGeneratedImageConnector(
 }
 
 export function useCanvasGeneration({
+  projectId,
+  owner,
   pan,
   elements,
   selectedIds,
-  setElements,
-  setSelectedIds,
+  setElements: writeElements,
+  setSelectedIds: writeSelectedIds,
   setActiveTool,
-  setIsGenerating,
-  onThumbnailGenerated,
-  onTaskUpdate,
+  setIsGenerating: writeGenerating,
+  onThumbnailGenerated: writeThumbnail,
+  onTaskUpdate: writeTask,
 }: UseCanvasGenerationParams) {
+  const scopeKey = `${owner || ''}:${projectId || ''}`;
+  const scopeRef = useRef({ key: scopeKey, active: true, running: 0 });
+  if (scopeRef.current.key !== scopeKey) scopeRef.current = { key: scopeKey, active: true, running: 0 };
+  const scope = scopeRef.current;
+  useEffect(() => { scope.active = true; writeGenerating(false); return () => { scope.active = false; }; }, [scope, writeGenerating]);
+  const setElements = useCallback<Dispatch<SetStateAction<CanvasElement[]>>>(update => {
+    if (scopeRef.current !== scope || !scope.active) return;
+    writeElements(current => scopeRef.current !== scope || !scope.active ? current : groupNewImageEdits(current,typeof update === 'function' ? update(current) : update));
+  }, [scope, writeElements]);
+  const setSelectedIds = useCallback<Dispatch<SetStateAction<string[]>>>(update => {
+    if (scopeRef.current === scope && scope.active) writeSelectedIds(update);
+  }, [scope, writeSelectedIds]);
+  const setIsGenerating = useCallback<Dispatch<SetStateAction<boolean>>>(update => {
+    if (scopeRef.current !== scope || !scope.active) return;
+    const value = typeof update === 'function' ? update(scope.running > 0) : update;
+    scope.running = Math.max(0, scope.running + (value ? 1 : -1));
+    writeGenerating(scope.running > 0);
+  }, [scope, writeGenerating]);
+  const onTaskUpdate = useCallback((update: CanvasTaskLogUpdate) => {
+    if (scopeRef.current === scope && scope.active) writeTask?.(update);
+  }, [scope, writeTask]);
+  const onThumbnailGenerated = useCallback(async (thumbnail: string) => {
+    if (scopeRef.current === scope && scope.active) await writeThumbnail?.(thumbnail);
+  }, [scope, writeThumbnail]);
   const handleGenerateVideo = useCallback(
     async (videoUrl: string, targetElementId?: string) => {
       const persistedVideoUrl = await importRemoteCanvasVideo(videoUrl);
@@ -449,6 +523,7 @@ export function useCanvasGeneration({
 
       if (generatorElement) {
         void addGenerationHistoryItem({
+ origin: {ownerId:owner,projectId:projectId || undefined},
           id: uuidv4(),
           kind: 'video',
           content: persistedVideoUrl,
@@ -514,6 +589,7 @@ export function useCanvasGeneration({
         setElements((prev) => [...prev, newElement]);
         setSelectedIds([newElement.id]);
         void addGenerationHistoryItem({
+ origin: {ownerId:owner,projectId:projectId || undefined},
           id: resultId,
           kind: 'video',
           content: persistedVideoUrl,
@@ -523,7 +599,7 @@ export function useCanvasGeneration({
         });
       }
     },
-    [elements, pan.x, pan.y, selectedIds, setElements, setSelectedIds]
+    [elements, pan.x, pan.y, selectedIds, setElements, setSelectedIds, owner, projectId]
   );
 
   const handleConnectFlow = useCallback(
@@ -602,7 +678,9 @@ export function useCanvasGeneration({
       promptDebug?: string,
       officialOptions?: OfficialImageOptions,
       targetElementId?: string,
+      submission?: ImageSubmission,
     ) => {
+      if (scopeRef.current !== scope || !scope.active) return;
       setIsGenerating(true);
       const logEntryId = uuidv4();
       let logNodeId = targetElementId;
@@ -625,13 +703,20 @@ export function useCanvasGeneration({
           kind: 'image',
           status: 'running',
           progress: 10,
-          message: '图片任务已提交',
+          message: '图片任务准备中',
           model: modelVariant,
           promptPreview: effectivePrompt,
           referenceCount: effectiveReferences.length,
           referenceLabels: connectedInputs?.referenceLabels,
         });
         const result = await requestImageGeneration({
+          submission,
+          requestId: logEntryId,
+          projectId: projectId || undefined,
+          onQueueState: state => onTaskUpdate({ id: logEntryId, nodeId: logNodeId, kind: 'image',
+            status: state === 'queued' ? 'queued' : state === 'cancelled' ? 'cancelled' : 'running',
+            progress: 0, message: state === 'queued' ? '等待生成名额' : state === 'cancelled' ? '已取消排队，未扣费' : '正在准备生成请求' }),
+          generatorId: generatorElementId,
           prompt: effectivePrompt,
           resolution,
           aspectRatio,
@@ -691,6 +776,7 @@ export function useCanvasGeneration({
             ? { width: optimized.originalWidth, height: optimized.originalHeight }
             : await getImageDimensions(imageData);
           const displaySize = getSmartDisplaySize(dimensions);
+          if (scopeRef.current !== scope || !scope.active) return;
           void onThumbnailGenerated?.(optimized?.thumbnailUrl || optimized?.previewUrl || persistedImage);
 
           console.log('[generate-image] result', {
@@ -713,7 +799,7 @@ export function useCanvasGeneration({
             if (!generatorElement) throw new Error('生成节点已不存在，无法写入结果');
 
             const imageResult: GeneratedImageResult = { ...result, imageData: persistedImage };
-            const resultId = uuidv4();
+            const resultId = String(result.generationMetadata.recoveryRequestId || uuidv4());
             const connectorId = uuidv4();
             const resultElement: CanvasElement = {
               ...createGeneratedImageResultElement({
@@ -728,6 +814,7 @@ export function useCanvasGeneration({
             };
             const connectorElement = createGeneratedImageConnector(generatorElement, resultId, connectorId);
             void addGenerationHistoryItem({
+ origin: {ownerId:owner,projectId:projectId || undefined},
               id: resultId,
               kind: 'image',
               content: persistedImage,
@@ -742,6 +829,7 @@ export function useCanvasGeneration({
             });
 
             setElements((prev) => {
+              if (prev.some(element => element.id === resultId || element.generationMetadata?.recoveryRequestId === resultId)) return prev;
               const outputIndex = prev.filter((element) => element.type === 'connector'
                 && element.connectorFrom === generatorElementId
                 && element.connectorKind === 'result').length;
@@ -811,6 +899,7 @@ export function useCanvasGeneration({
             setElements((prev) => [...prev, newElement]);
             setSelectedIds([newElement.id]);
             void addGenerationHistoryItem({
+ origin: {ownerId:owner,projectId:projectId || undefined},
               id: newElement.id,
               kind: 'image',
               content: persistedImage,
@@ -861,16 +950,17 @@ export function useCanvasGeneration({
           error: message,
         });
         console.error('Generation failed:', error);
-        alert(`生成失败: ${message}`);
+        throw error;
       } finally {
         setIsGenerating(false);
       }
     },
-    [elements, onTaskUpdate, onThumbnailGenerated, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds]
+    [elements, onTaskUpdate, onThumbnailGenerated, pan.x, pan.y, selectedIds, setElements, setIsGenerating, setSelectedIds, projectId, scope, owner]
   );
 
   const handleGenerateSelectedImages = useCallback(
     async () => {
+      if (scopeRef.current !== scope || !scope.active) return;
       const generatorElements = selectedIds
         .map((id) => elements.find((el) => el.id === id))
         .filter((el): el is CanvasElement => el?.type === 'image-generator');
@@ -895,7 +985,7 @@ export function useCanvasGeneration({
             const resolution = isResolution(generatorElement.requestedResolution) ? generatorElement.requestedResolution : generatorElement.generatorKind === 'panorama' ? '2K' : '1K';
             const aspectRatio = isAspectRatio(generatorElement.requestedAspectRatio) ? generatorElement.requestedAspectRatio : generatorElement.generatorKind === 'panorama' ? '21:9' : 'auto';
             const referenceElement = generatorElement.referenceImageId
-              ? elements.find((item) => item.id === generatorElement.referenceImageId)
+              ? resolveImageReference(elements,generatorElement.referenceImageId,generatorElement.referenceImageVersionId)
               : undefined;
             const fallbackReferences = referenceElement?.type === 'image' && typeof referenceElement.content === 'string' && referenceElement.content
               ? [referenceElement.content]
@@ -905,6 +995,7 @@ export function useCanvasGeneration({
               ...fallbackReferences,
             ].filter(Boolean)));
             const editMode = generatorElement.initialEditMode || 'generate';
+            const modelVariant = isImageModelId(generatorElement.imageModelId) ? generatorElement.imageModelId : 'pro';
             onTaskUpdate?.({
               id: logEntryId,
               nodeId: generatorElement.id,
@@ -912,7 +1003,7 @@ export function useCanvasGeneration({
               status: 'running',
               progress: 10,
               message: '批量图片任务已提交',
-              model: 'pro',
+              model: modelVariant,
               promptPreview: prompt,
               referenceCount: referenceImages.length,
               referenceLabels: connectedInputs.referenceLabels,
@@ -920,12 +1011,24 @@ export function useCanvasGeneration({
 
             try {
               const result = await requestImageGeneration({
+                requestId: logEntryId,
+                projectId: projectId || undefined,
+                onQueueState: state => onTaskUpdate({ id: logEntryId, nodeId: generatorElement.id, kind: 'image',
+                  status: state === 'queued' ? 'queued' : state === 'cancelled' ? 'cancelled' : 'running', progress: 0,
+                  message: state === 'queued' ? '等待生成名额' : state === 'cancelled' ? '已取消排队，未扣费' : '正在准备生成请求' }),
+                generatorId: generatorElement.id,
                 prompt,
                 resolution,
                 aspectRatio,
                 referenceImages,
-                modelVariant: 'pro',
+                modelVariant,
                 editMode,
+                officialOptions: {
+                  quality: generatorElement.officialQuality === 'high' || generatorElement.officialQuality === 'medium' || generatorElement.officialQuality === 'low' ? generatorElement.officialQuality : 'auto',
+                  background: generatorElement.officialBackground === 'transparent' || generatorElement.officialBackground === 'opaque' ? generatorElement.officialBackground : 'auto',
+                  outputFormat: generatorElement.officialOutputFormat === 'jpeg' || generatorElement.officialOutputFormat === 'webp' ? generatorElement.officialOutputFormat : 'png',
+                  moderation: generatorElement.officialModeration === 'low' ? 'low' : 'auto',
+                },
               });
 
               if (!result.imageData) {
@@ -960,7 +1063,7 @@ export function useCanvasGeneration({
                 status: 'failed',
                 progress: 0,
                 message: '批量图片生成失败',
-                model: 'pro',
+                model: modelVariant,
                 error: error instanceof Error ? error.message : '未知错误',
               });
               throw error;
@@ -968,6 +1071,7 @@ export function useCanvasGeneration({
           })
         );
 
+        if (scopeRef.current !== scope || !scope.active) return;
         const successfulResults = results
           .filter((result): result is PromiseFulfilledResult<{
             generatorElement: CanvasElement;
@@ -979,13 +1083,14 @@ export function useCanvasGeneration({
         if (successfulResults.length > 0) {
           const branchResults = successfulResults.map((item) => ({
             ...item,
-            resultId: uuidv4(),
+            resultId: String(item.result.generationMetadata.recoveryRequestId || uuidv4()),
             connectorId: uuidv4(),
           }));
           const resultMap = new Map(branchResults.map((item) => [item.generatorElement.id, item]));
           generatedIds.push(...branchResults.map((item) => item.resultId));
           branchResults.forEach((item) => {
             void addGenerationHistoryItem({
+ origin: {ownerId:owner,projectId:projectId || undefined},
               id: item.resultId,
               kind: 'image',
               content: item.result.imageData,
@@ -1002,7 +1107,7 @@ export function useCanvasGeneration({
             const elementsToAdd: CanvasElement[] = [];
             const nextElements = prev.map((el) => {
               const item = resultMap.get(el.id);
-              if (!item) return el;
+              if (!item || prev.some(element => element.id === item.resultId || element.generationMetadata?.recoveryRequestId === item.resultId)) return el;
 
               const resultElement = createGeneratedImageResultElement({
                 generatorElement: el,
@@ -1026,19 +1131,19 @@ export function useCanvasGeneration({
 
         const failedCount = results.filter((result) => result.status === 'rejected').length;
         if (failedCount > 0) {
-          alert(`批量生成完成：成功 ${successfulResults.length} 个，失败 ${failedCount} 个。请查看控制台错误。`);
+          if (scopeRef.current === scope && scope.active) alert(`批量生成完成：成功 ${successfulResults.length} 个，失败 ${failedCount} 个。请查看控制台错误。`);
           results.forEach((result) => {
             if (result.status === 'rejected') console.error('Batch image generation failed:', result.reason);
           });
         }
       } catch (error) {
         console.error('Batch image generation failed:', error);
-        alert(`批量生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
+        if (scopeRef.current === scope && scope.active) alert(`批量生成失败: ${error instanceof Error ? error.message : '未知错误'}`);
       } finally {
         setIsGenerating(false);
       }
     },
-    [elements, onTaskUpdate, onThumbnailGenerated, selectedIds, setElements, setIsGenerating, setSelectedIds]
+    [elements, onTaskUpdate, onThumbnailGenerated, selectedIds, setElements, setIsGenerating, setSelectedIds, projectId, scope, owner]
   );
 
   return {

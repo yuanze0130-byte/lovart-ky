@@ -41,7 +41,9 @@ export function duplicateCanvasSelection(
   createId: () => string,
   offset = 24,
 ) {
-  const source = getSelectionWithConnections(elements, selectedNodeIds);
+  const selection = getSelectionWithConnections(elements, selectedNodeIds);
+  const selectedSet = new Set(selection.filter(e => e.type !== 'connector').map(e => e.id));
+  const source = selection.filter(e => e.type !== 'connector' || (selectedSet.has(e.connectorFrom || '') && selectedSet.has(e.connectorTo || '')));
   const idMap = new Map(source.map((element) => [element.id, createId()]));
   const groupIdMap = new Map<string, string>();
 
@@ -51,19 +53,27 @@ export function duplicateCanvasSelection(
     }
 
     const duplicate: CanvasElement = {
-      ...element,
+      ...structuredClone(element),
       id: idMap.get(element.id)!,
       x: element.type === 'connector' ? element.x : element.x + offset,
       y: element.type === 'connector' ? element.y : element.y + offset,
-      referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) || element.referenceImageId : undefined,
-      assetReferenceIds: element.assetReferenceIds?.map((id) => idMap.get(id) || id),
+      referenceImageId: element.referenceImageId ? idMap.get(element.referenceImageId) : undefined,
+      assetReferenceIds: element.assetReferenceIds?.map((id) => idMap.get(id)).filter((id): id is string => Boolean(id)),
       connectorFrom: element.connectorFrom ? idMap.get(element.connectorFrom) || element.connectorFrom : undefined,
       connectorTo: element.connectorTo ? idMap.get(element.connectorTo) || element.connectorTo : undefined,
-      linkedElements: element.linkedElements?.map((id) => idMap.get(id) || id),
+      linkedElements: element.linkedElements?.map((id) => idMap.get(id)).filter((id): id is string => Boolean(id)),
       groupId: element.groupId ? groupIdMap.get(element.groupId) : undefined,
     };
 
     STORYBOARD_ONLY_FIELDS.forEach((field) => delete duplicate[field]);
+    delete duplicate.taskId;
+    duplicate.isGenerating = false;
+    if (duplicate.generationMetadata) {
+      delete duplicate.generationMetadata.recoveryRequestId;
+      delete duplicate.generationMetadata.taskId;
+      duplicate.generationMetadata.generatorElementId = typeof element.generationMetadata?.generatorElementId === 'string'
+        ? idMap.get(element.generationMetadata.generatorElementId) : undefined;
+    }
     return duplicate;
   });
 

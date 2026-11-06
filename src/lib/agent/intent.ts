@@ -60,6 +60,7 @@ export function classifyAgentIntent(input: { message: string; context?: AgentCon
   if ((hasStoryboardTarget(raw) || hasSelectedStoryboard) && hasImageGenerationIntent(raw) && !hasVideoIntent(raw)) return 'action';
   if (hasStoryboardIntent(raw) && MUTATION_PATTERN.test(raw)) return 'action';
   if (hasCanvasInsertIntent(raw)) return 'action';
+  if (input.context?.selectedImage && /(?:创建|生成|制作).*(?:套|个|组)方案/.test(raw)) return 'action';
   if (hasEditIntent(raw)) return 'action';
   if (hasVideoIntent(raw) && MUTATION_PATTERN.test(raw)) return 'action';
   if (hasImageGenerationIntent(raw)) return 'action';

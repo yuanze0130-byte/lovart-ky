@@ -1,11 +1,6 @@
 import type { NextRequest } from 'next/server';
 import type { AgentActionResult, AgentContext, CreateCharacterThreeViewAction } from '@/lib/agent/actions';
-import { callInternalJson } from '@/lib/agent/executors/shared';
-
-type GenerateImageApiResult = {
-  imageData?: string;
-  error?: string;
-};
+import { runGenerateImagesAction } from './generateImages';
 
 const THREE_VIEW_SHOTS = [
   {
@@ -26,48 +21,27 @@ export async function runCreateCharacterThreeViewAction(input: {
   request: NextRequest;
   action: CreateCharacterThreeViewAction;
   context: AgentContext;
+  userId: string;
 }): Promise<AgentActionResult> {
   void input.context;
 
   const aspectRatio = input.action.aspectRatio || '1:1';
-  const now = Date.now();
-  const images: Array<{ assetId: string; imageData: string; prompt: string }> = [];
-
-  for (let index = 0; index < THREE_VIEW_SHOTS.length; index += 1) {
-    const shot = THREE_VIEW_SHOTS[index];
-    const prompt = `${input.action.prompt}\n\n${shot.prompt}。这是角色三视图的 ${shot.label} 视角，请保持三张图之间角色身份、服装、配色、发型、体型和关键道具一致。`;
-    const result = await callInternalJson<GenerateImageApiResult>(input.request, '/api/generate-image', {
-      prompt,
-      resolution: '1K',
-      aspectRatio,
-      modelVariant: 'pro',
-      editMode: 'generate',
-    });
-
-    if (!result.imageData) {
-      throw new Error(result.error || `角色三视图 ${shot.label} 生成失败`);
-    }
-
-    images.push({
-      assetId: `agent-character-3view-${shot.label.toLowerCase()}-${now}`,
-      imageData: result.imageData,
-      prompt,
-    });
-  }
-
+  const prompts = THREE_VIEW_SHOTS.map(shot => `${input.action.prompt}\n\n${shot.prompt}。这是 ${shot.label} 视角，请保持角色身份、服装和配色一致。`);
+  const result = await runGenerateImagesAction({ ...input, action: { type: 'generate_images', prompt: input.action.prompt, aspectRatio }, prompts, useSelectedReference: false });
+  const images = result.images;
   return {
-    kind: 'images_generated',
+    ...result,
     assetIds: images.map((item) => item.assetId),
     images,
     count: images.length,
-    message: '已生成角色三视图：正面 / 侧面 / 背面',
+    message: result.incomplete ? result.message : `已生成 ${images.length} 张角色视图`,
     layout: {
       kind: 'character_three_view',
       columns: 3,
       rows: 1,
       gap: 32,
       title: '角色三视图',
-      labels: ['Front 正面', 'Side 侧面', 'Back 背面'],
+      labels: images.map((image,index) => ['Front 正面', 'Side 侧面', 'Back 背面'][(image.agentStep || index+1)-1]),
     },
   };
 }

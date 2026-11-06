@@ -2,7 +2,11 @@
 
 import { Bot, Send, Square, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import type { AgentChatTurn, AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
+import type { AgentChatTurn, AgentContext, AgentMode, AgentPanelResponse } from '@/lib/agent/actions';
+import { compactAgentHistory, historyWithSummary } from '@/lib/agent/context-controls';
+import { excludeAgentReferences } from '@/lib/agent/context-controls';
+import { AgentWorkflowPanel } from './AgentWorkflowPanel';
+import type { WorkflowArtifact } from '@/lib/agent/workflow';
 import { AI_TOOL_CREDIT_COSTS } from '@/lib/ai-tool-pricing';
 
 type AgentPanelEntry = {
@@ -16,9 +20,12 @@ type AgentPanelEntry = {
 };
 
 interface AgentPanelProps {
+  owner?: string;
+  onWorkflowInsert?: (artifacts:WorkflowArtifact[],sourceId?:string)=>void;
+  context?: AgentContext;
   visible: boolean;
   onClose: () => void;
-  onSubmit: (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[] }) => Promise<AgentPanelResponse>;
+  onSubmit: (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[]; excludedReferenceIds?: string[] }) => Promise<AgentPanelResponse>;
   onApplyPlan: (input: { prompt: string; mode: AgentMode; reply: string; summary?: string; plan: Record<string, unknown> }) => void;
   isRunning: boolean;
   onCancel: () => void;
@@ -36,10 +43,24 @@ const STARTER_PROMPTS = [
   '生成 4 张不同方向的设计方案',
 ];
 
-export function AgentPanel({ visible, onClose, onSubmit, onApplyPlan, isRunning, onCancel }: AgentPanelProps) {
+export function AgentPanel({ owner, onWorkflowInsert, context, visible, onClose, onSubmit, onApplyPlan, isRunning, onCancel }: AgentPanelProps) {
+  const [workflowOpen,setWorkflowOpen]=useState(false);
   const [mode, setMode] = useState<AgentMode>('design');
   const [message, setMessage] = useState('');
   const [entries, setEntries] = useState<AgentPanelEntry[]>([]);
+  const [excludedReferenceIds, setExcludedReferenceIds] = useState<string[]>([]);
+  const [contextSummary, setContextSummary] = useState('');
+  const references = [
+    ...(context?.imageReferences || []).map(ref => ({id: ref.id, label: `${ref.source === 'result' ? '结果' : '图片'} ${ref.ordinal} · ${ref.label}`})),
+    ...(context?.selectedElements || []).filter(ref => !context?.imageReferences?.some(image => image.id === ref.id))
+      .map(ref => ({id: ref.id, label: `${ref.type === 'text' ? '文字' : '节点'} · ${ref.label || ref.type}`})),
+  ];
+  const compactHistory = () => {
+    const turns = entries.filter((entry): entry is AgentPanelEntry & { role: 'user' | 'assistant' } => entry.role !== 'error');
+    const compacted = compactAgentHistory(turns.map(({role, content}) => ({role, content})), contextSummary);
+    setContextSummary(compacted.summary);
+    setEntries(turns.slice(-6));
+  };
 
   const submit = async (input: string) => {
     const normalized = input.trim();
@@ -52,7 +73,7 @@ export function AgentPanel({ visible, onClose, onSubmit, onApplyPlan, isRunning,
     setEntries((previous) => [...previous, userEntry]);
     setMessage('');
     try {
-      const response = await onSubmit(normalized, { mode, history });
+      const response = await onSubmit(normalized, { mode, history: historyWithSummary(history, contextSummary), excludedReferenceIds });
       setEntries((previous) => [...previous, {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -90,6 +111,10 @@ export function AgentPanel({ visible, onClose, onSubmit, onApplyPlan, isRunning,
     }
   };
 
+  if(workflowOpen && owner && context?.projectId && onWorkflowInsert) return <aside className={`absolute bottom-4 right-4 top-20 z-[60] w-[440px] max-w-[calc(100vw-2rem)] flex-col overflow-auto rounded-3xl border bg-white shadow-2xl dark:bg-slate-950 ${visible?'flex':'hidden'}`}>
+    <header className="flex items-center justify-between border-b p-3 text-sm"><strong>创作工作流</strong><button type="button" onClick={()=>setWorkflowOpen(false)}>返回对话</button><button type="button" onClick={onClose} aria-label="关闭工作流">关闭</button></header>
+    <AgentWorkflowPanel owner={owner} context={excludeAgentReferences(context,excludedReferenceIds)} onInsert={onWorkflowInsert} />
+  </aside>;
   return (
     <aside className={`absolute bottom-4 right-4 top-20 z-[60] w-[400px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white/96 shadow-[0_28px_90px_rgba(15,23,42,0.22)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/92 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)] ${visible ? 'flex' : 'hidden'}`}>
       <header className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/10">
@@ -98,7 +123,8 @@ export function AgentPanel({ visible, onClose, onSubmit, onApplyPlan, isRunning,
           <div><div className="text-sm font-semibold text-gray-900 dark:text-white">Lovart Agent</div><div className="text-[11px] text-gray-500 dark:text-gray-400">结合当前选择与分镜概况 · 创意对话 {AI_TOOL_CREDIT_COSTS.agentChat} 积分</div></div>
         </div>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={() => setEntries([])} disabled={entries.length === 0 || isRunning} className="grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-white/10" title="清空对话"><Trash2 size={15} /></button>
+          {owner && context?.projectId && onWorkflowInsert && <button type="button" disabled={isRunning} onClick={()=>setWorkflowOpen(true)} className="rounded-lg px-2 py-1 text-xs text-sky-600">工作流</button>}
+          <button type="button" onClick={() => { setEntries([]); setContextSummary('' ); }} disabled={(entries.length === 0 && !contextSummary) || isRunning} className="grid h-8 w-8 place-items-center rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-white/10" title="清空对话"><Trash2 size={15} /></button>
           <button type="button" onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-white/10" title="关闭 Agent"><X size={16} /></button>
         </div>
       </header>
@@ -111,6 +137,17 @@ export function AgentPanel({ visible, onClose, onSubmit, onApplyPlan, isRunning,
         </div>
       </div>
 
+      <div className="border-b border-gray-200 px-4 py-2 text-xs dark:border-white/10">
+        <details>
+          <summary className="cursor-pointer">本次引用 · {references.filter(ref => !excludedReferenceIds.includes(ref.id)).length} 项</summary>
+          <ul className="max-h-36 space-y-2 overflow-auto py-2">
+            {references.map(ref => <li key={ref.id}><label className="flex items-start gap-2"><input type="checkbox" disabled={isRunning} checked={!excludedReferenceIds.includes(ref.id)} onChange={event => setExcludedReferenceIds(ids => event.target.checked ? ids.filter(id => id !== ref.id) : [...ids, ref.id])} /><span className="break-words">{ref.label}</span></label></li>)}
+          </ul>
+          <p className="text-gray-500">取消勾选即可移除本次引用，不会删除画布节点。</p>
+        </details>
+        <button type="button" disabled={isRunning || entries.filter(entry => entry.role !== 'error').length <= 6} onClick={compactHistory} className="mt-2 text-sky-600 disabled:opacity-40">压缩旧对话（不扣积分）</button>
+        {contextSummary && <details className="mt-2"><summary className="cursor-pointer">旧对话摘录 · 可编辑</summary><textarea aria-label="旧对话摘录" value={contextSummary} onChange={event => setContextSummary(event.target.value)} maxLength={700} rows={4} disabled={isRunning} className="mt-2 w-full rounded border bg-transparent p-2" /><p className="text-gray-500">保留最近 6 条消息，较早内容仅保留摘录。</p></details>}
+      </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {entries.length === 0 && (
           <div className="space-y-4 py-6 text-center">

@@ -1,4 +1,5 @@
 /* eslint-disable @next/next/no-img-element -- Toolbar previews render transient data URLs from canvas operations. */
+import { resolveImageReference } from '@/lib/image-versions';
 import React, { useMemo, useRef, useState } from 'react';
 import { Download, Trash2, Wand2, Copy, ArrowRight, X, Sparkles, Loader2, Lightbulb, RotateCcw } from 'lucide-react';
 import { CREDIT_COSTS, getUpscaleCreditCost } from '@/lib/credits';
@@ -135,7 +136,7 @@ export function ContextToolbar({
     const actionableImage = useMemo(() => {
         if (element.type === 'image') return element;
         if (element.type !== 'image-generator' || !element.referenceImageId) return null;
-        const reference = canvasElements.find((item) => item.id === element.referenceImageId);
+        const reference = resolveImageReference(canvasElements,element.referenceImageId,element.referenceImageVersionId);
         return reference?.type === 'image' ? reference : null;
     }, [canvasElements, element]);
     const hasActionableImage = Boolean(actionableImage?.content);

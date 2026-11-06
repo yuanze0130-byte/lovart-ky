@@ -1,5 +1,6 @@
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getRegisteredNodePorts, type NodePortDefinition, type NodePortDirection, type NodePortKind } from '@/lib/node-definitions';
+import { imageResultContent } from '@/lib/image-versions';
 
 export type CanvasPortDirection = NodePortDirection;
 export type CanvasPortKind = NodePortKind;
@@ -20,6 +21,18 @@ export const PORT_COLORS: Record<CanvasPortKind, string> = {
 
 export function getNodePorts(element: CanvasElement): CanvasPortDefinition[] {
   return getRegisteredNodePorts(element.type);
+}
+
+const portLayoutCache = new WeakMap<CanvasPortDefinition[], Array<{port:CanvasPortDefinition;top:number}>>();
+export function getNodePortLayout(element: CanvasElement) {
+  const ports = getNodePorts(element);
+  const cached = portLayoutCache.get(ports);
+  if (cached) return cached;
+  const counts = {input:0,output:0}, positions = {input:0,output:0};
+  ports.forEach(port=>{counts[port.direction]++;});
+  const layout = ports.map(port=>({port,top:++positions[port.direction]/(counts[port.direction]+1)*100}));
+  portLayoutCache.set(ports,layout);
+  return layout;
 }
 
 export function getPort(element: CanvasElement, portId?: string) {
@@ -232,7 +245,7 @@ export function resolveConnectedInputs(targetId: string, elements: CanvasElement
     if (!edge.connectorFrom) continue;
     const source = byId.get(edge.connectorFrom);
     if (!source) continue;
-    const value = typeof source.content === 'string' ? source.content : typeof source.prompt === 'string' ? source.prompt : '';
+    const value = typeof edge.connectorFromVersionId === 'string' ? imageResultContent(source,edge.connectorFromVersionId) || '' : typeof source.content === 'string' ? source.content : typeof source.prompt === 'string' ? source.prompt : '';
     if (!value) continue;
     if (edge.connectorTargetPort === 'prompt-in') promptParts.push(value);
     else if (edge.connectorTargetPort === 'first-frame-in') firstFrame = value;
@@ -266,7 +279,7 @@ export function buildConnectedNodeContentsIndex(elements: CanvasElement[]): Conn
     if (edge.type !== 'connector' || !edge.connectorFrom || !edge.connectorTo) continue;
     const source = byId.get(edge.connectorFrom);
     const target = byId.get(edge.connectorTo);
-    const content = source && typeof source.content === 'string' ? source.content : '';
+    const content = source && typeof edge.connectorFromVersionId === 'string' ? imageResultContent(source,edge.connectorFromVersionId) || '' : source && typeof source.content === 'string' ? source.content : '';
     if (!content) continue;
     const targetPortId = edge.connectorTargetPort
       || (source && target

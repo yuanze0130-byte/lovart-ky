@@ -2,7 +2,7 @@ import type { VideoGenerationConfig } from '@/lib/video-models';
 
 export const POINTS_PER_COMFLY_UNIT = 15;
 export const VIDEO_MARKUP_BPS = 500;
-export const VIDEO_PRICE_VERSION = '2026-08-14-v2';
+export const VIDEO_PRICE_VERSION = '2026-10-18-native-v4';
 const COMFLY_MICRO_UNITS = 100_000;
 
 export interface VideoPriceInput extends VideoGenerationConfig {
@@ -122,8 +122,24 @@ const VEO_COSTS: Readonly<Record<string, number>> = {
 };
 
 export function quoteVideoCredits(input: VideoPriceInput): VideoPriceQuote {
+  if (input.modelId === 'kling-video-v3') {
+    if (!Number.isInteger(input.duration) || input.duration < 3 || input.duration > 15 || !['720p', '1080p'].includes(input.resolution || '')) throw new VideoPriceUnavailableError('Kling 3 当前规格尚未配置可靠价格');
+    const tenthsPerSecond = input.resolution === '1080p' ? (input.generateAudio ? 12 : 8) : (input.generateAudio ? 9 : 6);
+    return quote(input, { costMicros: input.duration * tenthsPerSecond * 10000,
+      breakdown: { duration: input.duration, resolution: input.resolution!, generateAudio: input.generateAudio,
+        upstreamUnitsPerSecond: tenthsPerSecond / 10, costType: 'kling-unit', tariffVersion: 'kling-official-2026-10-18' } });
+  }
+  if (input.modelId === 'vidu-q4') {
+    const perSecond = ({ '540p': 9, '720p': 19, '1080p': 24, '2K': 38, '4K': 78 } as Record<string, number>)[input.resolution || ''];
+    if (!perSecond || !Number.isInteger(input.duration) || input.duration < 3 || input.duration > 16) throw new VideoPriceUnavailableError('Vidu Q4 当前规格尚未配置可靠价格');
+    const upstreamCredits = perSecond * input.duration;
+    return quote(input, { upstreamModel: 'viduq4-preview', costMicros: Math.ceil(upstreamCredits * 2812.5),
+      breakdown: { resolution: input.resolution!, duration: input.duration, upstreamCreditsPerSecond: perSecond,
+        upstreamCredits, comflyCostPerUpstreamCredit: 0.028125, costType: 'vidu-credit', tariffVersion: 'vidu-official-2026-10-18' } });
+  }
   if (input.modelId === 'doubao-seedance-2-0-260128' || input.modelId === 'doubao-seedance-2-0-fast-260128') {
-    const perSecondMicros = input.modelId.endsWith('-fast-260128') ? 90_000 : 100_000;
+    // Current Comfly default-group catalog quotes both variants at 1 unit/second.
+    const perSecondMicros = 100_000;
     return quote(input, {
       costMicros: perSecondMicros * input.duration,
       breakdown: { duration: input.duration, costType: 'per-second', costPerSecond: perSecondMicros / COMFLY_MICRO_UNITS },

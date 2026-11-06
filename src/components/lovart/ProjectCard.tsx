@@ -12,6 +12,7 @@ interface ProjectCardProps {
 
 export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: ProjectCardProps) {
     const [menuOpen, setMenuOpen] = useState(false);
+    const [failedUrl, setFailedUrl] = useState<string>();
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -33,10 +34,11 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
     return (
         <div className="group relative cursor-pointer overflow-hidden rounded-2xl border border-gray-100 bg-white transition-all duration-300 hover:shadow-lg">
             <div className="relative aspect-[4/3] overflow-hidden bg-gray-50">
-                {imageUrl ? (
+                {imageUrl && failedUrl !== imageUrl ? (
                     <Image
                         src={imageUrl}
                         alt={title}
+                        onError={() => setFailedUrl(imageUrl)}
                         fill
                         sizes="(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 25vw"
                         className="object-cover"
@@ -47,7 +49,7 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
                         <div className="flex flex-col items-center gap-3 text-center">
                             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-black text-xl font-bold text-white shadow-sm">D</div>
                             <div>
-                                <div className="text-sm font-medium text-gray-500">暂无封面</div>
+                                <div className="text-sm font-medium text-gray-500">{imageUrl ? '封面暂不可用' : '暂无封面'}</div>
                                 <div className="mt-1 max-w-[180px] truncate text-xs text-gray-400">{title}</div>
                             </div>
                         </div>
@@ -56,12 +58,14 @@ export function ProjectCard({ title, date, imageUrl, onRename, onDelete }: Proje
 
                 {(onRename || onDelete) && (
                     <div
-                        className="absolute right-2 top-2 z-20 opacity-0 transition-opacity group-hover:opacity-100"
+                        className="absolute right-2 top-2 z-20 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
                         ref={menuRef}
                         onClick={(e) => e.stopPropagation()}
                     >
                         <button
                             type="button"
+                            aria-label={`管理项目：${title}`}
+                            aria-expanded={menuOpen}
                             onClick={(e) => {
                                 e.preventDefault();
                                 setMenuOpen((prev) => !prev);

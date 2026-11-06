@@ -1,3 +1,7 @@
+import type { ExpectedGenerationPrice } from '@/lib/generation-contract';
+import type { ImageModelId, ImageModelResolution } from '@/lib/image-models';
+export type AgentImageReference = { id: string; url: string; label: string; ordinal: number; source: 'selection' | 'result' };
+export type AgentImagePlan = { prompt: string; modelId: ImageModelId; resolution: ImageModelResolution; aspectRatio: StoryboardAspectRatio; count: number; onlyStep?: number };
 export type AgentPage = 'home' | 'canvas' | 'projects' | 'user';
 
 export type StoryboardAspectRatio = '9:16' | '16:9' | '4:5' | '1:1' | '4:3' | '3:4' | '21:9' | '3:2' | '2:3';
@@ -11,10 +15,18 @@ export type AgentChatTurn = {
 };
 
 export type AgentContext = {
+  imageReferences?: AgentImageReference[];
+  referenceId?: string;
+  imagePlan?: AgentImagePlan;
+  executionRunId?: string;
+  expectedImagePrice?: ExpectedGenerationPrice;
+  expectedVideoPrice?: ExpectedGenerationPrice;
   page: AgentPage;
   projectId?: string | null;
   canvasId?: string | null;
   selectedElementId?: string | null;
+  scope?: 'selection' | 'project';
+  selectedElements?: Array<{ id: string; type: string; label: string }>;
   selectedStoryboardItemId?: string | null;
   storyboardCount?: number;
   storyboardItems?: Array<{
@@ -134,6 +146,13 @@ export type DraftStoryboardItem = {
 };
 
 export type DraftCanvasElement = {
+  modelId?:ImageModelId;
+  resolution?:ImageModelResolution;
+  workflowStepId?:string;
+  agentBatchId?: string;
+  agentStep?: number;
+  sourceImageId?: string;
+  recoveryRequestId?: string;
   id: string;
   type: 'image' | 'video';
   x: number;
@@ -173,13 +192,16 @@ export type AgentActionResult =
   | {
       kind: 'images_generated';
       assetIds: string[];
-      images: Array<{ assetId: string; imageData: string; prompt: string }>;
+      images: Array<{ assetId: string; imageData: string; prompt: string; recoveryRequestId?: string; agentStep?: number;modelId?:ImageModelId;resolution?:ImageModelResolution }>;
+      incomplete?: boolean;
       count: number;
       message: string;
       layout?: AgentImageLayout;
     }
   | {
       kind: 'storyboard_image_generation_requested';
+      imageData?: string;
+      recoveryRequestId?: string;
       storyboardItemId: string;
       storyboardOrder: number;
       title: string;
@@ -191,6 +213,8 @@ export type AgentActionResult =
     }
   | {
       kind: 'storyboard_video_generation_requested';
+      taskId?: string;
+      requestId?: string;
       storyboardItemId: string;
       storyboardOrder: number;
       title: string;
@@ -202,6 +226,7 @@ export type AgentActionResult =
     }
   | {
       kind: 'video_started';
+      requestId?: string;
       taskId: string;
       status?: string;
       message: string;
@@ -215,12 +240,21 @@ export type AgentActionResult =
     }
   | {
       kind: 'image_edited';
+      modelId?:ImageModelId;
+      resolution?:ImageModelResolution;
+      prompt?: string;
+      recoveryRequestId?: string;
       assetId: string;
       imageData: string;
       message: string;
     };
 
 export type AgentRunRequest = {
+  workflowStep?: 'analyze' | 'prompt' | 'generate' | 'edit';
+  imagePlan?: AgentImagePlan;
+  runId?: string;
+  phase?: 'preview' | 'execute';
+  planDigest?: string;
   message: string;
   context: AgentContext;
   mode?: AgentMode;
@@ -228,6 +262,7 @@ export type AgentRunRequest = {
 };
 
 export type AgentChatResult = {
+  inspectedImages?: number;
   kind: 'chat';
   reply: string;
   summary?: string;
@@ -235,6 +270,7 @@ export type AgentChatResult = {
 };
 
 export type AgentPanelResponse = {
+  incomplete?: boolean;
   kind: 'chat' | 'action';
   reply: string;
   summary?: string;
@@ -245,6 +281,7 @@ export type AgentPanelResponse = {
 };
 
 export type AgentRunResponse = {
+  preview?: { steps: string[]; estimatedCredits: number; scope: string; digest: string; imagePrice?: ExpectedGenerationPrice; videoPrice?: ExpectedGenerationPrice; imagePlan?: AgentImagePlan; reference?: AgentImageReference; imageInputCount?: number; stepNumbers?: number[] };
   ok: boolean;
   action?: AgentAction;
   result?: AgentActionResult;

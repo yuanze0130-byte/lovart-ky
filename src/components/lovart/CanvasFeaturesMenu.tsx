@@ -9,6 +9,7 @@ interface CanvasFeaturesMenuProps {
   onChange: <K extends keyof CanvasFeatureSettings>(key: K, value: CanvasFeatureSettings[K]) => void;
   onReset: () => void;
   onClear: () => void;
+  placement?: 'header' | 'sidebar';
 }
 
 const FEATURE_BUTTONS: Array<{ key: keyof Pick<CanvasFeatureSettings, 'hideImages' | 'tilt3d' | 'flowAnimation' | 'stopwatch' | 'snap' | 'crosses' | 'follow' | 'marquee' | 'generationAnimation' | 'grid' | 'navigator' | 'groupMode' | 'hideConnectors'>; label: string; title: string }> = [
@@ -34,7 +35,7 @@ const SLIDERS: Array<{ key: 'gridGap' | 'gridDotSize' | 'connectorWidth' | 'conn
   { key: 'connectorOpacity', label: '连线透明', min: 10, max: 100, step: 5, suffix: '%' },
 ];
 
-export function CanvasFeaturesMenu({ settings, onChange, onReset, onClear }: CanvasFeaturesMenuProps) {
+export function CanvasFeaturesMenu({ settings, onChange, onReset, onClear, placement = 'header' }: CanvasFeaturesMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
@@ -65,11 +66,11 @@ export function CanvasFeaturesMenu({ settings, onChange, onReset, onClear }: Can
         title="画布功能"
       >
         <Grid3X3 size={15} />
-        <span>功能</span>
+        <span>画布设置</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-10 z-[180] w-[250px] overflow-hidden rounded-2xl border border-gray-200 bg-[#191A1F]/98 text-white shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-2xl dark:border-white/12" role="menu">
+        <div className={`absolute ${placement === 'sidebar' ? 'bottom-10 left-0' : 'right-0 top-10'} z-[180] max-h-[calc(100vh-160px)] w-[250px] max-w-[calc(100vw-56px)] overflow-y-auto rounded-2xl border border-gray-200 bg-[#191A1F]/98 text-white shadow-[0_24px_70px_rgba(0,0,0,0.34)] backdrop-blur-2xl dark:border-white/12`} role="menu">
           <div className="grid grid-cols-2 gap-x-3 gap-y-1 px-4 py-3">
             {FEATURE_BUTTONS.map((feature) => {
               const enabled = settings[feature.key];

@@ -1,13 +1,18 @@
+import { getProxyTargets, getImageTaskPollTarget } from '@/lib/image-provider-routing.server';
+import { observeImageTask, type ImageTaskBinding } from '@/lib/image-task-result';
+import { createServiceRoleSupabaseClient, type Json } from '@/lib/supabase';
 import OpenAI from 'openai';
 import { GoogleGenAI, Modality } from '@google/genai';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { validImageSubmission, type ImageSubmission } from '@/lib/image-submission';
 import { NextRequest, NextResponse } from 'next/server';
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { consumeCredits, refundCredits } from '@/lib/credits';
 import { getImageModelDefinition, isImageModelId, type ImageModelId } from '@/lib/image-models';
 import { isImageModelResolutionError, resolveImageUpstreamModel } from '@/lib/image-model-routing';
-import { isImagePriceUnavailableError, quoteImageCredits, type ImagePriceQuote } from '@/lib/image-pricing';
-import { gptImageBackupKeyForModel, imageGatewayKeyForGroup, isDoodleverseGateway, isGatewayPreDispatchFailure } from '@/lib/image-gateway-routing';
+import { imageGenerationContract, matchesGenerationPrice, type ExpectedGenerationPrice } from '@/lib/generation-contract';
+import { isImagePriceUnavailableError, type ImagePriceQuote } from '@/lib/image-pricing';
+import { gptImageBackupKeyForModel, isDoodleverseGateway, isGatewayPreDispatchFailure } from '@/lib/image-gateway-routing';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 import { collectImageResponseCandidates, detectBase64ImageMimeType } from '@/lib/image-response-candidates';
@@ -109,6 +114,8 @@ interface GeminiChatCompletion {
 }
 
 interface GenerateImagePayload {
+  submission?: ImageSubmission;
+  expectedPrice?: ExpectedGenerationPrice;
   requestId?: string;
   prompt: string;
   referenceImage?: string;
@@ -352,49 +359,13 @@ function validateOfficialGptImage2Size(size: string): OfficialImageSizeValidatio
   return { ok: true, width, height, pixels };
 }
 
-function normalizeProxyBaseURL(baseURL: string) {
-  const trimmed = baseURL.trim().replace(/\/+$/, '');
-  if (!trimmed) return 'https://doodleverse.fun/v1';
-  if (/\/v\d+$/i.test(trimmed)) return trimmed;
-  return `${trimmed}/v1`;
-}
 
-function getProxyTargets(group: ImagePriceQuote['group'] = 'default', modelId?: string) {
-  const primaryBaseURL = normalizeProxyBaseURL(process.env.GEMINI_BASE_URL || 'https://doodleverse.fun/v1');
-  const usesOwnGateway = isDoodleverseGateway(primaryBaseURL);
-  const primaryApiKey = usesOwnGateway ? imageGatewayKeyForGroup(group) : process.env.GEMINI_API_KEY;
-  const fallbackBaseURL = process.env.GEMINI_FALLBACK_BASE_URL
-    ? normalizeProxyBaseURL(process.env.GEMINI_FALLBACK_BASE_URL)
-    : undefined;
-  const fallbackApiKey = process.env.GEMINI_FALLBACK_API_KEY;
-  const gptBackupKey = usesOwnGateway && modelId
-    ? gptImageBackupKeyForModel(modelId, group)
-    : undefined;
 
-  const targets = [
-    primaryApiKey ? { label: 'primary' as const, baseURL: primaryBaseURL, apiKey: primaryApiKey, routeGroup: group } : null,
-    gptBackupKey ? { label: 'fallback' as const, baseURL: primaryBaseURL, apiKey: gptBackupKey, routeGroup: 'image2-4k' as const } : null,
-    !usesOwnGateway && fallbackApiKey && fallbackBaseURL
-      ? { label: 'fallback' as const, baseURL: fallbackBaseURL, apiKey: fallbackApiKey, routeGroup: group }
-      : null,
-  ].filter(Boolean) as Array<{ label: 'primary' | 'fallback'; baseURL: string; apiKey: string; routeGroup: string }>;
 
-  return targets;
-}
 
 class GatewayPreDispatchFailureError extends KnownUpstreamFailureError {}
 
-function getImageTaskPollTarget(target: { baseURL: string; apiKey: string }) {
-  if (!isDoodleverseGateway(target.baseURL)) return target;
-  if (process.env.CANVAS_GATEWAY_IMAGE_TASK_POLL_ENABLED === 'true') return target;
-  // Keep direct polling available while rolling out the read-only gateway route.
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY is required to poll gateway image tasks');
-  return {
-    baseURL: normalizeProxyBaseURL(process.env.CANVAS_GATEWAY_IMAGE_TASK_POLL_BASE_URL || 'https://ai.comfly.org/v1'),
-    apiKey,
-  };
-}
+
 
 function extractImageFromGeminiResponse(response: GeminiOfficialResponse, baseResult: Record<string, unknown>) {
   const candidates = response?.candidates || [];
@@ -712,7 +683,7 @@ async function pollGptImage2Task(params: {
       : {};
     const status = typeof inner.status === 'string' ? inner.status : '';
 
-    if (status === 'SUCCESS') {
+    if (status === 'SUCCESS' && observeImageTask(statusPayload).state === 'succeeded') {
       const nested = typeof inner.data === 'object' && inner.data !== null
         ? inner.data as GeminiChatCompletion
         : { data: [] } as GeminiChatCompletion;
@@ -797,6 +768,7 @@ async function generateViaProxy(
   group: ImagePriceQuote['group'],
   signal: AbortSignal,
   onSubmissionStart: () => void,
+  onTaskAccepted?: (binding: ImageTaskBinding) => Promise<void>,
 ) {
   const targets = getProxyTargets(group, payload.modelVariant);
 
@@ -852,6 +824,9 @@ async function generateViaProxy(
       onSubmissionStart();
     };
     try {
+      if (modelDefinition.transport === 'image-task' || modelDefinition.transport === 'official-image-task') {
+        getImageTaskPollTarget(target); // Validate query credentials before submitting paid work.
+      }
       logGenerationDebug('trying proxy target', {
         target: target.label,
         baseURL: target.baseURL,
@@ -925,6 +900,8 @@ async function generateViaProxy(
         }
 
         const pollTarget = getImageTaskPollTarget(target);
+        await onTaskAccepted?.({ taskId, upstreamModel: proxyModel, pollBaseURL: pollTarget.baseURL,
+          targetLabel: target.label, routeGroup: target.routeGroup });
         const taskResult = await pollGptImage2Task({
           baseURL: pollTarget.baseURL,
           apiKey: pollTarget.apiKey,
@@ -1030,6 +1007,8 @@ async function generateViaProxy(
         }
 
         const pollTarget = getImageTaskPollTarget(target);
+        await onTaskAccepted?.({ taskId, upstreamModel: proxyModel, pollBaseURL: pollTarget.baseURL,
+          targetLabel: target.label, routeGroup: target.routeGroup });
         const taskResult = await pollGptImage2Task({
           baseURL: pollTarget.baseURL,
           apiKey: pollTarget.apiKey,
@@ -1277,6 +1256,20 @@ async function generateViaOfficial(
 }
 
 export async function POST(request: NextRequest) {
+  let recoveryRunId: string | null = null;
+  let recoveryUserId: string | null = null;
+  let recoveryMeta: Record<string, Json | undefined> = {};
+  let billingState = 'not_charged';
+  // Once paid work starts, a browser navigation must not cancel its server-side result persistence.
+  const generationSignal = AbortSignal.timeout(10 * 60_000);
+  const recordResult = async (status: string, result?: Json) => {
+    if (!recoveryRunId || !recoveryUserId) return;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await createServiceRoleSupabaseClient().from('canvas_image_runs').update({ status, meta: { ...recoveryMeta, billingState }, ...(result ? { result } : {}), updated_at: new Date().toISOString() }).eq('request_id', recoveryRunId).eq('user_id', recoveryUserId);
+      if (!error) return;
+      if (attempt === 2) throw new Error('IMAGE_RESULT_RECORD_FAILED');
+    }
+  };
   let chargedUserId: string | null = null;
   let chargeReferenceId: string | null = null;
   let chargedQuote: ImagePriceQuote | null = null;
@@ -1284,12 +1277,12 @@ export async function POST(request: NextRequest) {
   let chargedAmount = 0;
   let budgetReserved = false;
   let upstreamStarted = false;
-  let releaseExecution: (() => void) | null = null;
+  let releaseExecution: (() => Promise<void>) | null = null;
 
   try {
     const user = await requireUser(request);
     chargedUserId = user.id;
-    enforceUserRateLimit(user.id, 'generate-image', { limit: 6, windowMs: 60_000 });
+    enforceUserRateLimit(user.id, 'generate-image', { limit: 12, windowMs: 60_000 });
 
     const body = await readLimitedJson(request, 28 * 1024 * 1024) as GenerateImagePayload;
     const {
@@ -1317,22 +1310,45 @@ export async function POST(request: NextRequest) {
       ? body.requestId
       : randomUUID();
     chargeReferenceId = requestId;
+    if (body.submission !== undefined && !validImageSubmission(body.submission)) {
+      return NextResponse.json({error:'图片批次参数无效',billingState:'not_charged',outcome:'failed'}, {status:400});
+    }
     const normalizedReferences = normalizeReferenceImages(referenceImages, referenceImage);
     const upstreamModel = resolveImageUpstreamModel({ modelId: modelVariant, resolution });
-    const priceQuote = quoteImageCredits({
-      modelId: modelVariant,
-      upstreamModel,
-      resolution,
-      referenceCount: normalizedReferences.length,
-    });
+    const contract = imageGenerationContract(modelVariant, resolution, normalizedReferences.length);
+    const priceQuote = contract.quote;
+    if (!matchesGenerationPrice(body.expectedPrice, contract.expectedPrice)) {
+      return NextResponse.json({ error: '积分报价已更新，请重新核对后生成。本次未提交上游或扣费。', code: 'IMAGE_PRICE_CHANGED' }, { status: 409 });
+    }
     const provider = getProvider();
     const modelDefinition = getImageModelDefinition(modelVariant);
     if ((provider === 'proxy' || modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat')
       && getProxyTargets(priceQuote.group, modelVariant).length === 0) {
       throw new Error(`图片分组 ${priceQuote.group} 的中转站密钥未配置`);
     }
+    const recoveryInput = body as GenerateImagePayload & { projectId?: string; generatorId?: string; taskSource?: string; agentRunId?: string; agentStep?: number; agentAttempt?: number };
+    if (recoveryInput.projectId) {
+      const db = createServiceRoleSupabaseClient();
+      const { data: project, error: projectError } = await db.from('projects').select('id').eq('id', recoveryInput.projectId).eq('user_id', user.id).single();
+      if (projectError || !project) return NextResponse.json({ error: '请先保存项目再生成图片' }, { status: 400 });
+      recoveryMeta = { prompt, modelVariant, resolution, aspectRatio, generatorId: recoveryInput.generatorId || null,
+        source: ['agent','chat','table'].includes(String(recoveryInput.taskSource)) ? String(recoveryInput.taskSource) : 'canvas-image', agentRunId: typeof recoveryInput.agentRunId === 'string' && /^[0-9a-f-]{36}$/i.test(recoveryInput.agentRunId) ? recoveryInput.agentRunId : undefined, agentAttempt: Number.isInteger(recoveryInput.agentAttempt) ? recoveryInput.agentAttempt : undefined, agentStep: Number.isInteger(recoveryInput.agentStep) ? recoveryInput.agentStep : undefined, quotedCredits: priceQuote.credits, priceVersion: priceQuote.priceVersion, priceGroup: priceQuote.group, contract: contract.expectedPrice.contract, billingState };
+      if (body.submission) recoveryMeta = { ...recoveryMeta, submissionId:body.submission.id,
+        submissionIndex:body.submission.index,submissionCount:body.submission.count,
+        submissionDigest:createHash('sha256').update(JSON.stringify([prompt,modelVariant,resolution,aspectRatio,editMode,officialOptions,relight])).digest('hex') };
+      const { data: registration, error: runError } = await db.rpc('register_canvas_image_run', {
+        p_request_id:requestId,p_user_id:user.id,p_project_id:project.id,p_meta:recoveryMeta,
+      });
+      if (runError || registration !== 'created') return NextResponse.json({
+        error: registration === 'node_busy' ? '该节点仍有任务正在生成或结果待核对，请等待恢复完成；本次未重复扣费。' : '任务已登记或登记失败，请查看项目任务状态；本次未重复扣费。',
+        code:registration === 'node_busy' ? 'IMAGE_NODE_BUSY' : 'IMAGE_RUN_NOT_CREATED',
+        billingState:'not_charged',outcome:'failed',
+      }, { status: 409 });
+      recoveryRunId = requestId; recoveryUserId = user.id;
+    }
     chargedQuote = priceQuote;
     chargedAmount = priceQuote.credits;
+    releaseExecution = await acquireAiExecution({ requestId, userId: user.id, scope: 'generate-image', signal: request.signal });
     await reserveAiBudget({
       requestId,
       userId: user.id,
@@ -1340,7 +1356,6 @@ export async function POST(request: NextRequest) {
       estimatedCostMicros: gptImageBackupKeyForModel(modelVariant, priceQuote.group) ? 16_000 : priceQuote.costUnits,
     });
     budgetReserved = true;
-    releaseExecution = acquireAiExecution({ requestId, userId: user.id, scope: 'generate-image' });
     const creditResult = await consumeCredits({
       userId: user.id,
       amount: chargedAmount,
@@ -1365,23 +1380,30 @@ export async function POST(request: NextRequest) {
     if (!creditResult.ok) {
       await finalizeAiBudget(requestId, 'released');
       budgetReserved = false;
+      await recordResult('failed');
       return NextResponse.json(
         {
           error: '积分不足',
           details: `当前积分 ${creditResult.currentCredits}，生成图片需 ${creditResult.requiredCredits} 积分`,
+          outcome: 'failed',
+          billingState: 'not_charged',
         },
         { status: 402 }
       );
     }
     if (creditResult.idempotent) {
+      billingState = 'needs_review';
       budgetReserved = false;
+      await recordResult('outcome_unknown');
       return NextResponse.json(
-        { error: '该图片请求已经处理过，请重新发起生成', code: 'IMAGE_REQUEST_ALREADY_USED' },
+        { error: '该图片请求已经处理过，请查询原任务状态，勿重复生成', code: 'IMAGE_REQUEST_ALREADY_USED', billingState, outcome:'unknown' },
         { status: 409 },
       );
     }
 
     creditsConsumed = true;
+    billingState = 'charged';
+    await recordResult('running');
 
     const payload: GenerateImagePayload = {
       requestId,
@@ -1411,42 +1433,48 @@ export async function POST(request: NextRequest) {
       });
       budgetReserved = false;
       const usedBackupGroup = result.routeGroup === 'image2-4k';
-      return NextResponse.json({ ...persistedResult, billing: {
+      const finalResult = { ...persistedResult, billing: {
         ...billing,
         ...(usedBackupGroup ? { priceGroup: 'image2-4k', comflyCost: 0.16 } : {}),
-      } });
+      } };
+      await recordResult('succeeded', finalResult as Json);
+      return NextResponse.json(finalResult);
     };
     const markUpstreamSubmissionStarted = () => {
       upstreamStarted = true;
     };
+    const recordTaskBinding = async (binding: ImageTaskBinding) => {
+      recoveryMeta = { ...recoveryMeta, taskId: binding.taskId, upstreamTask: { ...binding }, phase: 'submitted' };
+      await recordResult('running');
+    };
 
     if (provider === 'proxy') {
-      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
-      return respondWithResult(result);
+      const result = await generateViaProxy(payload, priceQuote.group, generationSignal, markUpstreamSubmissionStarted, recordTaskBinding);
+      return await respondWithResult(result);
     }
 
     if (provider === 'official') {
       if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-        const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
-        return respondWithResult(result);
+        const result = await generateViaProxy(payload, priceQuote.group, generationSignal, markUpstreamSubmissionStarted, recordTaskBinding);
+        return await respondWithResult(result);
       }
-      const result = await generateViaOfficial(payload, request.signal, markUpstreamSubmissionStarted);
-      return respondWithResult(result);
+      const result = await generateViaOfficial(payload, generationSignal, markUpstreamSubmissionStarted);
+      return await respondWithResult(result);
     }
 
     if (modelDefinition.category !== 'Google' || modelDefinition.transport !== 'chat') {
-      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
-      return respondWithResult(result);
+      const result = await generateViaProxy(payload, priceQuote.group, generationSignal, markUpstreamSubmissionStarted, recordTaskBinding);
+      return await respondWithResult(result);
     }
 
     try {
-      const result = await generateViaOfficial(payload, request.signal, markUpstreamSubmissionStarted);
-      return respondWithResult(result);
+      const result = await generateViaOfficial(payload, generationSignal, markUpstreamSubmissionStarted);
+      return await respondWithResult(result);
     } catch (officialError) {
-      if (request.signal.aborted || (upstreamStarted && !isKnownUpstreamFailure(officialError))) throw officialError;
+      if (generationSignal.aborted || (upstreamStarted && !isKnownUpstreamFailure(officialError))) throw officialError;
       console.warn('[generate-image] official provider failed; using proxy fallback', getSafeErrorLogDetails(officialError));
-      const result = await generateViaProxy(payload, priceQuote.group, request.signal, markUpstreamSubmissionStarted);
-      return respondWithResult({
+      const result = await generateViaProxy(payload, priceQuote.group, generationSignal, markUpstreamSubmissionStarted, recordTaskBinding);
+      return await respondWithResult({
         ...result,
         providerMode: 'auto',
         providerFallbackUsed: true,
@@ -1460,10 +1488,11 @@ export async function POST(request: NextRequest) {
     }
 
     const upstreamOutcomeUnknown = upstreamStarted && !isKnownUpstreamFailure(error);
+    if (upstreamOutcomeUnknown) billingState = creditsConsumed ? 'charged_pending_review' : 'needs_review';
 
     if (creditsConsumed && chargedUserId && chargeReferenceId && !upstreamOutcomeUnknown) {
       try {
-        await refundCredits({
+        const refundResult = await refundCredits({
           userId: chargedUserId,
           amount: chargedAmount,
           type: 'refund',
@@ -1477,11 +1506,14 @@ export async function POST(request: NextRequest) {
             priceVersion: chargedQuote.priceVersion,
           } : {},
         });
+        billingState = refundResult.ok ? 'refunded' : 'refund_pending';
       } catch (refundError) {
+        billingState = 'refund_pending';
         console.error('Failed to refund credits after image generation error:', refundError);
       }
     }
 
+    await recordResult(upstreamOutcomeUnknown ? 'outcome_unknown' : 'failed').catch(() => undefined);
     if (budgetReserved && chargeReferenceId) {
       await finalizeAiBudget(chargeReferenceId, upstreamStarted ? 'completed' : 'released').catch((finalizeError) => {
         console.error('[generate-image] 无法释放成本预留记录', finalizeError);
@@ -1491,14 +1523,14 @@ export async function POST(request: NextRequest) {
 
     if (isAiSafetyError(error) || isAiToolRequestError(error)) {
       return NextResponse.json(
-        { error: error.message, code: error.code },
+        { error: error.message, code: error.code, billingState, outcome: upstreamOutcomeUnknown ? 'unknown' : 'failed' },
         { status: error.status, headers: error.retryAfterSeconds ? { 'Retry-After': String(error.retryAfterSeconds) } : undefined },
       );
     }
 
     if (isImagePriceUnavailableError(error) || isImageModelResolutionError(error)) {
       return NextResponse.json(
-        { error: error.message, code: error.code },
+        { error: error.message, code: error.code, billingState, outcome: upstreamOutcomeUnknown ? 'unknown' : 'failed' },
         { status: 422 },
       );
     }
@@ -1515,6 +1547,7 @@ export async function POST(request: NextRequest) {
           error: '图片任务已提交，但连接在结果返回前中断',
           details: '为避免上游已经计费后重复退款，本次积分暂不自动退回。请保留请求编号并联系管理员核查。',
           code: 'IMAGE_UPSTREAM_OUTCOME_UNKNOWN',
+          billingState,
           requestId: chargeReferenceId,
         },
         { status: 504 },
@@ -1533,10 +1566,13 @@ export async function POST(request: NextRequest) {
       {
         error: 'Failed to generate image',
         details: message,
+        code: 'IMAGE_GENERATION_FAILED',
+        outcome: 'failed',
+        billingState,
       },
       { status: 500 }
     );
   } finally {
-    releaseExecution?.();
+    await releaseExecution?.();
   }
 }

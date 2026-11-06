@@ -13,6 +13,11 @@ const ASPECT_RATIOS: StoryboardAspectRatio[] = ['9:16', '16:9', '4:5', '1:1', '4
 const VIDEO_SIZES: StoryboardVideoSize[] = ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'];
 
 function extractCount(message: string) {
+  const variants = message.match(/([一二两三四五六七八九十]|\d+)\s*(?:套|个|组)方案/);
+  if (variants) {
+    const chinese: Record<string, number> = { 一:1, 二:2, 两:2, 三:3, 四:4, 五:5, 六:6, 七:7, 八:8, 九:9, 十:10 };
+    return chinese[variants[1]] || Number(variants[1]) || 1;
+  }
   const patterns = [
     /(?:生成|出图|做图|画|渲染)\s*(\d+)\s*(张|个|组)/,
     /(\d+)\s*(张|个|组)\s*(?:图|图片|封面|海报|KV)/,
@@ -129,6 +134,12 @@ export async function parseAgentCommand(input: {
   const raw = input.message.trim();
   const aspectRatio = extractAspectRatio(raw);
   const storyboardOrder = extractStoryboardOrder(raw);
+
+  // A resolved image reference takes precedence over the old "第 N 张" storyboard shortcut.
+  if (input.context.referenceId && hasEditIntent(raw)) return {
+    type:'edit_selected_image',prompt:normalizePrompt(raw) || raw,
+    selectedElementId:input.context.referenceId,aspectRatio:aspectRatio || '1:1',
+  };
 
   if (hasSlashCommand(raw, ['grid9', 'grid', '9grid']) || /九宫格|9宫格/.test(raw)) {
     return {

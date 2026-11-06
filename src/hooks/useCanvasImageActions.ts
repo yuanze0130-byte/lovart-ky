@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { getImageDimensions, getSmartDisplaySize } from '@/lib/imageSizing';
 import { authedFetch } from '@/lib/authed-fetch';
+import { groupNewImageEdits } from '@/lib/image-versions';
 
 interface UseCanvasImageActionsParams {
   setElements: Dispatch<SetStateAction<CanvasElement[]>>;
@@ -122,6 +123,7 @@ function appendImageActionBranch(prev: CanvasElement[], input: ImageActionBranch
     prompt: input.source.prompt,
     content: input.imageData,
     previousContent: typeof input.source.content === 'string' ? input.source.content : undefined,
+    sourceImageId: input.source.id,
     linkedElements: [input.source.id, input.connectorId],
     generationMetadata: {
       ...(input.source.generationMetadata || {}),
@@ -145,7 +147,7 @@ function appendImageActionBranch(prev: CanvasElement[], input: ImageActionBranch
     strokeWidth: 2,
   };
 
-  return [...prev, connectorElement, resultElement];
+  return groupNewImageEdits(prev,[...prev, connectorElement, resultElement]);
 }
 
 export function useCanvasImageActions({ setElements, setSelectedIds }: UseCanvasImageActionsParams) {

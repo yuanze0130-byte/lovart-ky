@@ -31,7 +31,7 @@ const HISTORY_COMMIT_DELAY_MS = 300;
 const MAX_HISTORY_ENTRIES = 50;
 
 function cloneElements(elements: CanvasElement[]) {
-  return elements.map((element) => ({
+  return structuredClone(elements).map((element) => ({
     ...element,
     points: element.points?.map((point) => ({ ...point })),
     annotationPolygon: element.annotationPolygon?.map((point) => ({ ...point })),
@@ -120,6 +120,7 @@ export function useCanvasHistory({
   const futureRef = useRef<HistorySnapshot[]>([]);
   const clipboardRef = useRef<{ elements: CanvasElement[]; selectedIds: string[] } | null>(null);
   const suppressHistoryRef = useRef(false);
+  const operationBoundaryRef = useRef(false);
   const historyCommitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSnapshotRef = useRef<Pick<
     UseCanvasHistoryParams,
@@ -143,8 +144,15 @@ export function useCanvasHistory({
     futureRef.current = [];
   }, []);
 
+  const beginOperation = useCallback(() => {
+    commitPendingSnapshot();
+    operationBoundaryRef.current = true;
+  }, [commitPendingSnapshot]);
+
   useEffect(() => {
     if (isLoading || suppressHistoryRef.current) {
+      operationBoundaryRef.current = false;
+      if (isLoading) { historyRef.current = []; futureRef.current = []; }
       if (suppressHistoryRef.current) {
         suppressHistoryRef.current = false;
       }
@@ -163,7 +171,8 @@ export function useCanvasHistory({
       selectedStoryboardItemId,
     };
 
-    if (historyRef.current.length === 0) {
+    if (historyRef.current.length === 0 || operationBoundaryRef.current) {
+      operationBoundaryRef.current = false;
       commitPendingSnapshot();
       return;
     }
@@ -198,6 +207,7 @@ export function useCanvasHistory({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isLoading || e.defaultPrevented) return;
       const isMac = navigator.platform.toUpperCase().includes('MAC');
       const modKey = isMac ? e.metaKey : e.ctrlKey;
       const activeElement = document.activeElement as HTMLElement | null;
@@ -205,7 +215,7 @@ export function useCanvasHistory({
       const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeElement?.isContentEditable === true;
       const key = e.key.toLowerCase();
       const isUndo = modKey && key === 'z' && !e.shiftKey;
-      const isRedo = modKey && ((isMac && key === 'z' && e.shiftKey) || (!isMac && key === 'y' && !e.shiftKey));
+      const isRedo = modKey && ((key === 'z' && e.shiftKey) || (!isMac && key === 'y' && !e.shiftKey));
 
       if (modKey && key === 's') {
         e.preventDefault();
@@ -217,6 +227,7 @@ export function useCanvasHistory({
 
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedIds.length > 0) {
         e.preventDefault();
+        beginOperation();
         deleteElements(selectedIds);
         return;
       }
@@ -224,7 +235,7 @@ export function useCanvasHistory({
       if (modKey && key === 'c' && selectedIds.length > 0) {
         e.preventDefault();
         clipboardRef.current = {
-          elements: getSelectionWithConnections(elements, selectedIds),
+          elements: structuredClone(getSelectionWithConnections(elements, selectedIds)),
           selectedIds: [...selectedIds],
         };
         return;
@@ -232,6 +243,7 @@ export function useCanvasHistory({
 
       if (modKey && key === 'v' && clipboardRef.current) {
         e.preventDefault();
+        beginOperation();
         const duplicated = duplicateCanvasSelection(
           clipboardRef.current.elements,
           clipboardRef.current.selectedIds,
@@ -271,9 +283,10 @@ export function useCanvasHistory({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [commitPendingSnapshot, deleteElements, elements, restoreSnapshot, saveProject, selectedIds, setElements, setSelectedIds]);
+  }, [beginOperation, commitPendingSnapshot, deleteElements, elements, isLoading, restoreSnapshot, saveProject, selectedIds, setElements, setSelectedIds]);
 
   return {
     restoreSnapshot,
+    beginOperation,
   };
 }

@@ -3,35 +3,60 @@
 /* eslint-disable @next/next/no-img-element -- History thumbnails are generated data URLs. */
 import { ImagePlus, Play, Search, Star, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
+import type { CanvasElement } from './CanvasArea';
+import { CanvasMediaPreview, type MediaPreviewAsset } from './CanvasMediaPreview';
 import { deleteGenerationHistoryItem, listGenerationHistoryItems, setGenerationHistoryFavorite, type GenerationHistoryItem } from '@/lib/generation-history';
+import { generationProvenance } from '@/lib/generation-provenance';
+import { containsImageResult } from '@/lib/image-versions';
+import { refreshCanvasAssetUrls } from '@/lib/canvas-asset-upload';
+const historyServices={list:listGenerationHistoryItems,refresh:refreshCanvasAssetUrls};
 
 interface GenerationHistoryPanelProps {
+  elements: CanvasElement[];
+  onLocateNode: (id: string) => void;
   onClose: () => void;
   onInsert: (item: GenerationHistoryItem) => void;
+  projectId?:string|null;
+  ownerId?:string;
+  services?:typeof historyServices;
 }
 
-export function GenerationHistoryPanel({ onClose, onInsert }: GenerationHistoryPanelProps) {
+export function GenerationHistoryPanel({ onClose, onInsert, elements, onLocateNode, projectId, ownerId,services=historyServices }: GenerationHistoryPanelProps) {
+  const [preview, setPreview] = useState<MediaPreviewAsset | null>(null);
+  const [previewItem, setPreviewItem] = useState<GenerationHistoryItem | null>(null);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [items, setItems] = useState<GenerationHistoryItem[]>([]);
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | 'image' | 'video'>('all');
   const [favoritesOnly, setFavoritesOnly] = useState(false);
 
   useEffect(() => {
-    const load = () => void listGenerationHistoryItems().then(setItems);
+    let active = true;
+    let revision = 0;
+    const load = () => {
+      const current = ++revision;
+      void services.list().then(result=>{
+        const allowed=result.filter(item=>generationProvenance(item,undefined,ownerId).allowed);
+        return ownerId?services.refresh(allowed):allowed;
+      }).then(result => {
+        if (active && current === revision) { setItems(result); setLoadState('ready'); }
+      }).catch(() => { if (active && current === revision) setLoadState('error'); });
+    };
     load();
     window.addEventListener('lovart-generation-history-changed', load);
-    return () => window.removeEventListener('lovart-generation-history-changed', load);
-  }, []);
+    return () => { active = false; window.removeEventListener('lovart-generation-history-changed', load); };
+  }, [ownerId,services]);
 
   const filtered = useMemo(() => items.filter((item) => {
+    if (!generationProvenance(item,projectId,ownerId).allowed) return false;
     if (kind !== 'all' && item.kind !== kind) return false;
     if (favoritesOnly && !item.favorite) return false;
     const normalized = query.trim().toLowerCase();
     return !normalized || `${item.prompt || ''} ${item.model || ''}`.toLowerCase().includes(normalized);
-  }), [favoritesOnly, items, kind, query]);
+  }), [favoritesOnly, items, kind, query,projectId,ownerId]);
 
   return (
-    <div className="absolute right-4 top-20 bottom-4 z-[65] flex w-[380px] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white/96 shadow-[0_24px_80px_rgba(15,23,42,0.2)] backdrop-blur-xl dark:border-white/10 dark:bg-black/88">
+    <><div className="absolute right-4 top-20 bottom-4 z-[65] flex w-[min(380px,calc(100vw-32px))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white/96 shadow-[0_24px_80px_rgba(15,23,42,0.2)] backdrop-blur-xl dark:border-white/10 dark:bg-black/88">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-white/10">
         <div><div className="text-sm font-semibold">生成历史</div><div className="text-[11px] text-gray-500">跨项目保存在当前浏览器</div></div>
         <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-white/10" title="关闭"><X size={16} /></button>
@@ -43,7 +68,16 @@ export function GenerationHistoryPanel({ onClose, onInsert }: GenerationHistoryP
       <div className="grid flex-1 grid-cols-2 gap-3 overflow-y-auto p-3">
         {filtered.map((item) => (
           <div key={item.id} className="group relative overflow-hidden rounded-xl border border-gray-200 bg-gray-50 dark:border-white/10 dark:bg-white/5">
-            <div className="relative aspect-square bg-slate-950">
+            <button type="button" aria-label={item.kind === 'image' ? '查看完整图片' : '播放视频'} className="relative block aspect-square w-full bg-slate-950" onClick={() => {
+              const origin=generationProvenance(item,projectId,ownerId);
+              const result = (!origin.projectId || origin.sameProject) ? elements.find(element => element.type === item.kind && (containsImageResult(element,item.id) || element.content === item.content)) : undefined;
+              const sourceId = origin.sourceId;
+              setPreviewItem(item);
+              const original = result && elements.find(element=>element.id === result.sourceImageId && element.type === 'image');
+              setPreview({ source: item.content, kind: item.kind, poster: item.posterUrl, title: item.prompt || '生成素材', prompt:item.prompt, model:item.model,
+                projectLabel:origin.projectLabel,originHref:origin.href,originNodeLabel:origin.sourceId || origin.nodeId,
+                originalSource:original?.content, nodeId: result?.id, sourceNodeId: (!origin.projectId || origin.sameProject) && typeof sourceId === 'string' && elements.some(element => element.id === sourceId) ? sourceId : undefined });
+            }}>
               {item.kind === 'image' ? (
                 <img
                   src={item.thumbnailUrl || item.previewUrl || item.content}
@@ -68,7 +102,7 @@ export function GenerationHistoryPanel({ onClose, onInsert }: GenerationHistoryP
                   <Play size={17} fill="currentColor" className="ml-0.5" />
                 </span>
               )}
-            </div>
+            </button>
             <div className="p-2"><div className="line-clamp-2 text-[11px] text-gray-700 dark:text-gray-200">{item.prompt || '未记录提示词'}</div><div className="mt-1 truncate text-[10px] text-gray-400">{item.model || item.kind} · {new Date(item.createdAt).toLocaleString()}</div></div>
             <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
               <button type="button" onClick={() => void setGenerationHistoryFavorite(item.id, !item.favorite)} className={`flex h-8 w-8 items-center justify-center rounded-lg bg-white/92 shadow ${item.favorite ? 'text-amber-500' : 'text-gray-500'}`} title={item.favorite ? '取消收藏' : '收藏'}><Star size={14} fill={item.favorite ? 'currentColor' : 'none'} /></button>
@@ -77,8 +111,10 @@ export function GenerationHistoryPanel({ onClose, onInsert }: GenerationHistoryP
             </div>
           </div>
         ))}
-        {filtered.length === 0 && <div className="col-span-2 py-16 text-center text-xs text-gray-400">还没有符合条件的生成记录</div>}
+        {loadState === 'loading' && <p role="status" className="col-span-2 text-center text-xs text-gray-400">正在读取素材…</p>}
+        {loadState === 'error' && <p role="alert" className="col-span-2 text-center text-xs text-amber-600">素材读取失败，请关闭后重试。</p>}
+        {loadState === 'ready' && filtered.length === 0 && <div className="col-span-2 py-16 text-center text-xs text-gray-400">还没有符合条件的生成记录</div>}
       </div>
-    </div>
+    </div>{preview && <CanvasMediaPreview key={preview.source} asset={preview} onClose={() => setPreview(null)} onLocate={onLocateNode} onReuse={previewItem ? ()=>{onInsert(previewItem);setPreview(null);} : undefined} />}</>
   );
 }

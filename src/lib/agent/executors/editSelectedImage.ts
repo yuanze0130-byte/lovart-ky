@@ -1,23 +1,19 @@
 import type { NextRequest } from 'next/server';
 import type { EditSelectedImageAction, AgentActionResult, AgentContext } from '@/lib/agent/actions';
-import { callInternalJson } from '@/lib/agent/executors/shared';
-import type { AnnotationObject } from '@/lib/object-annotation';
-
-type EditObjectApiResult = {
-  imageData?: string;
-  error?: string;
-};
+import { runGenerateImagesAction } from '@/lib/agent/executors/generateImages';
+import { serializeAnnotationPrompt, type AnnotationObject } from '@/lib/object-annotation';
 
 export async function runEditSelectedImageAction(input: {
   request: NextRequest;
   action: EditSelectedImageAction;
   context: AgentContext;
+  userId: string;
 }): Promise<AgentActionResult> {
   if (!input.context.selectedImage) {
     throw new Error('当前未选中图片，无法执行编辑');
   }
 
-  const selectedObject: AnnotationObject = input.context.selectedObject?.id
+  const selectedObject: AnnotationObject | null = input.context.selectedObject?.id
     ? {
         id: input.context.selectedObject.id,
         label: input.context.selectedObject.label,
@@ -26,28 +22,28 @@ export async function runEditSelectedImageAction(input: {
         polygon: input.context.selectedObject.polygon,
         maskUrl: input.context.selectedObject.maskUrl,
       }
-    : {
-        id: 'agent-fallback-object',
-        label: 'selected-subject',
-        score: 1,
-        bbox: { x: 0.1, y: 0.1, width: 0.8, height: 0.8 },
-      };
+    : null;
 
-  const result = await callInternalJson<EditObjectApiResult>(input.request, '/api/edit-object', {
-    image: input.context.selectedImage,
-    object: selectedObject,
-    prompt: input.action.prompt,
-    aspectRatio: input.action.aspectRatio || '1:1',
+  const generated = await runGenerateImagesAction({
+    request: input.request,
+    context: input.context,
+    userId: input.userId,
+    action: { type:'generate_images', count:1,
+      prompt:selectedObject ? serializeAnnotationPrompt({prompt:input.action.prompt,object:selectedObject}) : input.action.prompt,
+      aspectRatio:input.action.aspectRatio || '1:1',
+    },
   });
-
-  if (!result.imageData) {
-    throw new Error(result.error || '图片编辑失败');
-  }
+  const result = generated.images[0];
+  if (!result?.imageData) throw new Error('图片编辑失败');
 
   return {
     kind: 'image_edited',
+    modelId:result.modelId,
+    resolution:result.resolution,
+    prompt:result.prompt,
     assetId: `agent-edited-${Date.now()}`,
     imageData: result.imageData,
+    recoveryRequestId: result.recoveryRequestId,
     message: selectedObject?.label ? `已完成对象编辑：${selectedObject.label}` : '已完成图片编辑',
   };
 }

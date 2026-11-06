@@ -5,8 +5,9 @@ import { normalizeGenerationJobStatus } from '@/lib/generation-jobs';
 import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/lib/ai-tool-request-guards';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import { getVideoModelDefinition, normalizeVideoGenerationConfig, type VideoAspectRatio, type VideoAudioMode, type VideoQualityMode } from '@/lib/video-models';
-import { isVideoPriceUnavailableError, quoteVideoCredits, type VideoPriceQuote } from '@/lib/video-pricing';
-import { resolveCanvasVideoUpstream, VIDEO_GATEWAY_PRICE_SUFFIX } from '@/lib/canvas-video-upstream';
+import { videoGenerationContract, videoRatioFromSize, matchesGenerationPrice, type ExpectedGenerationPrice } from '@/lib/generation-contract';
+import { isVideoPriceUnavailableError, type VideoPriceQuote } from '@/lib/video-pricing';
+import { resolveCanvasVideoUpstream, VIDEO_GATEWAY_PRICE_SUFFIX, CanvasVideoUpstreamConfigurationError, assertCanvasVideoModelAvailable } from '@/lib/canvas-video-upstream';
 import { acquireAiExecution, finalizeAiBudget, isAiSafetyError, reserveAiBudget } from '@/lib/ai-safety';
 
 type VideoModelMode = 'standard' | 'fast';
@@ -32,7 +33,11 @@ class VideoUpstreamOutcomeUnknownError extends Error {
 }
 
 interface GenerateVideoBody {
+  expectedPrice?: ExpectedGenerationPrice;
   requestId?: string;
+  projectId?: string;
+  generatorId?: string;
+  taskSource?: string;
   prompt?: string;
   seconds?: number;
   size?: string;
@@ -146,14 +151,7 @@ async function bindVideoTaskWithRetry(params: {
   );
 }
 
-function inferRatioFromSize(size?: string): VideoAspectRatio {
-  const ratios: Record<string, VideoAspectRatio> = {
-    '1280x720': '16:9', '1792x1024': '16:9', '720x1280': '9:16', '1024x1792': '9:16',
-    '1024x1024': '1:1', '1024x768': '4:3', '768x1024': '3:4', '1536x640': '21:9',
-    '1152x768': '3:2', '768x1152': '2:3',
-  };
-  return ratios[size || ''] || '16:9';
-}
+const inferRatioFromSize = videoRatioFromSize;
 
 function normalizeVideoBaseURL(baseUrl: string) {
   return baseUrl.trim().replace(/\/+$/, '').replace(/\/v1$/i, '');
@@ -226,7 +224,7 @@ export async function POST(request: NextRequest) {
   let budgetReserved = false;
   let upstreamStarted = false;
   let knownTaskId: string | null = null;
-  let releaseExecution: (() => void) | null = null;
+  let releaseExecution: (() => Promise<void>) | null = null;
 
   try {
     const user = await requireUser(request);
@@ -254,21 +252,36 @@ export async function POST(request: NextRequest) {
       multiShot: body.multiShot,
       cameraFixed: body.cameraFixed,
     });
-    quote = quoteVideoCredits(config);
+    const contract = videoGenerationContract(config);
+    quote = contract.quote;
+    if (!matchesGenerationPrice(body.expectedPrice, contract.expectedPrice)) return NextResponse.json({error:'视频报价或规格已变化，请重新核对。本次未提交生成或扣费。',code:'VIDEO_PRICE_CHANGED'},{status:409});
     const videoUpstream = resolveCanvasVideoUpstream(quote);
     chargedAmount = quote.credits;
     const definition = getVideoModelDefinition(config.modelId);
+    if (definition.id === 'kling-video-v3' && [...prompt].length > 2500) return NextResponse.json({ error: 'Kling 3 提示词不能超过 2500 字', code: 'VIDEO_PROMPT_TOO_LONG' }, { status: 400 });
+    if (definition.id === 'vidu-q4') {
+      const references = [...(Array.isArray(body.referenceImages) ? body.referenceImages : []), body.referenceImage, body.firstFrame];
+      if (!references.some(isAllowedImageReference)) return NextResponse.json({ error: 'Vidu Q4 至少需要一张参考图', code: 'VIDEO_REFERENCE_REQUIRED' }, { status: 400 });
+    }
     const selectedMode: VideoModelMode = definition.id.toLowerCase().includes('fast') || definition.id.toLowerCase().includes('turbo') ? 'fast' : 'standard';
     const supabase = createServiceRoleSupabaseClient();
 
+    if (body.projectId !== undefined) {
+      if (typeof body.projectId !== 'string' || !/^[0-9a-f-]{36}$/i.test(body.projectId)) return NextResponse.json({error:'项目编号无效'}, {status:400});
+      const {data: project, error: projectError} = await supabase.from('projects').select('id').eq('id',body.projectId).eq('user_id',user.id).maybeSingle();
+      if (projectError) throw projectError;
+      if (!project) return NextResponse.json({error:'项目不存在或无权限'}, {status:404});
+    }
+
     const { data: existingJob, error: existingError } = await supabase
       .from('video_generation_jobs')
-      .select('request_id,task_id,status,model_id,upstream_model,charged_credits,price_version,estimated_comfly_cost_micros')
+      .select('request_id,task_id,status,model_id,upstream_model,charged_credits,price_version,estimated_comfly_cost_micros,project_id')
       .eq('request_id', requestId)
       .eq('user_id', user.id)
       .maybeSingle();
     if (existingError) throw existingError;
     if (existingJob) {
+      if ((existingJob.project_id || null) !== (body.projectId || null)) return NextResponse.json({error:'请求标识属于其他项目',code:'VIDEO_REQUEST_CONFLICT'}, {status:409});
       const samePriceVersion = existingJob.price_version === quote.priceVersion
         || existingJob.price_version === quote.priceVersion + VIDEO_GATEWAY_PRICE_SUFFIX;
       if (existingJob.model_id !== config.modelId || existingJob.charged_credits !== quote.credits || !samePriceVersion) {
@@ -279,6 +292,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '相同请求正在处理中', code: 'VIDEO_REQUEST_IN_PROGRESS', requestId }, { status: 409 });
     }
 
+    await assertCanvasVideoModelAvailable(videoUpstream, quote.upstreamModel);
+    releaseExecution = await acquireAiExecution({ requestId, userId: user.id, scope: 'generate-video', signal: request.signal });
     await reserveAiBudget({
       requestId,
       userId: user.id,
@@ -286,11 +301,13 @@ export async function POST(request: NextRequest) {
       estimatedCostMicros: quote.costMicros,
     });
     budgetReserved = true;
-    releaseExecution = acquireAiExecution({ requestId, userId: user.id, scope: 'generate-video' });
 
     const { error: jobInsertError } = await supabase.from('video_generation_jobs').insert({
       request_id: requestId,
       user_id: user.id,
+      project_id: body.projectId || null,
+      generator_id: typeof body.generatorId === 'string' ? body.generatorId.slice(0,200) : null,
+      recovery_meta: {prompt, aspectRatio: config.aspectRatio, source: body.taskSource === 'agent' ? 'agent' : 'canvas'},
       model_id: config.modelId,
       upstream_model: quote.upstreamModel,
       price_group: quote.group,
@@ -381,7 +398,7 @@ export async function POST(request: NextRequest) {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: request.signal,
+        signal: AbortSignal.timeout(180_000),
       });
     } catch (fetchError) {
       if (isAbortOrTransportError(fetchError)) {
@@ -461,6 +478,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: unknown) {
     if (isNotAuthenticatedError(error)) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    if (error instanceof CanvasVideoUpstreamConfigurationError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (isVideoPriceUnavailableError(error)) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 422 });
     }
@@ -525,6 +545,6 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json({ error: 'Failed to generate video', details: message, requestId, priceVersion: quote?.priceVersion }, { status: 500 });
   } finally {
-    releaseExecution?.();
+    await releaseExecution?.();
   }
 }

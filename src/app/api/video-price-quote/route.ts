@@ -3,6 +3,7 @@ import { enforceUserRateLimit, isAiToolRequestError, readLimitedJson } from '@/l
 import { isNotAuthenticatedError, requireUser } from '@/lib/require-user';
 import { normalizeVideoGenerationConfig, type VideoGenerationConfig } from '@/lib/video-models';
 import { isVideoPriceUnavailableError, quoteVideoCredits } from '@/lib/video-pricing';
+import { resolveCanvasVideoUpstream, assertCanvasVideoModelAvailable, CanvasVideoUpstreamConfigurationError } from '@/lib/canvas-video-upstream';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,8 +12,12 @@ export async function POST(request: NextRequest) {
     const body = await readLimitedJson(request, 16 * 1024) as Partial<VideoGenerationConfig>;
     const config = normalizeVideoGenerationConfig(body);
     const quote = quoteVideoCredits(config);
+    await assertCanvasVideoModelAvailable(resolveCanvasVideoUpstream(quote), quote.upstreamModel);
     return NextResponse.json({ ok: true, quote });
   } catch (error) {
+    if (error instanceof CanvasVideoUpstreamConfigurationError) {
+      return NextResponse.json({ ok: false, code: error.code, error: error.message }, { status: error.status });
+    }
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ ok: false, error: 'Not authenticated' }, { status: 401 });
     }

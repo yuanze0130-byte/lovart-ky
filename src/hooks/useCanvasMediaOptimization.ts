@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
 import { optimizeCanvasImageAsset, optimizeCanvasVideoAsset } from '@/lib/canvas-media-optimization';
+import { createSharedMediaWork, mediaWorkKey } from '@/lib/shared-media-work';
 import { updateGenerationHistoryMedia } from '@/lib/generation-history';
 
 interface UseCanvasMediaOptimizationParams {
@@ -12,6 +13,8 @@ interface UseCanvasMediaOptimizationParams {
   viewportHeight?: number;
   priorityElementIds?: string[];
   enabled?: boolean;
+  scopeKey?: string;
+  isInteractionActive?: boolean;
 }
 
 const OPTIMIZATION_OVERSCAN_PX = 300;
@@ -83,8 +86,20 @@ export function useCanvasMediaOptimization({
   viewportHeight,
   priorityElementIds = EMPTY_PRIORITY_ELEMENT_IDS,
   enabled = true,
+  scopeKey = 'local',
+  isInteractionActive = false,
 }: UseCanvasMediaOptimizationParams) {
   const { x: panX, y: panY } = pan;
+  const scopeRef = useRef({key:scopeKey, work:createSharedMediaWork()});
+  if (scopeRef.current.key !== scopeKey) scopeRef.current = {key:scopeKey,work:createSharedMediaWork()};
+  const interactionRef = useRef(isInteractionActive);
+  interactionRef.current = isInteractionActive;
+  const [settledView, setSettledView] = useState('');
+  const viewKey = JSON.stringify([panX, panY, scale, scopeKey]);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettledView(viewKey), 180);
+    return () => clearTimeout(timer);
+  }, [viewKey]);
   const runningKeysRef = useRef(new Set<string>());
   const failedKeysRef = useRef(new Map<string, MediaOptimizationFailure>());
   const mountedRef = useRef(true);
@@ -100,7 +115,9 @@ export function useCanvasMediaOptimization({
   }, []);
 
   useEffect(() => {
-    if (!enabled || typeof window === 'undefined') return;
+    if (!enabled || isInteractionActive || settledView !== viewKey || typeof window === 'undefined') return;
+    const scope = scopeRef.current;
+    const isCurrent = () => mountedRef.current && scopeRef.current === scope;
     if (runningKeysRef.current.size > 0) return;
     const now = Date.now();
     let nextRetryAt = Number.POSITIVE_INFINITY;
@@ -143,14 +160,15 @@ export function useCanvasMediaOptimization({
     const key = getMediaOptimizationKey(candidate);
     let started = false;
     const run = async () => {
+      if (!isCurrent() || interactionRef.current) return;
       started = true;
       runningKeysRef.current.add(key);
       try {
         if (candidate.type === 'image') {
-          const optimized = await optimizeCanvasImageAsset(candidate.content!);
-          if (!mountedRef.current) return;
+          const optimized = await scope.work.run(await mediaWorkKey('image', candidate.content!), () => optimizeCanvasImageAsset(candidate.content!));
+          if (!isCurrent()) return;
           if (!elementsRef.current.some((element) => element.id === candidate.id && element.content === candidate.content)) return;
-          setElements((current) => current.map((element) => (
+          setElements((current) => !isCurrent() ? current : current.map((element) => (
             element.id === candidate.id && element.content === candidate.content
               ? { ...element, ...optimized }
               : element
@@ -163,10 +181,10 @@ export function useCanvasMediaOptimization({
             height: optimized.originalHeight,
           });
         } else if (candidate.type === 'video') {
-          const optimized = await optimizeCanvasVideoAsset(candidate.content!);
-          if (!mountedRef.current) return;
+          const optimized = await scope.work.run(await mediaWorkKey('video', candidate.content!), () => optimizeCanvasVideoAsset(candidate.content!));
+          if (!isCurrent()) return;
           if (!elementsRef.current.some((element) => element.id === candidate.id && element.content === candidate.content)) return;
-          setElements((current) => current.map((element) => (
+          setElements((current) => !isCurrent() ? current : current.map((element) => (
             element.id === candidate.id && element.content === candidate.content
               ? { ...element, ...optimized }
               : element
@@ -205,5 +223,5 @@ export function useCanvasMediaOptimization({
         else window.clearTimeout(idleId);
       }
     };
-  }, [elements, enabled, panX, panY, priorityElementIds, queueTick, scale, setElements, viewportHeight, viewportWidth]);
+  }, [elements, enabled, isInteractionActive, settledView, viewKey, scopeKey, panX, panY, priorityElementIds, queueTick, scale, setElements, viewportHeight, viewportWidth]);
 }

@@ -18,6 +18,7 @@ export interface GenerationHistoryItem {
   height?: number;
   favorite?: boolean;
   metadata?: GenerationMetadata;
+  origin?: {ownerId?:string;projectId?:string;projectTitle?:string;nodeId?:string;sourceNodeId?:string};
 }
 
 export type GenerationHistoryMediaPatch = Pick<
@@ -45,7 +46,9 @@ export async function addGenerationHistoryItem(item: GenerationHistoryItem) {
   const database = await openDatabase();
   await new Promise<void>((resolve, reject) => {
     const transaction = database.transaction(STORE_NAME, 'readwrite');
-    transaction.objectStore(STORE_NAME).put(item);
+    const source = item.metadata?.generatorElementId;
+    transaction.objectStore(STORE_NAME).put({...item,origin:item.origin ? {...item.origin,nodeId:item.origin.nodeId || item.id,
+      sourceNodeId:item.origin.sourceNodeId || (typeof source==='string'?source:undefined)} : undefined});
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);
   });

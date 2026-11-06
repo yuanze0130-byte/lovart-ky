@@ -1,6 +1,8 @@
 "use client";
 
 /* eslint-disable @next/next/no-img-element -- Generated previews are user/session data URLs, not static assets. */
+import { resolveImageReference } from '@/lib/image-versions';
+import type { ImageSubmission } from '@/lib/image-submission';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Sparkles, Zap, Palette, Image as ImageIcon, Wand2, RotateCcw, Loader2, Settings2, ChevronUp, ChevronDown, Eye, EyeOff, BookOpen, Search, X, Cable } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
@@ -55,6 +57,7 @@ interface ImageGeneratorPanelProps {
       moderation?: OfficialModeration;
     },
     targetElementId?: string,
+    submission?: ImageSubmission,
   ) => Promise<void>;
   isGenerating: boolean;
   style?: React.CSSProperties;
@@ -113,6 +116,8 @@ export function ImageGeneratorPanel({
   onInsertPromptLibraryItem,
 }: ImageGeneratorPanelProps) {
   const retryHandlerRef = React.useRef<() => Promise<void>>(async () => undefined);
+  const submittingRef = React.useRef(false);
+  const [submissionError, setSubmissionError] = useState('');
   const initialElement = canvasElements.find((item) => item.id === elementId);
   const [prompt, setPrompt] = useState(initialPrompt || initialElement?.prompt || '');
   const [resolution, setResolution] = useState<Resolution>('1K');
@@ -163,13 +168,13 @@ export function ImageGeneratorPanel({
     const referenceId = selectedElement?.referenceImageId;
     if (!referenceId) return undefined;
 
-    const referenceElement = canvasElements.find((item) => item.id === referenceId);
+    const referenceElement = resolveImageReference(canvasElements,referenceId,selectedElement?.referenceImageVersionId);
     if (referenceElement?.type !== 'image' || typeof referenceElement.content !== 'string' || !referenceElement.content) {
       return undefined;
     }
 
     return referenceElement;
-  }, [canvasElements, selectedElement?.referenceImageId]);
+  }, [canvasElements, selectedElement?.referenceImageId, selectedElement?.referenceImageVersionId]);
 
   const boundReferenceImage = boundReferenceElement?.content;
   const displayedReferenceImages = useMemo(
@@ -317,7 +322,7 @@ export function ImageGeneratorPanel({
 
   const handleSubmit = async () => {
     const effectivePrompt = connectedInputs.prompt.trim() || prompt.trim();
-    if (!effectivePrompt || isBusy || !isPriceReady) return;
+    if (!effectivePrompt || isBusy || submittingRef.current || !isPriceReady) return;
 
     const effectiveReferenceImages = displayedReferenceImages;
     if (modelDefinition.requiresReference && effectiveReferenceImages.length === 0) {
@@ -329,6 +334,9 @@ export function ImageGeneratorPanel({
       return;
     }
 
+    submittingRef.current = true;
+    setSubmissionError('');
+    const submissionId = crypto.randomUUID();
     setProgress(8);
     setGenerationStatus('正在提交到中转站…');
     const steps = [18, 36, 54, 72, 88];
@@ -344,7 +352,7 @@ export function ImageGeneratorPanel({
       });
     }, 600);
 
-    const generateOne = async () => {
+    const generateOne = async (index: number) => {
       await onGenerate(
         effectivePrompt,
         resolution,
@@ -365,6 +373,7 @@ export function ImageGeneratorPanel({
             }
           : undefined,
         elementId,
+        { id: submissionId, index, count: outputCount },
       );
     };
 
@@ -373,23 +382,29 @@ export function ImageGeneratorPanel({
       if (executionMode === 'sequential') {
         for (let index = 0; index < outputCount; index += 1) {
           setGenerationStatus(`顺序生成 ${index + 1} / ${outputCount}`);
-          await generateOne();
+          await generateOne(index);
           setProgress(Math.round(((index + 1) / outputCount) * 100));
         }
       } else {
         let completed = 0;
-        await Promise.all(Array.from({ length: outputCount }, async () => {
-          await generateOne();
+        const outcomes = await Promise.allSettled(Array.from({ length: outputCount }, async (_, index) => {
+          await generateOne(index);
           completed += 1;
           setGenerationStatus(`并行完成 ${completed} / ${outputCount}`);
           setProgress(Math.round((completed / outputCount) * 100));
         }));
+        const failures = outcomes.filter((outcome):outcome is PromiseRejectedResult => outcome.status === 'rejected');
+        if (failures.length) throw new Error(`${failures.length} 张生成未完成：${failures[0].reason instanceof Error ? failures[0].reason.message : '请查看任务记录'}`);
       }
-    } finally {
-      setIsBatchSubmitting(false);
-      window.clearInterval(timer);
       setProgress(100);
       setGenerationStatus('生成完成');
+    } catch (error) {
+      setProgress(0);
+      setSubmissionError(error instanceof Error ? error.message : '生成未完成，请查看任务记录');
+    } finally {
+      submittingRef.current = false;
+      setIsBatchSubmitting(false);
+      window.clearInterval(timer);
       window.setTimeout(() => {
         setProgress(0);
         setGenerationStatus('');
@@ -423,6 +438,7 @@ export function ImageGeneratorPanel({
       </div>
 
       <div className="p-4">
+        {submissionError && <p role="alert" className="mb-3 text-xs text-red-600">{submissionError}</p>}
         {(isGenerating || progress > 0) && (
           <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/80 p-3 dark:border-violet-400/20 dark:bg-violet-500/10">
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-violet-700 dark:text-violet-200">

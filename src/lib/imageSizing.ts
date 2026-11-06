@@ -14,13 +14,19 @@ const MAX_DISPLAY_SIDE = 768;
 export async function getImageDimensions(imageSrc: string): Promise<ImageDimensions> {
   return await new Promise((resolve, reject) => {
     const image = new Image();
+    const timer = setTimeout(() => {
+      image.onload = image.onerror = null;
+      image.src = '';
+      reject(new Error('读取图片尺寸超时'));
+    }, 15_000);
     image.onload = () => {
+      clearTimeout(timer);
       resolve({
         width: image.naturalWidth || image.width,
         height: image.naturalHeight || image.height,
       });
     };
-    image.onerror = () => reject(new Error('读取图片尺寸失败'));
+    image.onerror = () => { clearTimeout(timer); reject(new Error('读取图片尺寸失败')); };
     image.src = imageSrc;
   });
 }

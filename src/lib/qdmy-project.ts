@@ -291,9 +291,20 @@ function nodeToElement(rawNode: unknown, groupId?: string): CanvasElement | null
 
 export function importQdmyProject(input: unknown): QdmyImportResult {
   const root = resolveRoot(input);
+  if (!Array.isArray(root.nodes) || (root.connections !== undefined && !Array.isArray(root.connections))) {
+    throw new Error('项目文件格式无效：需要节点列表和有效的连线列表');
+  }
   const nodes = asArray(root.nodes);
   const connections = asArray(root.connections);
   const groups = asArray(root.groups);
+  if (nodes.length + connections.length > 5000) throw new Error('项目元素超过 5000 个，请拆分后导入');
+  const ids = new Set<string>();
+  for (const item of [...nodes, ...connections]) {
+    const record = asRecord(item);
+    const id = firstString(record.id, record.nodeId, record.connectionId);
+    if (id && ids.has(id)) throw new Error(`项目存在重复编号 ${id}，请修复后导入`);
+    if (id) ids.add(id);
+  }
   const memberships = groupMembership(groups);
   const warnings: string[] = [];
   const elements: CanvasElement[] = [];

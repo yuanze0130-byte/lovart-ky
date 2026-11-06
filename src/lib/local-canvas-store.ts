@@ -11,6 +11,7 @@ export interface LocalCanvasDraft {
   elements: CanvasElement[];
   updatedAt: string;
   source: 'lovart-ky' | 'qdmy-import';
+  viewport?: { x: number; y: number; scale: number };
 }
 
 function openDatabase(): Promise<IDBDatabase> {
@@ -36,7 +37,8 @@ async function withStore<T>(
     return await new Promise<T>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, mode);
       const request = action(transaction.objectStore(STORE_NAME));
-      request.onsuccess = () => resolve(request.result);
+      transaction.oncomplete = () => resolve(request.result);
+      transaction.onabort = () => reject(transaction.error || new Error('本地画布事务已取消'));
       request.onerror = () => reject(request.error || new Error('本地画布操作失败'));
       transaction.onerror = () => reject(transaction.error || new Error('本地画布事务失败'));
     });
@@ -51,7 +53,7 @@ export async function loadLocalCanvasDraft(id = DEFAULT_LOCAL_DRAFT_ID): Promise
 }
 
 export async function saveLocalCanvasDraft(
-  input: Pick<LocalCanvasDraft, 'title' | 'elements'> & Partial<Pick<LocalCanvasDraft, 'id' | 'source'>>
+  input: Pick<LocalCanvasDraft, 'title' | 'elements'> & Partial<Pick<LocalCanvasDraft, 'id' | 'source' | 'viewport'>>
 ): Promise<LocalCanvasDraft> {
   if (typeof indexedDB === 'undefined') throw new Error('当前浏览器不支持本地画布存储');
   const draft: LocalCanvasDraft = {
@@ -60,6 +62,7 @@ export async function saveLocalCanvasDraft(
     elements: input.elements,
     updatedAt: new Date().toISOString(),
     source: input.source || 'lovart-ky',
+    viewport: input.viewport,
   };
   await withStore('readwrite', (store) => store.put(draft));
   return draft;
@@ -68,4 +71,11 @@ export async function saveLocalCanvasDraft(
 export async function removeLocalCanvasDraft(id = DEFAULT_LOCAL_DRAFT_ID): Promise<void> {
   if (typeof indexedDB === 'undefined') return;
   await withStore('readwrite', (store) => store.delete(id));
+}
+
+export async function listLocalSelectionTemplates(userId: string): Promise<LocalCanvasDraft[]> {
+  if (typeof indexedDB === 'undefined' || !userId) return [];
+  const prefix = `template:${userId}:`;
+  const drafts = await withStore<LocalCanvasDraft[]>('readonly', store => store.getAll(IDBKeyRange.bound(prefix, `${prefix}\uffff`)));
+  return drafts.sort((a,b) => b.updatedAt.localeCompare(a.updatedAt));
 }

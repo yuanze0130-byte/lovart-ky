@@ -8,7 +8,7 @@ import {
 } from '@/lib/generation-jobs';
 import { createServiceRoleSupabaseClient } from '@/lib/supabase';
 import { enforceUserRateLimit, isAiToolRequestError } from '@/lib/ai-tool-request-guards';
-import { resolveExistingVideoUpstream } from '@/lib/canvas-video-upstream';
+import { resolveExistingVideoUpstream, CanvasVideoUpstreamConfigurationError } from '@/lib/canvas-video-upstream';
 
 type VideoTerminalStatus = 'succeeded' | 'failed' | 'cancelled';
 
@@ -215,6 +215,9 @@ export async function GET(request: NextRequest) {
       refundedCredits,
     });
   } catch (error: unknown) {
+    if (error instanceof CanvasVideoUpstreamConfigurationError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status });
+    }
     if (isNotAuthenticatedError(error)) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }

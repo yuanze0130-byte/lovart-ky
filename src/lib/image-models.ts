@@ -157,9 +157,10 @@ export const IMAGE_MODEL_OPTIONS: ImageModelDefinition[] = [
     label: 'GPT Image 2 低价版（1K）',
     category: 'OpenAI',
     description: '高质量生成与精细编辑',
-    transport: 'image-task',
-    proxyModel: 'gpt-image-2-all',
-    upstreamModels: { '1K': 'gpt-image-2-all' },
+    transport: 'official-image-task',
+    // The -all route's upstream pool is unavailable; use the priced default route.
+    proxyModel: 'gpt-image-2',
+    upstreamModels: { '1K': 'gpt-image-2' },
     supportedResolutions: ['1K'],
     supportsReferences: true,
     supportsEditing: true,

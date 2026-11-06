@@ -11,6 +11,18 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      canvas_agent_text_runs: {
+        Row: { request_id: string; user_id: string; project_id: string; digest: string; status: 'running' | 'completed' | 'unknown' | 'failed'; result: Json | null; created_at: string; updated_at: string };
+        Insert: { request_id: string; user_id: string; project_id: string; digest: string; status: 'running' | 'completed' | 'unknown' | 'failed'; result?: Json | null };
+        Update: { status?: 'running' | 'completed' | 'unknown' | 'failed'; result?: Json | null; updated_at?: string };
+        Relationships: [];
+      };
+      canvas_image_runs: {
+        Row: { request_id: string; user_id: string; project_id: string; status: string; acknowledged: boolean; result: Json | null; meta: Json; created_at: string; updated_at: string };
+        Insert: { request_id: string; user_id: string; project_id: string; status?: string; result?: Json | null; meta?: Json; created_at?: string; updated_at?: string };
+        Update: { status?: string; result?: Json | null; meta?: Json; updated_at?: string };
+        Relationships: [];
+      };
       user_credits: {
         Row: {
           user_id: string;
@@ -151,6 +163,10 @@ export interface Database {
       };
       video_generation_jobs: {
         Row: {
+          acknowledged: boolean;
+          project_id: string | null;
+          generator_id: string | null;
+          recovery_meta: Json;
           request_id: string;
           user_id: string;
           task_id: string | null;
@@ -171,6 +187,10 @@ export interface Database {
           updated_at: string;
         };
         Insert: {
+          acknowledged?: boolean;
+          project_id?: string | null;
+          generator_id?: string | null;
+          recovery_meta?: Json;
           request_id: string;
           user_id: string;
           task_id?: string | null;
@@ -685,6 +705,12 @@ export interface Database {
     };
     Views: Record<string, never>;
     Functions: {
+      register_canvas_image_run: { Args: { p_request_id:string; p_user_id:string; p_project_id:string; p_meta:Json }; Returns:string };
+      acquire_canvas_ai_execution: { Args: { p_request_id: string; p_user_id: string; p_scope: string; p_lease_token: string; p_user_limit: number; p_global_limit: number }; Returns: string };
+      release_canvas_ai_execution: { Args: { p_request_id: string; p_user_id: string; p_lease_token: string }; Returns: undefined };
+      load_canvas_document: { Args: { p_project_id: string; p_user_id: string }; Returns: Json };
+      save_canvas_document: { Args: { p_project_id: string; p_user_id: string; p_expected_revision: number; p_title: string; p_elements: Json; p_viewport: Json }; Returns: number };
+      canvas_document_history: { Args: { p_project_id: string; p_user_id: string; p_revision?: number }; Returns: Json };
       get_project_thumbnail_candidates: {
         Args: {
           p_project_ids: string[];

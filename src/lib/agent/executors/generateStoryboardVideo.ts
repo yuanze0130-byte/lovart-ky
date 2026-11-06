@@ -1,4 +1,6 @@
 import type { AgentActionResult, AgentContext, GenerateStoryboardVideoAction, StoryboardVideoSize } from '@/lib/agent/actions';
+import type {NextRequest} from 'next/server';
+import {runGenerateVideoAction} from './generateVideo';
 
 function inferVideoSizeFromAspectRatio(aspectRatio?: string): StoryboardVideoSize {
   switch (aspectRatio) {
@@ -27,7 +29,7 @@ function inferVideoSizeFromAspectRatio(aspectRatio?: string): StoryboardVideoSiz
 export async function runGenerateStoryboardVideoAction(input: {
   action: GenerateStoryboardVideoAction;
   context: AgentContext;
-}): Promise<AgentActionResult> {
+}): Promise<Extract<AgentActionResult,{kind:'storyboard_video_generation_requested'}>> {
   const explicitItemId = input.action.storyboardItemId;
   const explicitOrder = input.action.storyboardOrder;
 
@@ -69,4 +71,10 @@ export async function runGenerateStoryboardVideoAction(input: {
     mode,
     message: `已准备为第 ${target.order + 1} 镜生成视频`,
   };
+}
+
+export async function executeGenerateStoryboardVideo(input:{request:NextRequest;action:GenerateStoryboardVideoAction;context:AgentContext}) {
+  const plan=await runGenerateStoryboardVideoAction(input);
+  const result=await runGenerateVideoAction({...input,action:{type:'generate_video',prompt:plan.prompt,size:plan.size,durationSeconds:plan.durationSeconds,mode:plan.mode}});
+  return {...plan,taskId:result.taskId,requestId:result.requestId,message:`第 ${plan.storyboardOrder} 镜视频任务已提交`};
 }

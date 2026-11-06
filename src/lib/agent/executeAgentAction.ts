@@ -7,8 +7,8 @@ import { runCreateCharacterThreeViewAction } from '@/lib/agent/executors/createC
 import { runCreateGridAction } from '@/lib/agent/executors/createGrid';
 import { runEditSelectedImageAction } from '@/lib/agent/executors/editSelectedImage';
 import { runGenerateImagesAction } from '@/lib/agent/executors/generateImages';
-import { runGenerateStoryboardImageAction } from '@/lib/agent/executors/generateStoryboardImage';
-import { runGenerateStoryboardVideoAction } from '@/lib/agent/executors/generateStoryboardVideo';
+import { executeGenerateStoryboardImage } from '@/lib/agent/executors/generateStoryboardImage';
+import { executeGenerateStoryboardVideo } from '@/lib/agent/executors/generateStoryboardVideo';
 import { runGenerateVideoAction } from '@/lib/agent/executors/generateVideo';
 
 export async function executeAgentAction(input: {
@@ -23,21 +23,21 @@ export async function executeAgentAction(input: {
     case 'create_storyboard_board':
       return runCreateStoryboardBoardAction({ context: input.context });
     case 'generate_images':
-      return runGenerateImagesAction({ request: input.request, action: input.action, context: input.context });
+      return runGenerateImagesAction({ request: input.request, action: input.action, context: input.context, userId: input.userId });
     case 'create_grid':
-      return runCreateGridAction({ request: input.request, action: input.action, context: input.context });
+      return runCreateGridAction({ request: input.request, action: input.action, context: input.context, userId: input.userId });
     case 'create_character_three_view':
-      return runCreateCharacterThreeViewAction({ request: input.request, action: input.action, context: input.context });
+      return runCreateCharacterThreeViewAction({ request: input.request, action: input.action, context: input.context, userId: input.userId });
     case 'generate_storyboard_image':
-      return runGenerateStoryboardImageAction({ action: input.action, context: input.context });
+      return executeGenerateStoryboardImage(input as typeof input & {action: Extract<AgentAction,{type:'generate_storyboard_image'}>});
     case 'generate_storyboard_video':
-      return runGenerateStoryboardVideoAction({ action: input.action, context: input.context });
+      return executeGenerateStoryboardVideo({ request:input.request, action: input.action, context: input.context });
     case 'generate_video':
       return runGenerateVideoAction({ request: input.request, action: input.action, context: input.context });
     case 'add_to_canvas':
       return runAddToCanvasAction({ action: input.action, context: input.context });
     case 'edit_selected_image':
-      return runEditSelectedImageAction({ request: input.request, action: input.action, context: input.context });
+      return runEditSelectedImageAction({ request: input.request, action: input.action, context: input.context, userId: input.userId });
     default:
       throw new Error('Unsupported agent action');
   }

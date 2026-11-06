@@ -1,11 +1,6 @@
 import type { NextRequest } from 'next/server';
 import type { AgentActionResult, AgentContext, CreateGridAction, StoryboardAspectRatio } from '@/lib/agent/actions';
-import { callInternalJson } from '@/lib/agent/executors/shared';
-
-type GenerateImageApiResult = {
-  imageData?: string;
-  error?: string;
-};
+import { runGenerateImagesAction } from './generateImages';
 
 const GRID_VARIATIONS: Record<4 | 9 | 25, string[]> = {
   4: [
@@ -38,49 +33,29 @@ export async function runCreateGridAction(input: {
   request: NextRequest;
   action: CreateGridAction;
   context: AgentContext;
+  userId: string;
 }): Promise<AgentActionResult> {
   void input.context;
 
   const count = input.action.count ?? 9;
   const aspectRatio = getGridAspectRatio(count, input.action.aspectRatio);
   const variations = GRID_VARIATIONS[count];
-  const images: Array<{ assetId: string; imageData: string; prompt: string }> = [];
-  const now = Date.now();
-
-  for (let index = 0; index < count; index += 1) {
-    const prompt = `${input.action.prompt}\n\n${variations[index]}。作为 ${count === 25 ? '25宫格连贯分镜' : count === 4 ? '四宫格剧情推演' : '九宫格视觉探索'} 的第 ${index + 1}/${count} 张，保持整体风格统一，但构图、机位或情绪有明确差异。`;
-    const result = await callInternalJson<GenerateImageApiResult>(input.request, '/api/generate-image', {
-      prompt,
-      resolution: '1K',
-      aspectRatio,
-      modelVariant: 'pro',
-      editMode: 'generate',
-    });
-
-    if (!result.imageData) {
-      throw new Error(result.error || `${count} 宫格第 ${index + 1} 张生成失败`);
-    }
-
-    images.push({
-      assetId: `agent-grid-${count}-${index + 1}-${now}`,
-      imageData: result.imageData,
-      prompt,
-    });
-  }
-
+  const prompts = variations.map((variation,index) => `${input.action.prompt}\n\n${variation}。第 ${index+1}/${count} 张，保持整体风格统一，构图与机位有明确差异。`);
+  const result = await runGenerateImagesAction({ ...input, action: { type: 'generate_images', prompt: input.action.prompt, aspectRatio }, prompts, useSelectedReference: false });
+  const images = result.images;
   return {
-    kind: 'images_generated',
+    ...result,
     assetIds: images.map((item) => item.assetId),
     images,
     count: images.length,
-    message: `已生成 ${images.length} 张${count === 25 ? '连贯分镜' : count === 4 ? '剧情推演四宫格' : '九宫格视觉探索'}`,
+    message: result.incomplete ? result.message : `已生成 ${images.length} 张${count === 25 ? '连贯分镜' : count === 4 ? '剧情推演四宫格' : '九宫格视觉探索'}`,
     layout: {
       kind: 'grid',
       columns: count === 4 ? 2 : count === 25 ? 5 : 3,
       rows: count === 4 ? 2 : count === 25 ? 5 : 3,
       gap: count === 25 ? 18 : 28,
       title: count === 25 ? '25宫格连贯分镜' : count === 4 ? '四宫格剧情推演' : '九宫格视觉探索',
-      labels: images.map((_, index) => String(index + 1).padStart(2, '0')),
+      labels: images.map((image, index) => String(image.agentStep || index + 1).padStart(2, '0')),
     },
   };
 }

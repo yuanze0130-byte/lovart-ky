@@ -39,18 +39,23 @@ export async function POST(request: NextRequest) {
     if (!model) throw new AiToolRequestError('该模型未在服务器开放，请重新选择', 400, 'MODEL_NOT_ALLOWED');
     if (body.expectedCredits !== model.credits) throw new AiToolRequestError('模型价格已变更，请刷新模型并确认价格后重试', 409, 'MODEL_PRICE_CHANGED');
     if (body.images.length && !model.vision) throw new AiToolRequestError('该模型不支持图片，请选择视觉模型', 400, 'VISION_NOT_SUPPORTED');
-    const upstream = getCanvasTextUpstream();
+    const upstream = getCanvasTextUpstream(process.env, model.group);
     const system = body.mode === 'table'
       ? '你是表格整理助手。按照用户要求整理原文，不捏造原文没有的事实。只返回 JSON：{"columns":["列名"],"rows":[["单元格"]]}。最多20列、100行，每行列数一致，所有单元格为字符串。'
       : body.mode === 'agent'
         ? body.systemPrompt || '你是画布内容处理助手。分析上游素材，按任务要求输出可直接给下游使用的内容。不要声称执行了画布操作。'
         : '你是画布文字与提示词助手。按用户要求生成或改写文字；有参考图片时根据画面分析。视频以有限关键帧呈现，不声称听到了音频或看到了未提供的片段。只输出所需内容。';
     const text = `任务要求：${body.instruction || '分析素材并输出清晰的描述'}\n\n上游内容：\n${body.source || '无文字输入'}`;
+    // Count the actual assembled text, including server prompts. Character counts
+    // alone underestimate Chinese input. Reject before reserving any credits.
+    if (Buffer.byteLength(system, 'utf8') + Buffer.byteLength(text, 'utf8') > model.maxInputBytes) {
+      throw new AiToolRequestError(`当前模型输入过长，请减少文字或分段处理（上限 ${model.maxInputBytes} 字节）`, 400, 'MODEL_INPUT_TOO_LONG');
+    }
     const { result, billing } = await runMeteredAiOperation({
       requestId: randomUUID(), userId: user.id, scope: 'canvas-ai',
       creditCost: model.credits, estimatedCostMicros: model.estimatedCostMicros,
       creditType: 'agent_chat', description: `画布 AI ${body.mode === 'table' ? '表格' : body.mode === 'agent' ? 'Agent' : '文本'}`,
-      referenceType: 'canvas_ai', meta: { model: model.id, mode: body.mode },
+      referenceType: 'canvas_ai', meta: { model: model.id, mode: body.mode, group: model.group, maxOutputTokens: model.maxOutputTokens },
       run: async () => {
         const client = new OpenAI({ ...upstream, timeout: 180000, maxRetries: 0 });
         const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [{ type: 'text', text }];
@@ -59,7 +64,7 @@ export async function POST(request: NextRequest) {
           content.push({ type: 'image_url', image_url: { url: image.dataUrl, detail: 'low' } });
         });
         const completion = await client.chat.completions.create({
-          model: model.id, max_tokens: 4096,
+          model: model.id, max_tokens: model.maxOutputTokens,
           messages: [{ role: 'system', content: system }, { role: 'user', content }],
         }, { signal: request.signal });
         if (completion.choices[0]?.finish_reason === 'length') throw new Error('Output truncated');

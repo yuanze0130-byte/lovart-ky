@@ -18,6 +18,7 @@ import { CANVAS_TASK_RETRY_EVENT, type CanvasTaskLogUpdate, type CanvasTaskRetry
 import type { VideoPriceQuote } from '@/lib/video-pricing';
 
 interface VideoGeneratorNodeProps {
+  projectId?: string | null;
   element: CanvasElement;
   connectedPrompt: string;
   referenceImages: string[];
@@ -25,7 +26,7 @@ interface VideoGeneratorNodeProps {
   lastFrame?: string;
   referenceLabels?: string[];
   onConfigChange: (updates: Partial<CanvasElement>) => void;
-  onComplete?: (videoUrl: string) => Promise<void> | void;
+  onComplete?: (videoUrl: string, identity: {taskId:string;recoveryRequestId:string}) => Promise<void> | void;
   onTaskUpdate?: (update: CanvasTaskLogUpdate) => void;
 }
 
@@ -77,6 +78,7 @@ function ToggleChip({ checked, label, disabled, onChange }: {
 }
 
 export function VideoGeneratorNode({
+  projectId,
   element,
   connectedPrompt,
   referenceImages,
@@ -195,6 +197,8 @@ export function VideoGeneratorNode({
     });
     try {
       const result = await startVideoGeneration({
+        projectId: projectId || undefined,
+        generatorId: element.id,
         requestId,
         prompt: effectivePrompt,
         modelId: config.modelId,
@@ -245,7 +249,7 @@ export function VideoGeneratorNode({
           model: status.model || result.model || config.modelId,
         });
         if (isVideoGenerationReady(status) && status.videoUrl) {
-          await onComplete?.(status.videoUrl);
+          await onComplete?.(status.videoUrl,{taskId:result.taskId,recoveryRequestId:requestId});
           onTaskUpdate?.({
             id: logId,
             nodeId: element.id,

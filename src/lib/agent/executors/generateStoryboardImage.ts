@@ -1,4 +1,6 @@
 import type { AgentActionResult, AgentContext, GenerateStoryboardImageAction, StoryboardAspectRatio } from '@/lib/agent/actions';
+import type { NextRequest } from 'next/server';
+import { runGenerateImagesAction } from './generateImages';
 
 function resolveAspectRatio(value?: StoryboardAspectRatio): StoryboardAspectRatio {
   return value || '9:16';
@@ -7,7 +9,7 @@ function resolveAspectRatio(value?: StoryboardAspectRatio): StoryboardAspectRati
 export async function runGenerateStoryboardImageAction(input: {
   action: GenerateStoryboardImageAction;
   context: AgentContext;
-}): Promise<AgentActionResult> {
+}): Promise<Extract<AgentActionResult, {kind: 'storyboard_image_generation_requested'}>> {
   const storyboardItems = input.context.storyboardItems || [];
 
   const target = input.action.storyboardItemId
@@ -38,8 +40,22 @@ export async function runGenerateStoryboardImageAction(input: {
     title: target.title,
     prompt: finalPrompt,
     aspectRatio: resolvedAspectRatio,
-    resolution: '1K',
-    modelVariant: 'pro',
+    resolution: input.context.imagePlan?.resolution || '1K',
+    modelVariant: input.context.imagePlan?.modelId || 'pro',
     message: `已准备为第 ${target.order + 1} 镜生成图片`,
   };
+}
+
+export async function executeGenerateStoryboardImage(input: {
+  request: NextRequest; userId: string; action: GenerateStoryboardImageAction; context: AgentContext;
+}): Promise<Extract<AgentActionResult, {kind: 'storyboard_image_generation_requested'}>> {
+  const plan = await runGenerateStoryboardImageAction(input);
+  const result = await runGenerateImagesAction({
+    ...input,
+    action: { type: 'generate_images', prompt: plan.prompt, count: 1, aspectRatio: plan.aspectRatio },
+    useSelectedReference: false,
+  });
+  const image = result.images[0];
+  if (!image?.imageData || !image.recoveryRequestId) throw new Error('分镜图片结果缺失');
+  return { ...plan, imageData: image.imageData, recoveryRequestId: image.recoveryRequestId, message: `第 ${plan.storyboardOrder} 镜图片已生成` };
 }

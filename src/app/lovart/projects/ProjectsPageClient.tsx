@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Plus, Bell, LogOut } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Plus, Search, RefreshCw, LogOut } from 'lucide-react';
 import { ProjectCard } from '@/components/lovart/ProjectCard';
 import { LoginModal } from '@/components/auth/LoginModal';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
@@ -12,6 +12,7 @@ import type { ProjectRow } from '@/lib/supabase';
 import { persistProjectThumbnail } from '@/lib/project-thumbnail';
 import { refreshCanvasAssetUrls } from '@/lib/canvas-asset-upload';
 import Link from 'next/link';
+import { PROJECT_RECENCY_EVENT, readProjectRecency } from '@/lib/project-recency';
 
 type Project = Pick<ProjectRow, 'id' | 'title' | 'thumbnail' | 'updated_at'>;
 
@@ -22,12 +23,47 @@ type CanvasElementThumbnailRow = {
 };
 
 export default function ProjectsPage() {
-    const { user, signOut } = useAuth();
+    const { user, signOut, loading: authLoading } = useAuth();
     const supabase = useSupabase();
     const { credits } = useUserCredits();
+    const [loadError, setLoadError] = useState('');
     const [projects, setProjects] = useState<Project[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showLoginModal, setShowLoginModal] = useState(false);
+    const [search, setSearch] = useState('');
+    const [renameProject, setRenameProject] = useState<Project | null>(null);
+    const [renameTitle, setRenameTitle] = useState('');
+    const [renameError, setRenameError] = useState('');
+    const [renaming, setRenaming] = useState(false);
+    useEffect(() => { setRenameProject(null); setRenameError(''); }, [user?.id]);
+    const [sort, setSort] = useState('opened');
+    const [recency, setRecency] = useState<{ owner: string; times: Record<string, number> }>({ owner: '', times: {} });
+    useEffect(() => {
+        if (!user?.id) return;
+        const owner = user.id;
+        const refresh = () => setRecency({ owner, times: readProjectRecency(owner) });
+        refresh();
+        window.addEventListener('storage', refresh);
+        window.addEventListener('focus', refresh);
+        window.addEventListener(PROJECT_RECENCY_EVENT, refresh);
+        return () => {
+            window.removeEventListener('storage', refresh);
+            window.removeEventListener('focus', refresh);
+            window.removeEventListener(PROJECT_RECENCY_EVENT, refresh);
+        };
+    }, [user?.id]);
+    const [reload, setReload] = useState(0);
+    const [loadedOwner, setLoadedOwner] = useState<string | null>(null);
+    const visibleProjects = useMemo(() => projects
+        .filter(project => (project.title || '未命名项目').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+        .sort((a, b) => {
+            if (sort === 'name') return (a.title || '').localeCompare(b.title || '', 'zh-CN');
+            if (sort === 'opened' && recency.owner === user?.id) {
+                const opened = (recency.times[b.id] || 0) - (recency.times[a.id] || 0);
+                if (opened) return opened;
+            }
+            return Date.parse(b.updated_at) - Date.parse(a.updated_at);
+        }), [projects, search, sort, recency, user?.id]);
 
     useEffect(() => {
         let cancelled = false;
@@ -52,12 +88,16 @@ export default function ProjectsPage() {
         }
 
         async function loadData() {
+            if (authLoading) return;
             if (!user || !supabase) {
+                setProjects([]);
+                setLoadedOwner(null);
                 setIsLoading(false);
                 return;
             }
 
             setIsLoading(true);
+            setLoadError('');
             try {
                 const projectsResult = await supabase
                     .from('projects')
@@ -66,10 +106,12 @@ export default function ProjectsPage() {
                     .order('updated_at', { ascending: false });
 
                 if (projectsResult.error) throw projectsResult.error;
-                const projectRows = await refreshCanvasAssetUrls((projectsResult.data || []) as Project[]);
+                const rawRows = (projectsResult.data || []) as Project[];
+                const projectRows = await refreshCanvasAssetUrls(rawRows).catch(() => { if (!cancelled) setLoadError('缩略图暂时无法加载，项目内容仍可打开'); return rawRows.map(p => ({ ...p, thumbnail: null })); });
                 if (cancelled) return;
 
                 setProjects(projectRows);
+                setLoadedOwner(user.id);
                 setIsLoading(false);
 
                 const missingThumbnailProjectIds = projectRows
@@ -87,7 +129,7 @@ export default function ProjectsPage() {
                         return;
                     }
 
-                    const rows = await refreshCanvasAssetUrls((canvasRows || []) as CanvasElementThumbnailRow[]);
+                    const rows = await refreshCanvasAssetUrls((canvasRows || []) as CanvasElementThumbnailRow[]).catch(() => []);
                     if (cancelled) return;
 
                     const derivedThumbnailMap = new Map(rows.map((row) => [row.project_id, row.content]));
@@ -99,6 +141,7 @@ export default function ProjectsPage() {
                 }
             } catch (error) {
                 console.error('Failed to load data:', error);
+                if (!cancelled) { setLoadError('项目列表加载失败，请重试。'); setLoadedOwner(user.id); setProjects([]); }
             } finally {
                 if (!cancelled) setIsLoading(false);
             }
@@ -108,7 +151,7 @@ export default function ProjectsPage() {
         return () => {
             cancelled = true;
         };
-    }, [user, supabase]);
+    }, [user, supabase, authLoading, reload]);
 
     const formatDate = (dateString: string) => {
         const date = new Date(dateString);
@@ -126,18 +169,22 @@ export default function ProjectsPage() {
     };
 
     const handleRenameProject = async (project: Project) => {
-        if (!supabase || !user) return;
+        if (!supabase || !user || renaming) return;
 
-        const nextTitle = window.prompt('输入新的项目名称', project.title)?.trim();
-        if (!nextTitle || nextTitle === project.title) return;
+        const nextTitle = renameTitle.trim();
+        if (!nextTitle) { setRenameError('请输入项目名称。'); return; }
+        if (nextTitle === project.title) { setRenameProject(null); return; }
 
+        setRenaming(true);
+        setRenameError('');
+        try {
         const { error } = await supabase
             .from('projects')
             .update({ title: nextTitle })
             .eq('id', project.id);
 
         if (error) {
-            alert(`重命名失败：${error.message}`);
+            setRenameError('重命名失败，请检查网络后重试。原名称已保留。');
             return;
         }
 
@@ -146,6 +193,10 @@ export default function ProjectsPage() {
                 item.id === project.id ? { ...item, title: nextTitle } : item
             )
         );
+        setRenameProject(null);
+        } catch {
+            setRenameError('重命名结果暂未确认，请刷新列表核对后重试。');
+        } finally { setRenaming(false); }
     };
 
     const handleDeleteProject = async (project: Project) => {
@@ -190,10 +241,6 @@ export default function ProjectsPage() {
 
                         <div className="flex items-center gap-2">
                             <ThemeToggle />
-                            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors relative">
-                                <Bell size={18} className="text-gray-600" />
-                                <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-                            </button>
 
                             {user && credits !== null && (
                                 <Link href="/user#recharge" aria-label={`当前 ${credits.toLocaleString()} 积分，前往充值`} className="px-3 py-1.5 bg-black text-white rounded-full text-xs font-medium flex items-center gap-1.5 transition-colors hover:bg-gray-800">
@@ -226,7 +273,7 @@ export default function ProjectsPage() {
                     </div>
 
                     <div className="px-8 pb-8">
-                        {!user ? (
+                        {authLoading ? <p role="status" className="py-20 text-center text-gray-500">正在确认登录状态…</p> : !user ? (
                             <div className="flex flex-col items-center justify-center h-full">
                                 <div className="text-center max-w-md">
                                     <h2 className="text-2xl font-bold mb-4">欢迎来到 Doodleverse</h2>
@@ -239,15 +286,16 @@ export default function ProjectsPage() {
                                     </button>
                                 </div>
                             </div>
-                        ) : isLoading ? (
-                            <div className="flex items-center justify-center h-full">
-                                <div className="text-gray-400">加载中...</div>
+                        ) : isLoading || loadedOwner !== user.id ? (
+                            <div role="status" className="py-12">
+                                <p className="mb-6 text-gray-500">正在读取项目库…</p>
+                                <div aria-hidden="true" className="grid grid-cols-2 gap-6 lg:grid-cols-4">{Array.from({length: 8}, (_, index) => <div key={index} className="h-48 animate-pulse rounded-2xl bg-gray-100" />)}</div>
                             </div>
                         ) : (
                             <div>
                                 <div className="flex items-center justify-between mb-6">
                                     <h2 className="text-lg font-semibold text-gray-800">
-                                        所有项目
+                                        项目库
                                         <span className="ml-2 text-sm font-normal text-gray-500">({projects.length})</span>
                                     </h2>
                                     <Link
@@ -259,7 +307,13 @@ export default function ProjectsPage() {
                                     </Link>
                                 </div>
 
-                                {projects.length === 0 ? (
+                                <div className="mb-6 flex flex-wrap items-center gap-3">
+                                    <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5"><Search size={17} className="text-gray-400" /><input type="search" aria-label="搜索项目" placeholder="搜索项目名称" value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent text-sm outline-none" /></label>
+                                    <select aria-label="项目排序" value={sort} onChange={event => setSort(event.target.value)} className="rounded-xl border border-gray-200 bg-transparent px-3 py-2.5 text-sm"><option value="opened">最近打开（本机）</option><option value="recent">最近编辑</option><option value="name">名称排序</option></select>
+                                    <button type="button" aria-label="刷新项目列表" onClick={() => setReload(value => value + 1)} className="rounded-xl border border-gray-200 p-3 hover:bg-gray-50"><RefreshCw size={16} /></button>
+                                </div>
+                                {loadError && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-700">{loadError} <button onClick={() => setReload(value => value + 1)} className="underline">重试</button></p>}
+                                {loadError && projects.length === 0 ? null : projects.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-20">
                                         <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
                                             <Plus size={32} className="text-gray-400" />
@@ -273,15 +327,17 @@ export default function ProjectsPage() {
                                             创建项目
                                         </Link>
                                     </div>
+                                ) : visibleProjects.length === 0 ? (
+                                    <div className="py-20 text-center"><h3 className="text-lg font-medium">没有匹配的项目</h3><p className="mt-2 text-sm text-gray-500">试试其他名称，或清除搜索查看全部项目。</p><button type="button" onClick={() => setSearch('')} className="mt-5 rounded-full border border-gray-200 px-5 py-2 text-sm">清除搜索</button></div>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                                        {projects.map((project) => (
+                                        {visibleProjects.map((project) => (
                                             <Link key={project.id} href={`/canvas?id=${project.id}`}>
                                                 <ProjectCard
                                                     title={project.title}
                                                     date={formatDate(project.updated_at)}
                                                     imageUrl={project.thumbnail || undefined}
-                                                    onRename={() => void handleRenameProject(project)}
+                                                    onRename={() => { setRenameProject(project); setRenameTitle(project.title); setRenameError(''); }}
                                                     onDelete={() => void handleDeleteProject(project)}
                                                 />
                                             </Link>
@@ -293,6 +349,14 @@ export default function ProjectsPage() {
                     </div>
                 </div>
             </main>
+            {renameProject && user && <section aria-label="重命名项目" className="fixed bottom-6 left-1/2 z-50 w-[min(480px,calc(100vw-32px))] -translate-x-1/2 rounded-2xl border bg-white p-5 text-gray-900 shadow-xl">
+                <form onSubmit={event => { event.preventDefault(); void handleRenameProject(renameProject); }}>
+                    <label htmlFor="project-rename-title" className="mb-2 block text-sm font-medium">重命名项目</label>
+                    <input id="project-rename-title" autoFocus maxLength={200} disabled={renaming} value={renameTitle} onChange={event => setRenameTitle(event.target.value)} onKeyDown={event => { if (event.key === 'Escape' && !renaming) setRenameProject(null); }} className="w-full rounded-lg border p-2" />
+                    {renameError && <p role="alert" className="mt-2 text-sm text-red-600">{renameError}</p>}
+                    <div className="mt-3 flex justify-end gap-3"><button type="button" disabled={renaming} onClick={() => setRenameProject(null)}>取消</button><button type="submit" disabled={renaming || !renameTitle.trim()} className="rounded-lg bg-black px-4 py-2 text-white disabled:opacity-40">{renaming ? '正在保存…' : '保存名称'}</button></div>
+                </form>
+            </section>}
             <LoginModal open={showLoginModal} onClose={() => setShowLoginModal(false)} />
         </div>
     );

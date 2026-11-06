@@ -1,7 +1,23 @@
 "use client";
+import { useImageRunRecovery } from '@/hooks/useImageRunRecovery';
+import { imageNodeBusy } from '@/lib/image-submission';
+import { runQueuedImageRequest } from '@/lib/image-request-queue';
+import { useVideoRunRecovery } from '@/hooks/useVideoRunRecovery';
+import { LocalProjectRecovery } from '@/components/lovart/LocalProjectRecovery';
+import { CanvasWorkspaceSidebar } from '@/components/lovart/CanvasWorkspaceSidebar';
+import { CanvasImageChat } from '@/components/lovart/CanvasImageChat';
+import { CanvasImageBatch } from '@/components/lovart/CanvasImageBatch';
+import { writeImageBatchOutputs } from '@/lib/image-batch-output';
+import { agentDraftMetadata, agentDraftHistory } from '@/lib/agent/draft-provenance';
+import { isImageModelId } from '@/lib/image-models';
+import { CanvasImageVersions } from '@/components/lovart/CanvasImageVersions';
+import { containsImageResult, groupNewImageEdits, isDisplayedImageResult, replaceImageWithVersion, selectImageVersion, uniqueImageForContent } from '@/lib/image-versions';
+import { AgentPlanProgress } from '@/components/lovart/AgentPlanProgress';
+import { AgentPlanEditor } from '@/components/lovart/AgentPlanEditor';
+import { excludeAgentReferences } from '@/lib/agent/context-controls';
 
 import React, { useMemo, useState, Suspense, useRef, useCallback, useEffect } from 'react';
-import { Plus, Minus, ChevronDown, Cloud, CloudOff, LoaderCircle, Map as MapIcon, History as HistoryIcon, Bot, Boxes, ScrollText } from 'lucide-react';
+import { Plus, Minus, ChevronDown, Cloud, CloudOff, LoaderCircle, Map as MapIcon } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
@@ -14,7 +30,7 @@ import { CanvasQuickHelp } from '@/components/lovart/CanvasQuickHelp';
 import { NodeAlignmentPanel } from '@/components/lovart/NodeAlignmentPanel';
 import { RhaiLibraryPanel } from '@/components/lovart/RhaiLibraryPanel';
 import { ImageGeneratorPanel } from '@/components/lovart/ImageGeneratorPanel';
-import { startVideoGeneration, getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
+import { getVideoGenerationStatus, type VideoModelMode } from '@/components/lovart/VideoGeneratorPanel';
 import type { RelightConfig } from '@/components/lovart/RelightStudioModal';
 import { AngleAdjustPanel, type MultiAngleGenerateItem } from '@/components/lovart/AngleAdjustPanel';
 import { GenerationHistoryPanel } from '@/components/lovart/GenerationHistoryPanel';
@@ -172,9 +188,14 @@ function LovartCanvasContent() {
         }
     }, [projectId, supabase]);
 
-    const { scale, pan, setPan, zoomIn, zoomOut, zoomTo } = useCanvasViewport();
+    const { scale, pan, setPan, setScale, zoomIn, zoomOut, zoomTo } = useCanvasViewport();
     const [elements, setElements] = useState<CanvasElement[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
+    useEffect(()=>{
+        const mapped=selectedIds.map(id=>elements.some(item=>item.id===id)?id:elements.find(item=>containsImageResult(item,id))?.id || id);
+        const unique=[...new Set(mapped)];
+        if(unique.length!==selectedIds.length || unique.some((id,index)=>id!==selectedIds[index]))setSelectedIds(unique);
+    },[elements,selectedIds]);
     const [activeTool, setActiveTool] = useState('select');
     const [title, setTitle] = useState('Untitled');
     const [isGenerating, setIsGenerating] = useState(false);
@@ -199,6 +220,8 @@ function LovartCanvasContent() {
     const miniMapRef = useRef<HTMLDivElement | null>(null);
     const lastFocusedRelightTargetRef = useRef<string | null>(null);
     const [showGenerationHistory, setShowGenerationHistory] = useState(false);
+    const [showImageChat, setShowImageChat] = useState(false);
+    const [showImageBatch, setShowImageBatch] = useState(false);
     const [showTaskLog, setShowTaskLog] = useState(false);
     const [show3DDirector, setShow3DDirector] = useState(false);
     const [showNodeAlignment, setShowNodeAlignment] = useState(false);
@@ -222,24 +245,27 @@ function LovartCanvasContent() {
     const updateCanvasFeature = useCallback(<K extends keyof CanvasFeatureSettings,>(key: K, value: CanvasFeatureSettings[K]) => {
         setCanvasFeatures((current) => ({ ...current, [key]: value }));
     }, []);
-    const handleProjectLoaded = useCallback(({ title: loadedTitle, elements: loadedElements, append }: {
+    const handleProjectLoaded = useCallback(({ title: loadedTitle, elements: loadedElements, append, viewport }: {
         title: string;
         elements: CanvasElement[];
         append?: boolean;
+        viewport?: { x: number; y: number; scale: number };
     }) => {
         setTitle(loadedTitle);
-        setElements((currentElements) => normalizeCanvasConnections(append
-            ? [...currentElements, ...loadedElements]
-            : loadedElements));
-    }, []);
-    const handleAssetsPersisted = useCallback((persistedElements: CanvasElement[]) => {
+        setElements((currentElements) => append ? normalizeCanvasConnections([...currentElements, ...loadedElements]) : loadedElements);
+        if (viewport && [viewport.x, viewport.y, viewport.scale].every(Number.isFinite)) { setPan({ x: viewport.x, y: viewport.y }); setScale(Math.max(0.2, Math.min(3, viewport.scale))); }
+    }, [setPan, setScale]);
+    const handleAssetsPersisted = useCallback((persistedElements: CanvasElement[], originalElements?: CanvasElement[]) => {
+        const originals = new Map(originalElements?.map(e => [e.id, e]));
         const persistedById = new Map(persistedElements.map((element) => [element.id, element]));
         setElements((currentElements) => currentElements.map(
-            (element) => persistedById.get(element.id) || element
+            (element) => (!originalElements || originals.get(element.id) === element) ? persistedById.get(element.id) || element : element
         ));
     }, []);
 
+    const projectViewport = useMemo(() => ({ x: pan.x, y: pan.y, scale }), [pan.x, pan.y, scale]);
     const {
+        currentProjectId, loadProject,
         saveStatus,
         isLoading,
         isHydrating,
@@ -247,12 +273,18 @@ function LovartCanvasContent() {
     } = useProjectPersistence({
         user: isAuthLoading ? undefined : user,
         initialProjectId: projectId,
+        viewport: projectViewport,
         elements,
         title,
         isInteractionActive: isDraggingElement,
         onProjectLoaded: handleProjectLoaded,
         onAssetsPersisted: handleAssetsPersisted,
     });
+
+    useEffect(() => () => {
+        if (currentProjectId) runQueuedImageRequest.cancelProject(currentProjectId);
+    }, [currentProjectId, user?.id]);
+
 
     const {
         appendElement,
@@ -589,6 +621,8 @@ function LovartCanvasContent() {
         handleGenerateImage,
         handleGenerateSelectedImages,
     } = useCanvasGeneration({
+        projectId: currentProjectId,
+        owner: user?.id,
         pan,
         elements,
         selectedIds,
@@ -907,15 +941,19 @@ function LovartCanvasContent() {
             });
 
             if (typeof result.imageData === 'string') {
-                setElements((prev) => prev.map((element) => element.id === imageElement.id ? {
-                    ...element,
+                const versionId=uuidv4();
+                const metadata:GenerationMetadata={...imageElement.generationMetadata,recoveryRequestId:undefined,sourcePrompt:objectEditPrompt.trim(),finalPrompt:typeof result.finalPrompt==='string'?result.finalPrompt:objectEditPrompt.trim(),modelVariant:isImageModelId(result.modelVariant)?result.modelVariant:'pro',model:typeof result.model==='string'?result.model:undefined,imageActionKind:'object-edit'};
+                void addGenerationHistoryItem({id:versionId,kind:'image',content:result.imageData,prompt:metadata.finalPrompt,model:metadata.model || metadata.modelVariant,createdAt:new Date().toISOString(),origin:{ownerId:user?.id,projectId:currentProjectId || undefined,projectTitle:title,nodeId:imageElement.id,sourceNodeId:imageElement.id},metadata});
+                setElements((prev) => prev.map((element) => element.id === imageElement.id ? replaceImageWithVersion(element,{
                     previousContent: element.content,
                     content: result.imageData,
+                    prompt:objectEditPrompt.trim(),
+                    generationMetadata:metadata,
                     annotationLabel: annotationObject.label,
                     annotationScore: annotationObject.score,
                     annotationPolygon: annotationObject.polygon,
                     annotationMaskUrl: annotationObject.maskUrl,
-                } : element));
+                },versionId) : element));
             }
 
             setObjectEditPrompt('');
@@ -923,12 +961,14 @@ function LovartCanvasContent() {
             const message = error instanceof Error ? error.message : '对象编辑失败';
             alert(message === 'NOT_AUTHENTICATED' ? '当前未登录或登录状态已过期，请先登录后再使用标记编辑。' : message);
         }
-    }, [annotationImageId, annotationObject, annotationSubject, editObject, elements, objectEditPrompt, setElements]);
+    }, [annotationImageId, annotationObject, annotationSubject, editObject, elements, objectEditPrompt, setElements,user?.id,currentProjectId,title]);
 
     const handleRevertObjectEdit = useCallback(() => {
         if (!annotationImageId) return;
         setElements((prev) => prev.map((element) => {
             if (element.id !== annotationImageId || !element.previousContent) return element;
+            const original=Array.isArray(element.imageVersions)?element.imageVersions[0]:undefined;
+            if(original && typeof original==='object' && !Array.isArray(original) && typeof original.id==='string')return {...selectImageVersion(element,original.id),previousContent:undefined};
             return {
                 ...element,
                 content: element.previousContent,
@@ -962,6 +1002,7 @@ function LovartCanvasContent() {
             const resultElement: CanvasElement = {
                 id: resultId,
                 type: 'image',
+                sourceImageId:uniqueImageForContent(elements,input.image)?.id,
                 x: element.x + (element.width || 440) + 96,
                 y: element.y,
                 width: displaySize.width,
@@ -997,6 +1038,7 @@ function LovartCanvasContent() {
                 color: '#f43f5e',
             };
             void addGenerationHistoryItem({
+ origin: {ownerId:user?.id,projectId:currentProjectId || undefined,projectTitle:title},
                 id: resultId,
                 kind: 'image',
                 content: data.imageData,
@@ -1007,18 +1049,18 @@ function LovartCanvasContent() {
                 height: displaySize.originalHeight,
                 metadata: resultElement.generationMetadata,
             });
-            setElements((previous) => [
+            setElements((previous) => groupNewImageEdits(previous,[
                 ...previous.map((item) => item.id === element.id ? { ...item, prompt: input.prompt } : item),
                 connector,
                 resultElement,
-            ]);
+            ]));
             setSelectedIds([resultId]);
         } catch (error) {
             alert(error instanceof Error ? error.message : '局部重绘失败');
         } finally {
             setIsGenerating(false);
         }
-    }, [setElements, setSelectedIds]);
+    }, [setElements, setSelectedIds, currentProjectId, title, user?.id, elements]);
 
     const handleGlobalViewCapture = useCallback((
         element: CanvasElement,
@@ -1066,6 +1108,7 @@ function LovartCanvasContent() {
                 color: '#10b981',
             }, resultElement);
             void addGenerationHistoryItem({
+ origin: {ownerId:user?.id,projectId:currentProjectId || undefined,projectTitle:title},
                 id: resultId,
                 kind: 'image',
                 content: image.content,
@@ -1077,7 +1120,7 @@ function LovartCanvasContent() {
         });
         setElements((previous) => [...previous, ...additions]);
         setSelectedIds(resultIds);
-    }, [setElements, setSelectedIds]);
+    }, [setElements, setSelectedIds, currentProjectId, title, user?.id]);
 
     const handleMotionTransferComplete = useCallback(async (element: CanvasElement, videoUrl: string) => {
         const persistedVideoUrl = await importRemoteCanvasVideo(videoUrl);
@@ -1121,6 +1164,7 @@ function LovartCanvasContent() {
             : previous);
         setSelectedIds([resultId]);
         void addGenerationHistoryItem({
+ origin: {ownerId:user?.id,projectId:currentProjectId || undefined,projectTitle:title},
             id: resultId,
             kind: 'video',
             content: persistedVideoUrl,
@@ -1131,9 +1175,10 @@ function LovartCanvasContent() {
             height: 300,
             metadata: resultElement.generationMetadata,
         });
-    }, [setElements, setSelectedIds]);
+    }, [setElements, setSelectedIds, currentProjectId, title, user?.id]);
 
     const handleInsertHistoryItem = useCallback(async (item: GenerationHistoryItem) => {
+        const metadata = {...item.metadata,recoveryRequestId:item.metadata?.recoveryRequestId || item.id,origin:item.origin || item.metadata?.origin};
         if (item.kind === 'image') {
             const dimensions = item.width && item.height
                 ? { width: item.width, height: item.height }
@@ -1152,7 +1197,7 @@ function LovartCanvasContent() {
                 previewUrl: item.previewUrl,
                 thumbnailUrl: item.thumbnailUrl,
                 prompt: item.prompt,
-                generationMetadata: item.metadata,
+                generationMetadata: metadata,
             });
             return;
         }
@@ -1166,7 +1211,7 @@ function LovartCanvasContent() {
             content: item.content,
             posterUrl: item.posterUrl,
             prompt: item.prompt,
-            generationMetadata: item.metadata,
+            generationMetadata: metadata,
         });
     }, [appendElement, pan.x, pan.y]);
 
@@ -1604,7 +1649,9 @@ function LovartCanvasContent() {
             thumbnailUrl: item.thumbnailUrl,
         })),
     });
-    const { runAgent, isRunning: isAgentRunning, cancelAgent } = useAgentRunner();
+    const { runAgent, isRunning: isAgentRunning, cancelAgent, dismissPlan, activePlan, planApproval, repricePlan, confirmPlan, result: agentLatestResult } = useAgentRunner(user?.id, currentProjectId);
+    const agentCanvasScope = useRef({ projectId: currentProjectId, owner: user?.id });
+    agentCanvasScope.current = { projectId: currentProjectId, owner: user?.id };
 
     const handleInsertAsset = useCallback((asset: ProjectAsset) => {
         const resolvedAspectRatio = asset.aspectRatio ?? inferStoryboardAspectRatio(asset.width, asset.height);
@@ -1632,11 +1679,20 @@ function LovartCanvasContent() {
     }), [scale]);
 
     const handleLocateTaskNode = useCallback((nodeId: string) => {
-        const source = elements.find((element) => element.id === nodeId);
+        const source = elements.find((element) => containsImageResult(element,nodeId));
         if (!source) return;
         setSelectedIds([source.id]);
         setPan(centerPanForElement(source));
     }, [centerPanForElement, elements, setPan]);
+    const focusedSourceLink = useRef('');
+    const requestedSourceNode = searchParams.get('focusNode');
+    useEffect(()=>{
+        if(isHydrating || !requestedSourceNode || !currentProjectId || currentProjectId!==projectId)return;
+        const key=`${currentProjectId}:${requestedSourceNode}`;
+        if(focusedSourceLink.current===key || !elements.some(element=>containsImageResult(element,requestedSourceNode)))return;
+        focusedSourceLink.current=key;
+        handleLocateTaskNode(requestedSourceNode);
+    },[isHydrating,requestedSourceNode,currentProjectId,projectId,elements,handleLocateTaskNode]);
 
     const handleRetryTask = useCallback((entry: CanvasTaskLogEntry) => {
         const source = entry.nodeId ? elements.find((element) => element.id === entry.nodeId) : undefined;
@@ -2169,9 +2225,27 @@ function LovartCanvasContent() {
         setActiveTool('select');
     }, [buildStoryboardVideoFlow, getStoryboardNodeSize, pan.x, pan.y, scale, setActiveTool, setElements, setSelectedIds, storyboard, storyboardLayout]);
 
+    const { beginOperation } = useCanvasHistory({
+        elements,
+        storyboard,
+        storyboardLayout,
+        selectedStoryboardItemId,
+        isLoading: isHydrating,
+        selectedIds,
+        setElements,
+        setStoryboard,
+        setStoryboardLayout,
+        setSelectedIds,
+        setSelectedStoryboardItemId,
+        deleteElements: handleDeleteElements,
+        saveProject,
+    });
+
     const handleVideoGeneratorNodeComplete = useCallback(async (generator: CanvasElement, remoteVideoUrl: string) => {
+        const opening = agentCanvasScope.current;
         const videoUrl = await importRemoteCanvasVideo(remoteVideoUrl);
-        const resultId = uuidv4();
+        if (opening.projectId !== agentCanvasScope.current.projectId || opening.owner !== agentCanvasScope.current.owner) return;
+        const resultId = typeof generator.generationMetadata?.recoveryRequestId === 'string' ? generator.generationMetadata.recoveryRequestId : uuidv4();
         const connectorId = uuidv4();
         const resultWidth = Math.max(320, generator.width || 430);
         const resultHeight = Math.max(240, Math.round(resultWidth * 9 / 16));
@@ -2210,9 +2284,11 @@ function LovartCanvasContent() {
             strokeWidth: 2,
         };
 
-        setElements((previous) => [...previous, videoElement, connector]);
+        beginOperation();
+        setElements((previous) => previous.some(e => e.id === resultId || (generator.generationMetadata?.taskId && e.type === 'video' && e.generationMetadata?.taskId === generator.generationMetadata.taskId)) ? previous : [...previous, videoElement, connector]);
         setSelectedIds([resultId]);
         void addGenerationHistoryItem({
+ origin: {ownerId:user?.id,projectId:currentProjectId || undefined,projectTitle:title},
             id: resultId,
             kind: 'video',
             content: videoUrl,
@@ -2223,28 +2299,22 @@ function LovartCanvasContent() {
             height: resultHeight,
             metadata: generator.generationMetadata,
         });
-    }, [setElements, setSelectedIds]);
+    }, [beginOperation, setElements, setSelectedIds, currentProjectId, title, user?.id]);
 
-    useCanvasHistory({
-        elements,
-        storyboard,
-        storyboardLayout,
-        selectedStoryboardItemId,
-        isLoading: isHydrating,
-        selectedIds,
-        setElements,
-        setStoryboard,
-        setStoryboardLayout,
-        setSelectedIds,
-        setSelectedStoryboardItemId,
-        deleteElements: handleDeleteElements,
-        saveProject,
-    });
+    const imageRecovery = useImageRunRecovery(currentProjectId, !isHydrating && !isLoading && Boolean(user) && saveStatus !== 'load-error', setElements, beginOperation, user?.id);
+    const recoveryMessage = imageRecovery.message;
+    const videoRecoveryMessage = useVideoRunRecovery(currentProjectId, !isHydrating && !isLoading && Boolean(user) && saveStatus !== 'load-error', setElements, beginOperation, user?.id, agentLatestResult?.kind === 'video_started' ? agentLatestResult.taskId : undefined);
 
     const applyAgentCanvasDrafts = useCallback((drafts: DraftCanvasElement[]) => {
-        setElements((prev) => [
-            ...prev,
-            ...drafts.map((draft): CanvasElement => ({
+        for(const draft of drafts)void addGenerationHistoryItem(agentDraftHistory(draft,{ownerId:user?.id,projectId:currentProjectId || undefined,projectTitle:title})).catch(()=>console.error('Agent 结果已保留在画布，素材历史暂未保存'));
+        beginOperation();
+        setElements((prev) => groupNewImageEdits(prev,[
+            ...prev.map(element => {
+                const draft = drafts.find(item => item.id === element.id || (item.recoveryRequestId && item.recoveryRequestId === element.generationMetadata?.recoveryRequestId));
+                if(draft && Array.isArray(element.imageVersions) && !isDisplayedImageResult(element,draft.recoveryRequestId || draft.id))return element;
+                return draft && (draft.agentBatchId || draft.sourceImageId) ? { ...element,generationMetadata:{...element.generationMetadata,...agentDraftMetadata(draft)}, agentBatchId:draft.agentBatchId || element.agentBatchId, agentStep:draft.agentStep ?? element.agentStep, sourceImageId:draft.sourceImageId ? prev.find(source=>containsImageResult(source,draft.sourceImageId!))?.id || draft.sourceImageId : element.sourceImageId } : element;
+            }),
+            ...drafts.filter(draft => !prev.some(e => containsImageResult(e,draft.recoveryRequestId || draft.id))).map((draft): CanvasElement => ({
                 ...buildCanvasElementBase({
                     id: draft.id,
                     type: draft.type,
@@ -2256,18 +2326,16 @@ function LovartCanvasContent() {
                     prompt: draft.prompt,
                 }),
                 groupId: draft.groupId,
-                generationMetadata: draft.layoutRole || draft.layoutLabel
-                    ? {
-                        layoutRole: draft.layoutRole,
-                        layoutLabel: draft.layoutLabel,
-                    }
-                    : undefined,
+                agentBatchId:draft.agentBatchId,
+                agentStep:draft.agentStep,
+                sourceImageId:draft.sourceImageId ? prev.find(source=>containsImageResult(source,draft.sourceImageId!))?.id || draft.sourceImageId : undefined,
+                generationMetadata: agentDraftMetadata(draft),
             })),
-        ]);
-    }, [setElements]);
+        ]));
+    }, [setElements, beginOperation, user?.id, currentProjectId, title]);
 
     const buildAgentImageDrafts = useCallback((
-        images: Array<{ imageData: string; prompt: string }>,
+        images: Array<{ imageData: string; prompt: string; recoveryRequestId?: string }>,
         layout?: AgentImageLayout,
     ): DraftCanvasElement[] => {
         const timestamp = Date.now();
@@ -2284,7 +2352,8 @@ function LovartCanvasContent() {
                 const row = Math.floor(index / columns);
                 const label = layout.labels?.[index];
                 return {
-                    id: `agent-image-draft-${index}-${timestamp}`,
+                    id: image.recoveryRequestId || `agent-image-draft-${index}-${timestamp}`,
+                    recoveryRequestId: image.recoveryRequestId,
                     type: 'image' as const,
                     x: baseX + col * (cellSize + gap),
                     y: baseY + row * (cellSize + gap + (layout.kind === 'character_three_view' ? 22 : 0)),
@@ -2301,7 +2370,8 @@ function LovartCanvasContent() {
         }
 
         return images.map((image, index) => ({
-            id: `agent-image-draft-${index}-${timestamp}`,
+            id: image.recoveryRequestId || `agent-image-draft-${index}-${timestamp}`,
+            recoveryRequestId: image.recoveryRequestId,
             type: 'image',
             x: 120 + index * 284,
             y: 120,
@@ -2527,6 +2597,8 @@ function LovartCanvasContent() {
     }), [buildStoryboardVideoProgressPatch]);
 
     const handleAgentGenerateStoryboardImage = useCallback(async (input: {
+        imageData?: string;
+        recoveryRequestId?: string;
         storyboardItemId: string;
         storyboardOrder: number;
         title: string;
@@ -2535,9 +2607,11 @@ function LovartCanvasContent() {
         resolution: Resolution;
         modelVariant: ImageModelId;
     }) => {
+        if (!input.imageData || !input.recoveryRequestId) throw new Error('分镜图片尚未完成，请从任务记录核对结果');
+        const opening = agentCanvasScope.current;
         const targetStoryboardItem = storyboard.find((item) => item.id === input.storyboardItemId);
         const aspectMeta = getStoryboardAspectMeta(input.aspectRatio as StoryboardAspectRatio);
-        const nextElementId = `agent-storyboard-image-${input.storyboardItemId}-${Date.now()}`;
+        const nextElementId = input.recoveryRequestId;
 
         const generatorElement = buildStoryboardGeneratorElement({
             id: nextElementId,
@@ -2558,9 +2632,6 @@ function LovartCanvasContent() {
             sourceOrientation: targetStoryboardItem?.sourceOrientation || aspectMeta.orientation,
         });
 
-        setElements((prev) => [...prev, generatorElement]);
-        setSelectedIds([generatorElement.id]);
-        setSelectedStoryboardItemId(input.storyboardItemId);
         const logEntryId = `storyboard-image-${generatorElement.id}`;
         recordTask({
             id: logEntryId,
@@ -2575,14 +2646,13 @@ function LovartCanvasContent() {
         });
 
         try {
-            const result = await requestImageGeneration({
-                prompt: input.prompt,
-                resolution: input.resolution,
-                aspectRatio: input.aspectRatio,
-                referenceImages: [],
-                modelVariant: input.modelVariant,
-                editMode: 'generate',
-            });
+            const result: Partial<Awaited<ReturnType<typeof requestImageGeneration>>> & {finalPrompt: string; requestedResolution: Resolution; requestedAspectRatio: AspectRatio} = {
+                imageData: input.imageData,
+                finalPrompt: input.prompt,
+                requestedResolution: input.resolution,
+                requestedAspectRatio: input.aspectRatio,
+                generationMetadata: { recoveryRequestId: input.recoveryRequestId },
+            };
 
             if (!result.imageData) {
                 throw new Error('镜头出图失败');
@@ -2591,9 +2661,13 @@ function LovartCanvasContent() {
             const imageData = result.imageData;
             const dimensions = await getImageDimensions(imageData);
             const displaySize = getSmartDisplaySize(dimensions);
+            if (opening.projectId !== agentCanvasScope.current.projectId || opening.owner !== agentCanvasScope.current.owner) return;
+            beginOperation();
+            setSelectedIds([generatorElement.id]);
+            setSelectedStoryboardItemId(input.storyboardItemId);
 
-            setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
-                ...el,
+            setElements((prev) => prev.some(el => el.id === nextElementId || el.generationMetadata?.recoveryRequestId === nextElementId) ? prev : [...prev, {
+                ...generatorElement,
                 ...buildStoryboardImageElementPatch({
                     imageData,
                     finalPrompt: result.finalPrompt,
@@ -2609,7 +2683,7 @@ function LovartCanvasContent() {
                     fallbackReason: result.fallbackReason,
                     returnedModel: result.returnedModel,
                 }),
-            } : el));
+            }]);
 
             setStoryboard((prev) => prev.map((item) => item.id === input.storyboardItemId
                 ? buildStoryboardItemResultPatch({
@@ -2652,9 +2726,11 @@ function LovartCanvasContent() {
             });
             throw error;
         }
-    }, [buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardImageElementPatch, buildStoryboardItemResultPatch, recordTask, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
+    }, [beginOperation, buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardImageElementPatch, buildStoryboardItemResultPatch, recordTask, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
 
     const handleAgentGenerateStoryboardVideo = useCallback(async (input: {
+        taskId?: string;
+        requestId?: string;
         storyboardItemId: string;
         storyboardOrder: number;
         title: string;
@@ -2663,11 +2739,14 @@ function LovartCanvasContent() {
         durationSeconds: number;
         mode: VideoModelMode;
     }) => {
+        if (!input.taskId || !input.requestId) throw new Error('分镜视频任务未登记，请核对任务记录');
+        const opening = agentCanvasScope.current;
+        const isCurrent = () => opening.projectId === agentCanvasScope.current.projectId && opening.owner === agentCanvasScope.current.owner;
         const targetStoryboardItem = storyboard.find((item) => item.id === input.storyboardItemId);
         const aspectRatio = inferStoryboardAspectRatioFromVideoSize(input.size) ?? targetStoryboardItem?.aspectRatio ?? '9:16';
         const aspectMeta = getStoryboardAspectMeta(aspectRatio);
         const nodeSize = getStoryboardNodeSize(aspectRatio, input.size);
-        const nextElementId = `agent-storyboard-video-${input.storyboardItemId}-${Date.now()}`;
+        const nextElementId = input.requestId;
 
         const generatorElement = buildStoryboardGeneratorElement({
             id: nextElementId,
@@ -2690,7 +2769,9 @@ function LovartCanvasContent() {
             videoModelMode: input.mode,
         });
 
-        setElements((prev) => [...prev, generatorElement]);
+        generatorElement.generationMetadata = {...generatorElement.generationMetadata,taskId:input.taskId,recoveryRequestId:input.requestId};
+        beginOperation();
+        setElements((prev) => prev.some(e=>e.id===nextElementId || e.generationMetadata?.recoveryRequestId===nextElementId) ? prev : [...prev, generatorElement]);
         setSelectedIds([generatorElement.id]);
         setSelectedStoryboardItemId(input.storyboardItemId);
         const logEntryId = `storyboard-video-${generatorElement.id}`;
@@ -2707,12 +2788,7 @@ function LovartCanvasContent() {
         });
 
         try {
-            const startResult = await startVideoGeneration({
-                prompt: input.prompt,
-                seconds: input.durationSeconds,
-                size: input.size,
-                modelMode: input.mode,
-            });
+            const startResult = {taskId:input.taskId,model:undefined as string|undefined,modelMode:input.mode};
             recordTask({
                 id: logEntryId,
                 nodeId: generatorElement.id,
@@ -2733,7 +2809,9 @@ function LovartCanvasContent() {
                 }
 
                 await new Promise((resolve) => setTimeout(resolve, 3000));
+                if (!isCurrent()) return;
                 const status = await getVideoGenerationStatus(startResult.taskId);
+                if (!isCurrent()) return;
 
                 const videoStatus = status.status ?? 'processing';
                 const progress = status.progress ?? 0;
@@ -2765,7 +2843,8 @@ function LovartCanvasContent() {
                 }
 
                 if (progress === 100 && status.videoUrl) {
-                    const videoUrl = status.videoUrl;
+                    const videoUrl = await importRemoteCanvasVideo(status.videoUrl);
+                    if (!isCurrent()) return;
                     setElements((prev) => prev.map((el) => el.id === generatorElement.id ? {
                         ...el,
                         ...buildStoryboardVideoElementPatch({
@@ -2828,7 +2907,7 @@ function LovartCanvasContent() {
             });
             throw error;
         }
-    }, [buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardItemResultPatch, buildStoryboardVideoElementPatch, buildStoryboardVideoProgressPatch, getStoryboardNodeSize, recordTask, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
+    }, [beginOperation, buildStoryboardAssetId, buildStoryboardGeneratorElement, buildStoryboardItemResultPatch, buildStoryboardVideoElementPatch, buildStoryboardVideoProgressPatch, getStoryboardNodeSize, recordTask, setElements, setSelectedIds, setSelectedStoryboardItemId, setStoryboard, storyboard]);
 
     const buildAgentFollowUps = useCallback((result: AgentActionResult): string[] => {
         switch (result.kind) {
@@ -2909,18 +2988,19 @@ function LovartCanvasContent() {
         createdAt: item.createdAt || new Date().toISOString(),
     }))), []);
 
-    const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[] }): Promise<AgentPanelResponse> => {
-        const response = await runAgent(message, agentContext, options);
+    const handleAgentRun = useCallback(async (message: string, options?: { mode?: AgentMode; history?: AgentChatTurn[]; resume?: boolean; excludedReferenceIds?: string[] }): Promise<AgentPanelResponse> => {
+        const response = await runAgent(message, excludeAgentReferences(agentContext, options?.excludedReferenceIds), options);
         const nextResult = response.result;
         const chat = response.chat;
 
         if (chat) {
+            await response.acknowledgeApplied();
             return {
                 kind: 'chat',
                 reply: chat.reply,
                 summary: chat.summary,
                 plan: chat.plan || {},
-                meta: [],
+                meta: [{label:'图片上下文',value:chat.inspectedImages ? `已读取 ${chat.inspectedImages} 张画面` : '仅文字与节点信息'}],
                 followUps: [
                     '基于这个思路继续给我 3 个不同风格方向',
                     '把执行步骤写得更具体',
@@ -2953,7 +3033,7 @@ function LovartCanvasContent() {
         }
 
         if (nextResult.kind === 'images_generated') {
-            applyAgentCanvasDrafts(buildAgentImageDrafts(nextResult.images, nextResult.layout));
+            applyAgentCanvasDrafts(buildAgentImageDrafts(nextResult.images, nextResult.layout).map((draft,index)=>({...draft,modelId:nextResult.images[index].modelId,resolution:nextResult.images[index].resolution,agentBatchId:response.runId,agentStep:nextResult.images[index].agentStep || index+1,sourceImageId:response.sourceImageId})));
             const lastImage = nextResult.images.at(-1)?.imageData;
             if (lastImage) {
                 void updateProjectThumbnail(lastImage);
@@ -2962,6 +3042,8 @@ function LovartCanvasContent() {
 
         if (nextResult.kind === 'storyboard_image_generation_requested') {
             await handleAgentGenerateStoryboardImage({
+                imageData: nextResult.imageData,
+                recoveryRequestId: nextResult.recoveryRequestId,
                 storyboardItemId: nextResult.storyboardItemId,
                 storyboardOrder: nextResult.storyboardOrder,
                 title: nextResult.title,
@@ -2974,6 +3056,8 @@ function LovartCanvasContent() {
 
         if (nextResult.kind === 'storyboard_video_generation_requested') {
             await handleAgentGenerateStoryboardVideo({
+                taskId: nextResult.taskId,
+                requestId: nextResult.requestId,
                 storyboardItemId: nextResult.storyboardItemId,
                 storyboardOrder: nextResult.storyboardOrder,
                 title: nextResult.title,
@@ -2986,19 +3070,24 @@ function LovartCanvasContent() {
 
         if (nextResult.kind === 'image_edited') {
             applyAgentCanvasDrafts([
-                buildEditedImageDraft(nextResult.imageData, message),
+                { ...buildEditedImageDraft(nextResult.imageData, nextResult.prompt || message),
+                  modelId:nextResult.modelId,resolution:nextResult.resolution,agentBatchId:response.runId,agentStep:1,sourceImageId:response.sourceImageId,
+                  ...(nextResult.recoveryRequestId ? { id:nextResult.recoveryRequestId, recoveryRequestId:nextResult.recoveryRequestId } : {}),
+                },
             ]);
         }
 
+        await response.acknowledgeApplied();
         const reply = nextResult.message;
         return {
             kind: 'action',
             actionKind: nextResult.kind,
+            incomplete: nextResult.kind === 'images_generated' && nextResult.incomplete,
             reply,
             summary: reply,
             plan: {},
             meta: buildAgentActionMeta(nextResult),
-            followUps: buildAgentFollowUps(nextResult),
+            followUps: nextResult.kind === 'images_generated' && nextResult.incomplete ? [message] : buildAgentFollowUps(nextResult),
         };
     }, [agentContext, applyAgentCanvasDrafts, buildAgentActionMeta, buildAgentFollowUps, buildAgentImageDrafts, buildEditedImageDraft, buildStoryboardItemsFromAgentResult, handleAgentGenerateStoryboardImage, handleAgentGenerateStoryboardVideo, handleCreateStoryboardFlow, runAgent, setStoryboard, setStoryboardLayout, updateProjectThumbnail]);
     const { agentStage, submit: handleUnifiedAgentSubmit } = useAgentPanelController(handleAgentRun);
@@ -3022,6 +3111,7 @@ function LovartCanvasContent() {
                     <h1 className="mt-4 text-lg font-semibold">画布载入失败</h1>
                     <p className="mt-2 text-sm text-slate-300">项目尚未完整载入，先重新载入，避免在空画布上覆盖原内容。</p>
                     <button type="button" onClick={() => window.location.reload()} className="mt-5 rounded-xl bg-white px-5 py-2 text-sm font-medium text-slate-900 hover:bg-slate-200">重新载入</button>
+                    {user && <div className="mt-4"><LocalProjectRecovery key={`${user.id}:${projectId}`} userId={user.id} projectId={projectId} /></div>}
                 </div>
             </div>
         );
@@ -3029,10 +3119,10 @@ function LovartCanvasContent() {
 
     return (
         <div className="h-screen w-full relative overflow-hidden bg-[#F5F5F5] dark:bg-[#0F1115]">
-            <header className="absolute top-0 left-0 z-50 flex h-14 w-full items-center justify-between px-4 pointer-events-none border-b border-transparent bg-transparent dark:border-white/8 dark:bg-black/28 dark:shadow-[0_12px_40px_rgba(0,0,0,0.22)] dark:backdrop-blur-xl">
+            <header className="absolute top-0 left-0 z-[180] flex h-14 w-full items-center justify-between px-4 pointer-events-none border-b border-transparent bg-transparent dark:border-white/8 dark:bg-black/28 dark:shadow-[0_12px_40px_rgba(0,0,0,0.22)] dark:backdrop-blur-xl">
                 <div className="flex items-center gap-2 pointer-events-auto">
                     <Link href="/" onClick={(event) => {
-                        if (['pending', 'saving', 'offline'].includes(saveStatus) && !window.confirm('画布还有未保存的修改，确定离开吗？')) event.preventDefault();
+                        if (['pending', 'saving', 'offline', 'conflict'].includes(saveStatus) && !window.confirm('画布还有未保存的修改，确定离开吗？')) event.preventDefault();
                     }} className="flex items-center gap-1 rounded-lg p-1 transition-colors hover:bg-gray-100 dark:hover:bg-white/8">
                         <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center text-white text-xs font-bold dark:bg-gradient-to-br dark:from-sky-400 dark:via-blue-500 dark:to-indigo-500">D</div>
                         <ChevronDown size={16} className="text-gray-500 dark:text-gray-400" />
@@ -3076,6 +3166,13 @@ function LovartCanvasContent() {
                                 <span className="text-sky-600 dark:text-sky-300">已保存到本机</span>
                             </>
                         )}
+                        {recoveryMessage && <span role="status" className="text-xs text-amber-600">{recoveryMessage}</span>}
+                        {videoRecoveryMessage && <span role="status" className="text-xs text-amber-600">{videoRecoveryMessage}</span>}
+                        {!isHydrating && activePlan?.projectId === currentProjectId && <AgentPlanProgress key={activePlan.runId} plan={activePlan} isRunning={isAgentRunning} onStop={cancelAgent} onDismiss={dismissPlan} onResume={() => handleAgentRun(activePlan.payload.message, {resume:true})} />}
+                        {saveStatus === 'conflict' && <span role="alert" className="text-xs text-amber-600">其他窗口已更新。
+                          <button type="button" className="underline" onClick={() => { const url = URL.createObjectURL(new Blob([JSON.stringify({ title, elements, viewport: projectViewport })], { type: 'application/json' })); const a = document.createElement('a'); a.href = url; a.download = 'canvas-unsaved-backup.json'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }}>导出本地修改</button>
+                          <button type="button" className="ml-2 underline" onClick={() => { if (currentProjectId && window.confirm('重新加载会替换当前未保存修改，请先导出备份。')) void loadProject(currentProjectId); }}>重新加载</button>
+                        </span>}
                         {!isHydrating && saveStatus === 'offline' && (
                             <>
                                 <CloudOff size={14} className="text-red-500" />
@@ -3087,76 +3184,41 @@ function LovartCanvasContent() {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 pointer-events-auto">
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setShowChat(false);
-                            setShowGenerationHistory(false);
-                            setShowTaskLog(false);
-                            setShowRhaiLibrary((value) => !value);
+                <div className="pointer-events-auto">
+                    <CanvasWorkspaceSidebar
+                        activePanel={showImageBatch ? 'image-batch' : showImageChat ? 'image-chat' : showChat ? 'agent' : showGenerationHistory ? 'history' : showTaskLog ? 'tasks' : showRhaiLibrary ? 'tools' : null}
+                        agentEnabled={agentPanelEnabled}
+                        hasFailedTasks={taskLogEntries.some(entry => entry.status === 'failed')}
+                        onLeave={event => {
+                            if (['pending', 'saving', 'offline', 'conflict'].includes(saveStatus) && !window.confirm('画布还有未保存的修改，确定离开吗？')) event.preventDefault();
                         }}
-                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showRhaiLibrary ? 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
-                        title="打开 RHAI 应用库"
-                    >
-                        <Boxes size={15} />
-                        <span>RHAI</span>
-                    </button>
-                    <CanvasFeaturesMenu
-                        settings={canvasFeatures}
-                        onChange={updateCanvasFeature}
-                        onReset={() => setCanvasFeatures(DEFAULT_CANVAS_FEATURE_SETTINGS)}
-                        onClear={handleClearCanvas}
-                    />
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setShowChat(false);
-                            setShowTaskLog(false);
-                            setShowGenerationHistory((value) => !value);
+                        onSelect={panel => {
+                            setShowImageBatch(panel === 'image-batch' && !showImageBatch);
+                            setShowImageChat(panel === 'image-chat' && !showImageChat);
+                            setShowChat(panel === 'agent' && !showChat);
+                            setShowGenerationHistory(panel === 'history' && !showGenerationHistory);
+                            setShowTaskLog(panel === 'tasks' && !showTaskLog);
+                            setShowRhaiLibrary(panel === 'tools' && !showRhaiLibrary);
                         }}
-                        className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showGenerationHistory ? 'bg-gray-100 text-gray-900 dark:bg-white/10 dark:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
-                        title="打开生成历史"
                     >
-                        <HistoryIcon size={15} />
-                        <span>历史</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setShowChat(false);
-                            setShowGenerationHistory(false);
-                            setShowRhaiLibrary(false);
-                            setShowTaskLog((value) => !value);
-                        }}
-                        className={`relative flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showTaskLog ? 'bg-violet-50 text-violet-700 dark:bg-violet-400/10 dark:text-violet-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
-                        title="打开任务日志"
-                    >
-                        <ScrollText size={15} />
-                        <span>日志</span>
-                        {taskLogEntries.some((entry) => entry.status === 'failed') && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-rose-500" />}
-                    </button>
-                    {agentPanelEnabled && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setShowGenerationHistory(false);
-                                setShowTaskLog(false);
-                                setShowChat((value) => !value);
-                            }}
-                            className={`flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium transition-colors ${showChat ? 'bg-sky-50 text-sky-700 dark:bg-sky-400/10 dark:text-sky-200' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-white'}`}
-                            title="打开 Lovart Agent"
-                        >
-                            <Bot size={15} />
-                            <span>Agent</span>
-                        </button>
-                    )}
-                    <ThemeToggle />
+                        <CanvasFeaturesMenu placement="sidebar" settings={canvasFeatures} onChange={updateCanvasFeature} onReset={() => setCanvasFeatures(DEFAULT_CANVAS_FEATURE_SETTINGS)} onClear={handleClearCanvas} />
+                        <ThemeToggle />
+                    </CanvasWorkspaceSidebar>
                 </div>
             </header>
 
+            {planApproval && <AgentPlanEditor {...planApproval} onReprice={repricePlan} onConfirm={confirmPlan} onCancel={cancelAgent} />}
+            <CanvasImageChat key={`image-chat:${user?.id || 'guest'}:${currentProjectId || 'local'}`} visible={showImageChat} projectId={currentProjectId} userId={user?.id} elements={elements} selectedIds={selectedIds} onClose={() => setShowImageChat(false)} onInsert={handleInsertHistoryItem} />
+            <CanvasImageBatch key={`image-batch:${user?.id || 'guest'}:${currentProjectId || 'local'}`} visible={showImageBatch} projectId={currentProjectId} userId={user?.id} elements={elements} onClose={() => setShowImageBatch(false)} onInsert={handleInsertHistoryItem} onWriteOutputs={batch=>{writeImageBatchOutputs(elements,batch);beginOperation();setElements(current=>{try{return writeImageBatchOutputs(current,batch);}catch{return current;}});}} />
+            <CanvasImageVersions key={`versions:${currentProjectId}:${selectedIds.join(',')}`} elements={elements} selectedIds={selectedIds} onSelect={id=>setSelectedIds([id])} onUpdate={change=>{beginOperation();setElements(change);}} />
+
             {showGenerationHistory && (
                 <GenerationHistoryPanel
+                    key={`history:${user?.id || 'guest'}:${currentProjectId || 'local'}`}
+                    projectId={currentProjectId}
+                    ownerId={user?.id}
+                    elements={elements}
+                    onLocateNode={handleLocateTaskNode}
                     onClose={() => setShowGenerationHistory(false)}
                     onInsert={(item) => {
                         void handleInsertHistoryItem(item);
@@ -3167,7 +3229,11 @@ function LovartCanvasContent() {
 
             {showTaskLog && (
                 <CanvasTaskLogPanel
+                    key={`tasks:${user?.id || 'guest'}:${currentProjectId || 'local'}`}
+                    projectId={currentProjectId}
+                    userId={user?.id}
                     entries={taskLogEntries}
+                    elements={elements}
                     syncState={taskLogSyncState}
                     onClose={() => setShowTaskLog(false)}
                     onClear={clearTaskLogs}
@@ -3205,7 +3271,13 @@ function LovartCanvasContent() {
 
             {agentPanelEnabled && (
                 <AgentPanel
-                    key={projectId || 'unscoped-canvas'}
+                    key={`${user?.id || 'anonymous'}:${currentProjectId || 'unscoped-canvas'}`}
+                    context={agentContext}
+                    owner={user?.id}
+                    onWorkflowInsert={(artifacts,sourceId)=>applyAgentCanvasDrafts(artifacts.flatMap(artifact=>artifact.kind==='image'?[{
+                        ...buildEditedImageDraft(artifact.url,artifact.prompt || '工作流结果'),id:artifact.id,recoveryRequestId:artifact.id,modelId:artifact.modelId,resolution:artifact.resolution,agentBatchId:artifact.workflowId,workflowStepId:artifact.workflowStepId,
+                        sourceImageId:sourceId,agentStep:artifact.ordinal,
+                    }]:[]))}
                     visible={showChat}
                     onClose={() => setShowChat(false)}
                     onSubmit={handleUnifiedAgentSubmit}
@@ -3217,7 +3289,7 @@ function LovartCanvasContent() {
 
             {agentStage !== 'idle' && (
                 <div className="absolute top-16 left-1/2 z-50 -translate-x-1/2 rounded-full border border-sky-200 bg-white/92 px-4 py-2 text-sm font-medium text-sky-700 shadow-[0_14px_34px_rgba(14,165,233,0.14)] backdrop-blur-xl dark:border-sky-400/20 dark:bg-slate-950/86 dark:text-sky-200">
-                    {agentStage === 'analyzing' ? 'Agent 正在分析需求…' : agentStage === 'planning' ? 'Agent 正在规划工作区…' : agentStage === 'building' ? 'Agent 正在搭建节点…' : 'Agent 已完成初始工作区'}
+                    {agentStage === 'running' ? 'Agent 正在处理任务…' : agentStage === 'partial' ? 'Agent 部分完成，已保留成功结果；请查看对话中的重试说明' : agentStage === 'failed' ? 'Agent 未完成，请查看对话中的错误说明' : 'Agent 本次任务已完成'}
                 </div>
             )}
 
@@ -3256,6 +3328,7 @@ function LovartCanvasContent() {
 
             <div className="absolute inset-0">
                 <CanvasArea
+                    projectId={currentProjectId}
                     scale={scale}
                     pan={pan}
                     viewportWidth={viewportSize.width}
@@ -3277,8 +3350,8 @@ function LovartCanvasContent() {
                     }}
                     onElementChange={handleElementChange}
                     onElementsChange={handleElementsChange}
-                    onDelete={handleDeleteElement}
-                    onDeleteMany={handleDeleteElements}
+                    onDelete={(id) => { beginOperation(); handleDeleteElement(id); }}
+                    onDeleteMany={(ids) => { beginOperation(); handleDeleteElements(ids); }}
                     onAddElement={appendElement}
                     backgroundColor={canvasBackground}
                     featureSettings={canvasFeatures}
@@ -3440,10 +3513,10 @@ function LovartCanvasContent() {
                         <button
                             type="button"
                             onClick={() => void handleGenerateSelectedImages()}
-                            disabled={isGenerating}
+                            disabled={selectedIds.some(id => imageNodeBusy(id, imageRecovery, taskLogEntries))}
                             className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                            {isGenerating ? '生成中...' : '同时生成'}
+                            {selectedIds.some(id => imageNodeBusy(id, imageRecovery, taskLogEntries)) ? '生成中...' : '同时生成'}
                         </button>
                     </div>
                 )}
@@ -3456,13 +3529,14 @@ function LovartCanvasContent() {
 
                         return (
                             <ImageGeneratorPanel
+                                key={selectedIds[0]}
                                 elementId={selectedIds[0]}
                                 initialMode={selectedEl.initialEditMode}
                                 initialPrompt={selectedEl.initialPrompt}
                                 onGenerate={handleGenerateImage}
                                 onConfigChange={handleElementChange}
                                 onInsertPromptLibraryItem={handleInsertPromptLibraryItem}
-                                isGenerating={isGenerating}
+                                isGenerating={imageNodeBusy(selectedEl.id, imageRecovery, taskLogEntries)}
                                 canvasElements={elements}
                                 style={{
                                     left: `${left}px`,

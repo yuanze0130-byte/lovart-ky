@@ -1,6 +1,7 @@
 "use client";
 
 /* eslint-disable react-hooks/set-state-in-effect -- This panel mirrors persisted canvas node config into local form state when the selected generator node changes. */
+import { resolveImageReference } from '@/lib/image-versions';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, Zap, Image as ImageIcon, Upload, X, Video, Loader2 } from 'lucide-react';
 import type { CanvasElement } from '@/components/lovart/CanvasArea';
@@ -15,6 +16,7 @@ import {
   type GenerationJobFailureKind,
   type GenerationJobStatus,
 } from '@/lib/generation-jobs';
+import { videoGenerationContract, videoRatioFromSize } from '@/lib/generation-contract';
 import type { VideoAspectRatio, VideoAudioMode, VideoQualityMode } from '@/lib/video-models';
 
 export type VideoModelMode = 'standard' | 'fast';
@@ -73,6 +75,9 @@ export function isVideoGenerationReady(result: Pick<VideoGenerationStatusResult,
 }
 
 export async function startVideoGeneration(input: {
+  projectId?: string;
+  generatorId?: string;
+  taskSource?: string;
   prompt: string;
   requestId?: string;
   seconds?: number;
@@ -94,12 +99,13 @@ export async function startVideoGeneration(input: {
   firstFrame?: string;
   lastFrame?: string;
 }): Promise<VideoGenerationStartResult> {
+  const {expectedPrice} = videoGenerationContract({...input,modelId:input.modelId || (input.modelMode === 'fast' ? 'doubao-seedance-2-0-fast-260128' : 'doubao-seedance-2-0-260128'),duration:input.duration || input.seconds || 8,aspectRatio:input.aspectRatio || videoRatioFromSize(input.size)});
   const response = await authedFetch('/api/generate-video', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(input),
+    body: JSON.stringify({...input, expectedPrice}),
   });
 
   const data = await response.json();
@@ -185,6 +191,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const initializedElementIdRef = useRef<string | null>(null);
     const syncedReferenceImageIdRef = useRef<string | null>(null);
+    const syncedReferenceImageVersionRef = useRef<string | undefined>(undefined);
 
     const sizes = useMemo<VideoSize[]>(() => ['720x1280', '1280x720', '1024x1280', '1024x1024', '1024x1792', '1792x1024', '1024x768', '768x1024', '1536x640', '1152x768', '768x1152'], []);
     const secondsOptions: VideoSeconds[] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
@@ -266,19 +273,19 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
         const connectedReference = connectedInputs.firstFrame || connectedInputs.references[0];
         if (connectedReference) {
             setReferenceImage(connectedReference);
-            syncedReferenceImageIdRef.current = null;
+            syncedReferenceImageIdRef.current = null; syncedReferenceImageVersionRef.current=undefined;
         } else if (currentElement.referenceImageId) {
-            const sourceImage = canvasElements.find(el => el.id === currentElement.referenceImageId);
+            const sourceImage = resolveImageReference(canvasElements,currentElement.referenceImageId,currentElement.referenceImageVersionId);
             if (sourceImage?.content) {
                 setReferenceImage(sourceImage.content);
-                syncedReferenceImageIdRef.current = currentElement.referenceImageId;
+                syncedReferenceImageIdRef.current = currentElement.referenceImageId; syncedReferenceImageVersionRef.current=currentElement.referenceImageVersionId;
             } else {
                 setReferenceImage(null);
-                syncedReferenceImageIdRef.current = null;
+                syncedReferenceImageIdRef.current = null; syncedReferenceImageVersionRef.current=undefined;
             }
         } else {
             setReferenceImage(null);
-            syncedReferenceImageIdRef.current = null;
+            syncedReferenceImageIdRef.current = null; syncedReferenceImageVersionRef.current=undefined;
         }
 
         setPrompt(connectedInputs.prompt.trim() || (typeof currentElement.prompt === 'string' ? currentElement.prompt : ''));
@@ -312,14 +319,14 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     // Sync reference image only when the linked source image actually changes.
     useEffect(() => {
         if (!canvasElements || !currentElement?.referenceImageId) return;
-        if (syncedReferenceImageIdRef.current === currentElement.referenceImageId) return;
+        if (syncedReferenceImageIdRef.current === currentElement.referenceImageId && syncedReferenceImageVersionRef.current===currentElement.referenceImageVersionId) return;
 
-        const sourceImage = canvasElements.find((el) => el.id === currentElement.referenceImageId);
+        const sourceImage = resolveImageReference(canvasElements,currentElement.referenceImageId,currentElement.referenceImageVersionId);
         if (sourceImage?.content) {
             setReferenceImage(sourceImage.content);
-            syncedReferenceImageIdRef.current = currentElement.referenceImageId;
+            syncedReferenceImageIdRef.current = currentElement.referenceImageId; syncedReferenceImageVersionRef.current=currentElement.referenceImageVersionId;
         }
-    }, [canvasElements, currentElement?.referenceImageId]);
+    }, [canvasElements, currentElement?.referenceImageId, currentElement?.referenceImageVersionId]);
 
     useEffect(() => {
         if (videoModelMode !== 'fast') return;
@@ -448,7 +455,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setReferenceImage(e.target.files[0]);
-            syncedReferenceImageIdRef.current = null;
+            syncedReferenceImageIdRef.current = null; syncedReferenceImageVersionRef.current=undefined;
             setShowReferenceMenu(false);
             e.target.value = '';
         }
@@ -456,13 +463,13 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
 
     const handleCanvasImageSelect = (imageId: string, imageContent: string) => {
         setReferenceImage(imageContent);
-        syncedReferenceImageIdRef.current = imageId;
+        syncedReferenceImageIdRef.current = imageId; syncedReferenceImageVersionRef.current=undefined;
         setShowReferenceMenu(false);
     };
 
     const handleClearReferenceImage = () => {
         setReferenceImage(null);
-        syncedReferenceImageIdRef.current = null;
+        syncedReferenceImageIdRef.current = null; syncedReferenceImageVersionRef.current=undefined;
     };
 
     const referenceSummary = referenceImage
@@ -498,6 +505,7 @@ export function VideoGeneratorPanel({ elementId, onGenerate, onConfigChange, sty
             storyboardSourceOrientation: currentElement?.storyboardSourceOrientation || currentSizeMeta.orientation,
             storyboardRenderProfile: renderProfile,
             referenceImageId: typeof referenceImage === 'string' ? syncedReferenceImageIdRef.current || undefined : undefined,
+            referenceImageVersionId:typeof referenceImage === 'string'?syncedReferenceImageVersionRef.current:undefined,
         });
     }, [
         currentElement?.storyboardSourceAspectRatio,

@@ -1,8 +1,10 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { canvasViewport, intersectsCanvasViewport } from '@/lib/canvas-visibility';
 import { AlignCenter, AlignEndHorizontal, AlignEndVertical, AlignHorizontalJustifyCenter, AlignStartHorizontal, AlignStartVertical, AlignVerticalJustifyCenter, Copy, Download, Link2, Trash2, Unlink2, X } from 'lucide-react';
 import { ContextToolbar } from './ContextToolbar';
 import { ObjectAnnotationOverlay } from './ObjectAnnotationOverlay';
-import { PanoramaViewer } from './PanoramaViewer';
+import { CanvasImageNodeContent } from './CanvasImageNodeContent';
+import { getProviderLabel, getModelLabel } from '@/lib/canvas-generation-labels';
 import { ImageCompareNode } from './ImageCompareNode';
 import { CanvasPinBar } from './CanvasPinBar';
 import { InpaintNode } from './InpaintNode';
@@ -16,7 +18,7 @@ import { AiTextNode } from './AiTextNode';
 import { SpeechNode } from './SpeechNode';
 import { MusicGeneratorNode } from './MusicGeneratorNode';
 import { VideoGeneratorNode } from './VideoGeneratorNode';
-import { CanvasAudioMedia, CanvasImageMedia, CanvasVideoMedia } from './CanvasMedia';
+import { CanvasAudioMedia, CanvasVideoMedia } from './CanvasMedia';
 import { CanvasNodeCreateMenu, type CanvasQuickCreateAction } from './CanvasNodeCreateMenu';
 import { CanvasAssetReferencePicker, type CanvasReferenceAsset } from './CanvasAssetReferencePicker';
 import type { AnnotationObject as DetectedObject } from '@/lib/object-annotation';
@@ -31,7 +33,7 @@ import {
     canConnectPorts,
     connectionKindForPorts,
     getCanvasReferenceLabel,
-    getNodePorts,
+    getNodePortLayout,
     getPreferredCompatibleInputPort,
     getPortAnchor,
     inferLegacyPorts,
@@ -39,7 +41,7 @@ import {
     wouldCreateConnectionCycle,
     type CanvasPortDefinition,
 } from '@/lib/canvas-connections';
-import { getImageModelDefinition, type ImageGenerationExecutionMode, type ImageModelId } from '@/lib/image-models';
+import { type ImageGenerationExecutionMode, type ImageModelId } from '@/lib/image-models';
 import { duplicateCanvasSelection, serializeCanvasSelection } from '@/lib/canvas-shortcuts';
 import type { CanvasFeatureSettings } from '@/lib/canvas-feature-settings';
 import type { ExtractedVideoFrame } from '@/lib/video-frame-extraction';
@@ -202,6 +204,7 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     points?: { x: number; y: number }[];
     strokeWidth?: number;
     referenceImageId?: string;
+    referenceImageVersionId?: string;
     initialEditMode?: 'generate' | 'relight' | 'restyle' | 'background' | 'enhance' | 'angle';
     initialPrompt?: string;
     imageModelId?: ImageModelId;
@@ -261,6 +264,8 @@ export interface CanvasElement extends Record<string, Json | undefined> {
     linkedElements?: string[];
     connectorFrom?: string;
     connectorTo?: string;
+    connectorFromVersionId?: string;
+    connectorToVersionId?: string;
     connectorStyle?: 'solid' | 'dashed';
     connectorSourcePort?: string;
     connectorTargetPort?: string;
@@ -275,118 +280,8 @@ function getReviewRailToneClass(state: 'clean' | 'watch' | 'check') {
     return 'border-sky-300/20 bg-sky-400/15 text-sky-50';
 }
 
-function getProviderLabel(metadata?: GenerationMetadata) {
-    if (!metadata) return undefined;
-    const provider = metadata.provider === 'official'
-        ? '官方'
-        : metadata.provider === 'proxy'
-            ? '中转'
-            : undefined;
-    const providerMode = metadata.providerMode === 'official'
-        ? '官方路由'
-        : metadata.providerMode === 'proxy'
-            ? '中转路由'
-            : metadata.providerMode === 'auto'
-                ? '自动路由'
-                : undefined;
-
-    if (metadata.providerFallbackUsed) {
-        const fromLabel = metadata.fallbackFrom === 'official'
-            ? '官方'
-            : metadata.fallbackFrom === 'proxy'
-                ? '中转'
-                : undefined;
-        return fromLabel ? `${providerMode || provider || '自动路由'} · 从${fromLabel}回退` : `${providerMode || provider || '自动路由'} · 已回退`;
-    }
-
-    return providerMode || provider;
-}
-
-function getModelLabel(metadata?: GenerationMetadata) {
-    if (!metadata?.model) return undefined;
-    return metadata.model;
-}
-
-function getOfficialOptionChips(metadata?: GenerationMetadata) {
-    if (!metadata?.modelVariant || getImageModelDefinition(metadata.modelVariant).transport !== 'official-image-task') {
-        return [] as string[];
-    }
-
-    const chips: string[] = [];
-
-    if (metadata.officialQuality) {
-        const qualityLabel = metadata.officialQuality === 'high'
-            ? '高质量'
-            : metadata.officialQuality === 'medium'
-                ? '中质量'
-                : metadata.officialQuality === 'low'
-                    ? '低质量'
-                    : '自动质量';
-        chips.push(qualityLabel);
-    }
-
-    if (metadata.officialBackground) {
-        const backgroundLabel = metadata.officialBackground === 'transparent'
-            ? '透明背景'
-            : metadata.officialBackground === 'opaque'
-                ? '实色背景'
-                : '自动背景';
-        chips.push(backgroundLabel);
-    }
-
-    if (metadata.officialOutputFormat) {
-        const formatLabel = metadata.officialOutputFormat.toUpperCase();
-        chips.push(formatLabel);
-    }
-
-    if (metadata.officialModeration) {
-        chips.push(metadata.officialModeration === 'low' ? '低审查' : '自动审查');
-    }
-
-    return chips;
-}
-
-function getTaskDebugChips(metadata?: GenerationMetadata) {
-    if (!metadata?.taskId) return [] as string[];
-
-    const chips: string[] = [];
-
-    if (metadata.proxyTarget) {
-        chips.push(metadata.proxyTarget === 'fallback' ? '备用通道' : '主通道');
-    }
-
-    if (typeof metadata.taskPollAttemptCount === 'number') {
-        chips.push(`轮询 ${metadata.taskPollAttemptCount} 次`);
-    }
-
-    if (typeof metadata.taskDurationMs === 'number') {
-        chips.push(`耗时 ${(metadata.taskDurationMs / 1000).toFixed(metadata.taskDurationMs >= 10000 ? 0 : 1)}s`);
-    }
-
-    return chips;
-}
-
-function getTaskDebugSummary(metadata?: GenerationMetadata) {
-    if (!metadata?.taskId) return undefined;
-
-    const parts: string[] = [`Task ${metadata.taskId}`];
-
-    if (metadata.taskStatus) {
-        parts.push(`状态 ${metadata.taskStatus}`);
-    }
-
-    if (typeof metadata.taskPollIntervalMs === 'number') {
-        parts.push(`间隔 ${metadata.taskPollIntervalMs}ms`);
-    }
-
-    if (typeof metadata.taskPollTimeoutMs === 'number') {
-        parts.push(`超时 ${Math.round(metadata.taskPollTimeoutMs / 1000)}s`);
-    }
-
-    return parts.join(' · ');
-}
-
 interface CanvasAreaProps {
+    projectId?: string | null;
     scale: number;
     pan: { x: number; y: number };
     viewportWidth?: number;
@@ -469,6 +364,7 @@ function CanvasStopwatch() {
 }
 
 export function CanvasArea({
+    projectId,
     scale,
     pan,
     viewportWidth = 0,
@@ -1241,7 +1137,7 @@ export function CanvasArea({
     }, []);
 
     const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-    const selectedElement = elements.find((el) => selectedIdSet.has(el.id));
+    const selectedElement = useMemo(() => elements.find((el) => selectedIdSet.has(el.id)), [elements, selectedIdSet]);
     const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
     const isLowDetail = scale < 0.75;
     const elementById = useMemo(() => new Map(elements.map((element) => [element.id, element])), [elements]);
@@ -1341,12 +1237,14 @@ export function CanvasArea({
         [elementById, elements, featureSettings.hideConnectors, isElementInViewport]
     );
 
+    const playbackBounds = useMemo(() => canvasViewport(pan, scale, viewportWidth, viewportHeight), [pan.x, pan.y, scale, viewportWidth, viewportHeight]);
     useEffect(() => {
         if (!activeVideoId) return;
-        if (isLowDetail || !selectedIdSet.has(activeVideoId) || !elementById.has(activeVideoId)) {
+        const video = elementById.get(activeVideoId);
+        if (isLowDetail || !selectedIdSet.has(activeVideoId) || !video || !intersectsCanvasViewport(video, playbackBounds)) {
             setActiveVideoId(null);
         }
-    }, [activeVideoId, elementById, isLowDetail, selectedIdSet]);
+    }, [activeVideoId, elementById, isLowDetail, selectedIdSet, playbackBounds]);
 
     const handleActivateVideo = useCallback((elementId: string) => {
         onSelect([elementId]);
@@ -1386,12 +1284,8 @@ export function CanvasArea({
     };
 
     const handleDuplicate = (el: CanvasElement) => {
-        onAddElement(stripStoryboardMetadata({
-            ...el,
-            id: uuidv4(),
-            x: el.x + 20,
-            y: el.y + 20,
-        }));
+        const copy = duplicateCanvasSelection(elements, [el.id], uuidv4, 20);
+        copy.elements.forEach(onAddElement);
     };
 
     const applyElementUpdates = (updates: Array<{ id: string; updates: Partial<CanvasElement> }>) => {
@@ -2073,9 +1967,7 @@ export function CanvasArea({
                                         onChange={(assetReferenceIds) => onElementChange(el.id, { assetReferenceIds })}
                                     />
                                 )}
-                                {!isLowDetail && getNodePorts(el).map((port) => {
-                                    const sidePorts = getNodePorts(el).filter((candidate) => candidate.direction === port.direction);
-                                    const index = sidePorts.findIndex((candidate) => candidate.id === port.id);
+                                {!isLowDetail && getNodePortLayout(el).map(({port,top}) => {
                                     const compatible = port.direction === 'input' && connectionDraft
                                         ? canConnectPorts(connectionDraft.sourcePort, port)
                                         : false;
@@ -2089,7 +1981,7 @@ export function CanvasArea({
                                             aria-label={`${port.direction === 'input' ? '输入' : '输出'}：${port.label}`}
                                             className={`absolute z-50 h-5 w-5 touch-none -translate-y-1/2 rounded-full border-[3px] border-white shadow-[0_3px_12px_rgba(15,23,42,0.3)] transition-transform hover:scale-125 ${port.direction === 'input' ? '-left-2.5' : '-right-2.5'} ${compatible ? 'scale-125 ring-4 ring-white/60' : ''}`}
                                             style={{
-                                                top: `${((index + 1) / (sidePorts.length + 1)) * 100}%`,
+                                                top: `${top}%`,
                                                 backgroundColor: PORT_COLORS[port.kind],
                                                 cursor: port.direction === 'output' ? 'crosshair' : compatible ? 'copy' : 'default',
                                             }}
@@ -2373,6 +2265,7 @@ export function CanvasArea({
                                     });
                                     return (
                                         <VideoGeneratorNode
+                                            projectId={projectId}
                                             element={el}
                                             connectedPrompt={connectedPrompt}
                                             referenceImages={referenceImages}
@@ -2380,7 +2273,7 @@ export function CanvasArea({
                                             lastFrame={lastFrame}
                                             referenceLabels={referenceLabels}
                                             onConfigChange={(updates) => onElementChange(el.id, updates)}
-                                            onComplete={onVideoGeneratorComplete ? (videoUrl) => onVideoGeneratorComplete(el, videoUrl) : undefined}
+                                            onComplete={onVideoGeneratorComplete ? (videoUrl, identity) => onVideoGeneratorComplete({...el,generationMetadata:{...el.generationMetadata,...identity}}, videoUrl) : undefined}
                                             onTaskUpdate={onVideoGeneratorTaskUpdate}
                                         />
                                     );
@@ -2613,139 +2506,15 @@ export function CanvasArea({
                                     );
                                 })()}
 
-                                {el.type === 'image' && el.content && (() => {
-                                    if (featureSettings.hideImages) {
-                                        return (
-                                            <div className="flex h-full w-full flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-100/95 text-slate-500 dark:border-white/15 dark:bg-slate-900/95 dark:text-slate-400">
-                                                <div className="text-xs font-semibold uppercase tracking-[0.16em]">图片已隐藏</div>
-                                                <div className="mt-1 text-[10px] opacity-70">关闭“隐图”恢复显示</div>
-                                            </div>
-                                        );
-                                    }
-                                    const metadata = el.generationMetadata;
-                                    const providerLabel = getProviderLabel(metadata);
-                                    const modelLabel = getModelLabel(metadata);
-                                    const officialOptionChips = getOfficialOptionChips(metadata);
-                                    const taskDebugChips = getTaskDebugChips(metadata);
-                                    const taskDebugSummary = getTaskDebugSummary(metadata);
-                                    const fallbackSummary = metadata?.providerFallbackUsed
-                                        ? (metadata.fallbackReason || '已触发回退')
-                                        : undefined;
-                                    const promptPreview = typeof metadata?.sourcePrompt === 'string' && metadata.sourcePrompt
-                                        ? metadata.sourcePrompt
-                                        : typeof el.prompt === 'string' && el.prompt
-                                            ? el.prompt
-                                            : undefined;
-                                    const isPanorama = metadata?.assetKind === 'panorama';
-                                    const layoutLabel = typeof metadata?.layoutLabel === 'string' && metadata.layoutLabel
-                                        ? metadata.layoutLabel
-                                        : undefined;
-                                    const layoutRole = metadata?.layoutRole === 'character-view'
-                                        ? '三视图'
-                                        : metadata?.layoutRole === 'grid-item'
-                                            ? '宫格'
-                                            : undefined;
-                                    const lineageLabel = metadata?.generatedFromNode
-                                        ? '生成器输出'
-                                        : metadata?.branchedFromCanvasAction && typeof metadata.imageActionLabel === 'string'
-                                            ? metadata.imageActionLabel
-                                            : undefined;
-                                    const generatorRunCount = typeof metadata?.generatorRunCount === 'number'
-                                        ? metadata.generatorRunCount
-                                        : undefined;
-
-                                    if (isPanorama && !isLowDetail) {
-                                        return (
-                                            <div className="relative h-full w-full overflow-hidden rounded-2xl border border-sky-300/80 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_rgba(15,23,42,0.95)_66%)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_18px_48px_rgba(2,6,23,0.32)] dark:border-sky-400/25">
-                                                <PanoramaViewer
-                                                    src={el.previewUrl || el.content}
-                                                    alt="Panorama"
-                                                    badge={(
-                                                        <div className="pointer-events-none absolute left-3 top-3 z-20 rounded-full bg-black/45 px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.14em] text-white backdrop-blur-sm">
-                                                            720° Panorama
-                                                        </div>
-                                                    )}
-                                                    overlay={(
-                                                        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/88 via-slate-950/38 to-transparent p-3 text-white">
-                                                            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
-                                                                {providerLabel && <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/88">{providerLabel}</span>}
-                                                                {modelLabel && <span className="rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-white/82">{modelLabel}</span>}
-                                                                <span className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-2.5 py-1 text-cyan-50">panorama</span>
-                                                            </div>
-                                                            {promptPreview && (
-                                                                <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/82">{promptPreview}</div>
-                                                            )}
-                                                            <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em] text-white/76">
-                                                                {officialOptionChips.map((chip) => (
-                                                                    <span key={chip} className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-2.5 py-1 text-cyan-50">{chip}</span>
-                                                                ))}
-                                                                {taskDebugChips.map((chip) => (
-                                                                    <span key={chip} className="rounded-full border border-violet-300/20 bg-violet-400/15 px-2.5 py-1 text-violet-50 normal-case tracking-normal">{chip}</span>
-                                                                ))}
-                                                            </div>
-                                                            {taskDebugSummary && (
-                                                                <div className="mt-2 rounded-xl border border-violet-300/20 bg-violet-400/12 px-2.5 py-2 text-[11px] leading-5 text-violet-50 normal-case">{taskDebugSummary}</div>
-                                                            )}
-                                                            {fallbackSummary && (
-                                                                <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/12 px-2.5 py-2 text-[11px] leading-5 text-amber-50">回退说明：{fallbackSummary}</div>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                />
-                                            </div>
-                                        );
-                                    }
-
-                                    return (
-                                        <div className="relative w-full h-full overflow-hidden rounded-lg bg-slate-950">
-                                            <CanvasImageMedia
-                                                source={el.content}
-                                                previewUrl={el.previewUrl}
-                                                thumbnailUrl={el.thumbnailUrl}
-                                                lowDetail={isLowDetail}
-                                                priority={selectedIdSet.has(el.id) || (
-                                                    Math.abs((el.x + (el.width || 480) / 2) * scale + pan.x - viewportWidth / 2) < viewportWidth / 3
-                                                    && Math.abs((el.y + (el.height || 360) / 2) * scale + pan.y - viewportHeight / 2) < viewportHeight / 3
-                                                )}
-                                            />
-                                            {layoutLabel && (
-                                                <div className="pointer-events-none absolute left-2.5 top-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-white/18 bg-slate-950/68 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md">
-                                                    {layoutRole && <span className="text-white/55">{layoutRole}</span>}
-                                                    <span className="truncate">{layoutLabel}</span>
-                                                </div>
-                                            )}
-                                            {lineageLabel && (
-                                                <div className={`pointer-events-none absolute left-2.5 z-20 flex max-w-[calc(100%-20px)] items-center gap-1.5 rounded-full border border-violet-300/20 bg-violet-500/22 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-violet-50 shadow-[0_8px_24px_rgba(2,6,23,0.28)] backdrop-blur-md ${layoutLabel ? 'top-10' : 'top-2.5'}`}>
-                                                    <span>{lineageLabel}</span>
-                                                    {generatorRunCount && <span className="text-violet-100/65">#{generatorRunCount}</span>}
-                                                </div>
-                                            )}
-                                            {(providerLabel || modelLabel || officialOptionChips.length > 0 || taskDebugChips.length > 0 || taskDebugSummary || fallbackSummary || promptPreview) && (
-                                                <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/88 via-slate-950/48 to-transparent p-3 text-white">
-                                                    <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.14em]">
-                                                        {providerLabel && <span className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-white/88">{providerLabel}</span>}
-                                                        {modelLabel && <span className="rounded-full border border-white/12 bg-white/8 px-2.5 py-1 text-white/82">{modelLabel}</span>}
-                                                        {officialOptionChips.map((chip) => (
-                                                            <span key={chip} className="rounded-full border border-cyan-300/20 bg-cyan-400/15 px-2.5 py-1 text-cyan-50">{chip}</span>
-                                                        ))}
-                                                        {taskDebugChips.map((chip) => (
-                                                            <span key={chip} className="rounded-full border border-violet-300/20 bg-violet-400/15 px-2.5 py-1 text-violet-50 normal-case tracking-normal">{chip}</span>
-                                                        ))}
-                                                    </div>
-                                                    {promptPreview && (
-                                                        <div className="mt-2 line-clamp-2 text-[11px] leading-5 text-white/82">{promptPreview}</div>
-                                                    )}
-                                                    {taskDebugSummary && (
-                                                        <div className="mt-2 rounded-xl border border-violet-300/20 bg-violet-400/12 px-2.5 py-2 text-[11px] leading-5 text-violet-50 normal-case">{taskDebugSummary}</div>
-                                                    )}
-                                                    {fallbackSummary && (
-                                                        <div className="mt-2 rounded-xl border border-amber-300/20 bg-amber-400/12 px-2.5 py-2 text-[11px] leading-5 text-amber-50">回退说明：{fallbackSummary}</div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
+                                {el.type === 'image' && el.content && <CanvasImageNodeContent
+                                    source={el.content} previewUrl={el.previewUrl} thumbnailUrl={el.thumbnailUrl}
+                                    prompt={el.prompt} generationMetadata={el.generationMetadata}
+                                    isLowDetail={isLowDetail} hideImages={featureSettings.hideImages}
+                                    priority={selectedIdSet.has(el.id) || (
+                                        Math.abs((el.x + (el.width || 480) / 2) * scale + pan.x - viewportWidth / 2) < viewportWidth / 3
+                                        && Math.abs((el.y + (el.height || 360) / 2) * scale + pan.y - viewportHeight / 2) < viewportHeight / 3
+                                    )}
+                                />}
 
                                 {el.type === 'video' && el.content && (() => {
                                     const hasStoryboardMeta = Boolean(el.storyboardShotLabel || el.storyboardTitle || el.storyboardAspectRatio || el.storyboardVideoSize);

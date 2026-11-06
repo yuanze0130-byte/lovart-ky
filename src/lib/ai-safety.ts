@@ -1,10 +1,7 @@
 import { consumeCredits, refundCredits, type CreditAction } from '@/lib/credits';
 import { createServiceRoleSupabaseClient, type Json } from '@/lib/supabase';
-
-const ACTIVE_AI_OPERATIONS = Symbol.for('doodleverse.activeAiOperations');
-
-type ActiveOperation = { userId: string; scope: string };
-type AiSafetyGlobal = { [ACTIVE_AI_OPERATIONS]?: Map<string, ActiveOperation> };
+import { randomUUID } from 'node:crypto';
+import { AdmissionError, waitForAiAdmission } from '@/lib/ai-execution-admission';
 
 export class AiSafetyError extends Error {
   constructor(
@@ -76,39 +73,42 @@ export async function finalizeAiBudget(requestId: string, status: 'completed' | 
   if (error) throw error;
 }
 
-function activeOperations() {
-  const state = globalThis as typeof globalThis & AiSafetyGlobal;
-  state[ACTIVE_AI_OPERATIONS] ??= new Map<string, ActiveOperation>();
-  return state[ACTIVE_AI_OPERATIONS];
-}
-
-export function acquireAiExecution(params: { requestId: string; userId: string; scope: string }) {
-  const active = activeOperations();
-  const existing = active.get(params.requestId);
-  if (existing) {
-    throw new AiSafetyError('相同任务正在处理中', 409, 'AI_REQUEST_IN_PROGRESS');
-  }
-
+export async function acquireAiExecution(params: { requestId: string; userId: string; scope: string; signal?: AbortSignal }) {
+  assertAiEnabled();
+  const db = createServiceRoleSupabaseClient();
+  const token = randomUUID();
   const globalLimit = positiveIntegerEnv('AI_MAX_CONCURRENT_TASKS', 4, 32);
-  const userLimit = positiveIntegerEnv('AI_MAX_CONCURRENT_TASKS_PER_USER', 1, 4);
-  let userActive = 0;
-  for (const operation of active.values()) {
-    if (operation.userId === params.userId) userActive += 1;
+  const userLimit = positiveIntegerEnv('AI_MAX_CONCURRENT_TASKS_PER_USER', 3, 4);
+  try {
+    await waitForAiAdmission({ signal: params.signal, acquire: async () => {
+      const { data, error } = await db.rpc('acquire_canvas_ai_execution', {
+        p_request_id: params.requestId, p_user_id: params.userId, p_scope: params.scope,
+        p_lease_token: token, p_user_limit: userLimit, p_global_limit: globalLimit,
+      });
+      if (error) throw error;
+      return data;
+    } });
+  } catch (error) {
+    if (error instanceof AdmissionError && error.reason === 'duplicate') {
+      throw new AiSafetyError('相同请求已登记，请核对任务记录，未重复提交', 409, 'AI_REQUEST_IN_PROGRESS');
+    }
+    throw new AiSafetyError('暂时无法取得生成名额，本次未提交或扣费，请稍后重试', 503, 'AI_ADMISSION_UNAVAILABLE', 10);
   }
-  if (userActive >= userLimit) {
-    throw new AiSafetyError('你已有 AI 任务正在处理，请完成后再试', 429, 'AI_USER_CONCURRENCY_LIMIT', 10);
-  }
-  if (active.size >= globalLimit) {
-    throw new AiSafetyError('当前生成队列已满，请稍后再试', 503, 'AI_GLOBAL_CONCURRENCY_LIMIT', 10);
-  }
-
-  active.set(params.requestId, { userId: params.userId, scope: params.scope });
   let released = false;
-  return () => {
+  const release = async () => {
     if (released) return;
     released = true;
-    active.delete(params.requestId);
+    try { const { error } = await db.rpc('release_canvas_ai_execution', {
+      p_request_id: params.requestId, p_user_id: params.userId, p_lease_token: token,
+    });
+    if (error) throw error;
+    } catch { console.error('[ai-safety] 执行名额暂未释放，将由租约过期回收'); }
   };
+  if (params.signal?.aborted) {
+    await release();
+    throw new AiSafetyError('请求已取消，未提交生成', 409, 'AI_NOT_SUBMITTED');
+  }
+  return release;
 }
 
 export async function runMeteredAiOperation<T>(params: {
@@ -124,12 +124,14 @@ export async function runMeteredAiOperation<T>(params: {
   run: () => Promise<T>;
   shouldRefundOnError?: (error: unknown) => boolean;
 }) {
-  await reserveAiBudget(params);
-  let releaseExecution: (() => void) | null = null;
+  let releaseExecution: (() => Promise<void>) | null = null;
+  let budgetReserved = false;
   let creditsConsumed = false;
   let upstreamStarted = false;
   try {
-    releaseExecution = acquireAiExecution(params);
+    releaseExecution = await acquireAiExecution(params);
+    await reserveAiBudget(params);
+    budgetReserved = true;
     const creditResult = await consumeCredits({
       userId: params.userId,
       amount: params.creditCost,
@@ -146,6 +148,7 @@ export async function runMeteredAiOperation<T>(params: {
         'INSUFFICIENT_CREDITS',
       );
     }
+    if (creditResult.idempotent) throw new AiSafetyError('该请求已经处理，请核对已有结果', 409, 'AI_REQUEST_ALREADY_USED');
     creditsConsumed = true;
     upstreamStarted = true;
     const result = await params.run();
@@ -168,12 +171,12 @@ export async function runMeteredAiOperation<T>(params: {
         meta: { ...(params.meta && typeof params.meta === 'object' && !Array.isArray(params.meta) ? params.meta : {}), failed: true },
       }).catch((refundError) => console.error('[ai-safety] 自动退款失败', refundError));
     }
-    await finalizeAiBudget(params.requestId, upstreamStarted ? 'completed' : 'released').catch((finalizeError) => {
+    if (budgetReserved) await finalizeAiBudget(params.requestId, upstreamStarted ? 'completed' : 'released').catch((finalizeError) => {
       console.error('[ai-safety] 无法释放成本预留记录', finalizeError);
     });
     throw error;
   } finally {
-    releaseExecution?.();
+    await releaseExecution?.();
   }
 }
 
