@@ -1160,6 +1160,7 @@ export function CanvasArea({
             label: getCanvasReferenceLabel(element, index),
             content,
             previewUrl: element.thumbnailUrl || element.previewUrl || element.posterUrl,
+            groupId: element.groupId,
         }];
     }), [elements]);
     const selectedGroupIds = useMemo(() => {

@@ -1,19 +1,10 @@
 'use client';
 
 import { ArrowLeftRight, FileText, Film, Music2, Plus, Search, X } from 'lucide-react';
-import { useDeferredValue, useState } from 'react';
+import { useDeferredValue, useMemo, useState } from 'react';
 import { CanvasImageMedia } from './CanvasMedia';
-import { replaceCanvasAssetReference } from '@/lib/canvas-asset-references';
-
-export type CanvasReferenceAssetKind = 'text' | 'image' | 'video' | 'audio';
-
-export interface CanvasReferenceAsset {
-  id: string;
-  kind: CanvasReferenceAssetKind;
-  label: string;
-  content: string;
-  previewUrl?: string;
-}
+import { addCanvasGroupReferences, availableCanvasReferences, canvasReferenceGroups, replaceCanvasAssetReference, type CanvasReferenceAsset, type CanvasReferenceAssetKind } from '@/lib/canvas-asset-references';
+export type { CanvasReferenceAsset, CanvasReferenceAssetKind } from '@/lib/canvas-asset-references';
 
 const KIND_LABEL: Record<CanvasReferenceAssetKind, string> = {
   text: '文字', image: '图片', video: '视频', audio: '音频',
@@ -39,7 +30,8 @@ export function CanvasAssetReferencePicker({ assets, excludedId, acceptedKinds, 
   const [query, setQuery] = useState('');
   const [replacingId, setReplacingId] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
-  const availableAssets = assets.filter((asset) => asset.id !== excludedId && acceptedKinds.includes(asset.kind));
+  const availableAssets = availableCanvasReferences(assets, excludedId, acceptedKinds);
+  const groups = useMemo(() => canvasReferenceGroups(assets, excludedId, acceptedKinds), [assets, excludedId, acceptedKinds]);
   const visibleAssets = availableAssets.filter((asset) => (!deferredQuery
     || `${asset.label} ${KIND_LABEL[asset.kind]}`.toLowerCase().includes(deferredQuery)));
   const selectedSet = new Set(selectedIds);
@@ -97,6 +89,16 @@ export function CanvasAssetReferencePicker({ assets, excludedId, acceptedKinds, 
         </div>
       </div> : null}
       <div className="max-h-72 space-y-1 overflow-y-auto p-2">
+        {!replacingId && groups.filter(group => !deferredQuery || group.label.toLowerCase().includes(deferredQuery)
+          || group.memberIds.some(id => visibleAssets.some(asset => asset.id === id))).map(group => {
+          const allSelected = group.memberIds.every(id => selectedSet.has(id));
+          return <button key={`group:${group.id}`} type="button" disabled={allSelected}
+            onClick={() => onChange(addCanvasGroupReferences(selectedIds, group.memberIds))}
+            className="flex w-full items-center justify-between gap-2 rounded-lg border border-violet-100 px-2 py-2 text-left text-xs text-violet-700 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-400/20 dark:text-violet-200 dark:hover:bg-white/5">
+            <span className="min-w-0 truncate">{group.label}</span><span className="shrink-0">{allSelected ? '已引用' : '引用整组'} · {group.memberIds.length} 项</span>
+          </button>;
+        })}
+        {!replacingId && groups.length > 0 && <p className="px-1 py-1 text-[10px] text-slate-400">加入组内当前可用素材，可逐项移除；分组后续变化不会自动改变引用。</p>}
         {visibleAssets.map((asset) => {
           const selected = selectedSet.has(asset.id);
           return <button key={asset.id} type="button" onClick={() => handleAssetClick(asset.id)} className={`flex w-full items-center gap-2 rounded-xl border p-2 text-left transition ${replacingId === asset.id ? 'border-violet-500 bg-violet-100 dark:border-violet-300 dark:bg-violet-400/20' : selected ? 'border-violet-300 bg-violet-50 dark:border-violet-400/40 dark:bg-violet-400/10' : 'border-transparent hover:bg-slate-50 dark:hover:bg-white/5'}`}>
